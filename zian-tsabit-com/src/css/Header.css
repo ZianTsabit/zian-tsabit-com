@@ -1,12 +1,12 @@
 .header {
-  position: fixed; /* keeps it stuck at the top */
-  top: 0;          /* align to top */
-  left: 0;         /* align to left edge */
-  width: 100%;     /* full width */
-  background: #333; /* background so content below doesn't overlap visually */
-  z-index: 1000;   /* make sure it stays above other elements */
-  padding: 1rem;   /* optional spacing */
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* subtle shadow */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background: #333;
+  z-index: 1000;
+  padding: 1rem;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 .header nav ul {

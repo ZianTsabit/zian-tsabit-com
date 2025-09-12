@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import '../css/Books.css';;
+import Typography from '@mui/material/Typography';
+import '../css/Books.css';
 
 function Books() {
     return (
-        <div className='books'>
-            You can see my book list here
-        </div>
+        <Typography gutterBottom variant="h5" component="div">
+            Coming soon...
+        </Typography>
     );
 }
 

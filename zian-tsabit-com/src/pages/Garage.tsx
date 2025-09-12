@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import Typography from '@mui/material/Typography';
-import '../css/Projects.css';
+import '../css/Garage.css';;
 
-function Projects() {
+function Garage() {
     return (
         <Typography gutterBottom variant="h5" component="div">
             Coming soon...
@@ -10,4 +10,4 @@ function Projects() {
     );
 }
 
-export default Projects
+export default Garage
