@@ -1,0 +1,28 @@
+.header {
+  position: fixed; /* keeps it stuck at the top */
+  top: 0;          /* align to top */
+  left: 0;         /* align to left edge */
+  width: 100%;     /* full width */
+  background: #333; /* background so content below doesn't overlap visually */
+  z-index: 1000;   /* make sure it stays above other elements */
+  padding: 1rem;   /* optional spacing */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* subtle shadow */
+}
+
+.header nav ul {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 1.5rem;
+}
+
+.header nav a {
+  text-decoration: none;
+  color: white;
+  font-weight: 500;
+}
+
+.header nav a:hover {
+  color: #007bff;
+}
