@@ -9,7 +9,7 @@ import '../css/Home.css';;
 function Home() {
     return (
         <Container maxWidth="xl">
-            <Box sx={{ bgcolor: '#24292d', height: '100vh' }}>
+            <Box sx={{ bgcolor: '#24292d', height: '100vh', width: '85vh', margin: '24px', padding: '18px' }}>
                 <Stack
                     direction="row"
                     sx={{ justifyContent: 'space-between', alignItems: 'center' }}
@@ -17,14 +17,11 @@ function Home() {
                         <Avatar
                             alt="Zian Tsabit"
                             src="src/assets/pp-github.jpeg"
-                            sx={{ width: 150, height: 150 }}
+                            sx={{ width: 120, height: 120 }}
                         />
                         <Box>
                             <Typography gutterBottom variant="h5" component="div">
                                 Hello, I'm Ghazian Tsabit Alkamil
-                            </Typography>
-                            <Typography gutterBottom variant="h5" component="div">
-                                please just call me Zian
                             </Typography>
                         </Box>
                         
