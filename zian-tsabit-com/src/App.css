@@ -3,8 +3,10 @@
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
+  background: #000;
 }
 
 body {
   font-family: 'Ubuntu', sans-serif;
+  background: #000;
 }

@@ -20,7 +20,7 @@ function Header() {
                 direction="row"
                 sx={{ alignItems: 'center', justifyContent: "center", gap: 56 }}
                 >
-                    <Typography variant="h5" component="div" sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
+                    <Typography variant="h5" component="div" sx={{ fontFamily: "'Ubuntu', sans-serif", color:"white"}}>
                         Zian Tsabit
                     </Typography>
                     <List
