@@ -23,7 +23,12 @@ function Home() {
       <Container maxWidth="xl">
         <Stack
           direction="row"
-          sx={{ justifyContent: "left", alignItems: "center", gap: 28, py: 2 }}
+          sx={{ 
+            justifyContent: "left", 
+            alignItems: "center", 
+            gap: 32, 
+            py: 2 
+          }}
         >
           <Avatar
             alt="Zian Tsabit"
@@ -31,14 +36,23 @@ function Home() {
             sx={{ 
                 width: 120, 
                 height: 120,
-                marginLeft: "15px"
+                marginLeft: "40px"
             }}
           />
-          <Typography variant="h5" component="div" color="white" sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
+          <Typography 
+            variant="h5" 
+            component="div" 
+            color="white" 
+            sx={{ 
+              fontFamily: "'Ubuntu', sans-serif" 
+            }}>
             Hello, I'm Ghazian Tsabit Alkamil 👋
           </Typography>
         </Stack>
-        <Divider sx={{ bgcolor: "white" }} />
+        <Divider sx={{ 
+          bgcolor: "white",
+          marginLeft: "18px"
+          }} />
       </Container>
     </Box>
   );
