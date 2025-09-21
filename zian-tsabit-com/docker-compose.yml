@@ -1,0 +1,9 @@
+version: "3.8"
+
+services:
+  frontend:
+    build: .
+    container_name: zian-tsabit-com_frontend
+    ports:
+      - "8080:80"
+    restart: always

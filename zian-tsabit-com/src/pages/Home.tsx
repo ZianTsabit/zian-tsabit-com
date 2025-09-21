@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
@@ -32,7 +31,7 @@ function Home() {
         >
           <Avatar
             alt="Zian Tsabit"
-            src="src/assets/pp-github.jpeg"
+            src="/pp-github.png"
             sx={{ 
                 width: 120, 
                 height: 120,

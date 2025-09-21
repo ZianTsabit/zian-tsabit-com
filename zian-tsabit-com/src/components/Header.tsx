@@ -1,10 +1,9 @@
-import { useState } from 'react'
 import { Link } from "react-router-dom";
 import Typography from '@mui/material/Typography';
 import List from '@mui/joy/List';
 import Stack from '@mui/material/Stack';
 import ListItem from '@mui/joy/ListItem';
-import '../css/Header.css'
+import '../css/Header.css';
 
 function Header() {
     return (

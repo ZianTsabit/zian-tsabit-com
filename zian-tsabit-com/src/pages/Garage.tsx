@@ -1,6 +1,4 @@
-import { useState } from 'react'
 import { Box, Typography } from '@mui/material';
-;
 
 function Garage() {
     return (
