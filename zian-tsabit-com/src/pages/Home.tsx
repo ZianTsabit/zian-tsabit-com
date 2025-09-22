@@ -4,7 +4,6 @@ import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
-import { Link } from "react-router-dom";
 
 function Home() {
   return (
@@ -71,88 +70,35 @@ function Home() {
                 marginLeft: "4px",
                 marginRight: "4px",
               }}>
-              I'm a Software Engineer based in Indonesia, currently working at <a href="https://cermati.group/" target="_blank" rel="noopener noreferrer" style={{ color: "#005b96", textDecoration: "underline" }}>Cermati Fintech Group</a> as a Software Engineer - Data Platform.
-              Here i want to put myself on the internet, share my projects, and write about things that I find interesting.
+              I'm a Software Engineer based in Indonesia, currently working at <a href="https://cermati.group/" target="_blank" rel="noopener noreferrer" style={{ color: "#6497b1", textDecoration: "underline" }}>Cermati Fintech Group</a> as a Software Engineer - Data Platform.
+              Here I want to put myself on the internet, share my projects, and write about things that I find interesting.
             </Typography>
-            <Stack
-              direction="row"
-              sx={{ 
-                justifyContent: "center", 
-                alignItems: "center", 
-                gap: 1
-              }}
-              >
-                <Link
-                to="https://www.linkedin.com/in/ghaziantsabitalkamil/"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  color: "white",
-                  textDecoration: "none",
-                  fontFamily: "'Ubuntu', sans-serif",
-                  fontSize: "16px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px"
-                }}>
-                <img
-                  src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg"
-                  alt="LinkedIn"
-                  style={{ width: "20px", height: "20px" }}
-                />
-                linkedIn
-                </Link>
-              <Typography
-                variant="body1"
-                component="div"
-                color="white"
-                sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
-                |
-              </Typography>
-                <Link
-                  to="https://github.com/ZianTsabit"
-                  style={{
-                  color: "white",
-                  textDecoration: "none",
-                  fontFamily: "'Ubuntu', sans-serif",
-                  fontSize: "16px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px"
-                  }}>
-                    <img
-                      src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg"
-                      alt="GitHub"
-                      style={{ width: "20px", height: "20px" }}
-                    />
-                    github
-                  </Link>
-              <Typography
-                variant="body1"
-                component="div"
-                color="white"
-                sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
-                |
-              </Typography>
-                <Link
-                  to="mailto:tsabitghazian@gmail.com"
-                  style={{
-                  color: "white",
-                  textDecoration: "none",
-                  fontFamily: "'Ubuntu', sans-serif",
-                  fontSize: "16px",
-                  }}>
-                  ✉️ email
-                </Link>
-            </Stack>
           </Stack>
         </Stack>
         
         <Divider sx={{ 
           bgcolor: "grey",
-          marginLeft: "18px"
+          marginTop: "8px",
+          marginBottom: "8px"
           }} />
-        
+
+        <Box sx={{ marginTop: "18px", marginBottom: "36px" }}>
+          <Typography 
+            variant="body1" 
+            component="div" 
+            color="white" 
+            sx={{ 
+              fontFamily: "'Ubuntu', sans-serif",
+              textAlign: "left",
+              marginBottom: "12px",
+              marginLeft: "4px",
+              fontWeight: "bold",
+              fontSize: "18px"
+            }}>
+              Latest Updates
+          </Typography>
+          {/* create card that the data taken from backend application */}
+        </Box>
       </Container>
     </Box>
   );
