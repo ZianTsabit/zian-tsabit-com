@@ -52,7 +52,7 @@ function Header() {
                         }}
                         >
                         {[
-                            { to: "/", label: "Home" },
+                            { to: "/about", label: "About" },
                             { to: "/projects", label: "Projects" },
                             { to: "/books", label: "Books" },
                             { to: "/garage", label: "Garage Sale" },
