@@ -19,14 +19,16 @@ function Home() {
         marginTop: '36px'
       }}
     >
-      <Container maxWidth="xl">
+      <Container maxWidth="md">
+        
         <Stack
           direction="row"
           sx={{ 
-            justifyContent: "left", 
-            alignItems: "center", 
-            gap: 32, 
-            py: 2 
+            justifyContent: "center", 
+            alignItems: "center",
+            gap: 2,
+            marginBottom: "18px",
+            marginTop: "18px"
           }}
         >
           <Avatar
@@ -35,23 +37,51 @@ function Home() {
             sx={{ 
                 width: 120, 
                 height: 120,
-                marginLeft: "40px"
+                marginRight: "8px",
+                marginLeft: "8px"
             }}
           />
-          <Typography 
-            variant="h5" 
-            component="div" 
-            color="white" 
+          <Stack
+            direction="column"
             sx={{ 
-              fontFamily: "'Ubuntu', sans-serif" 
-            }}>
-            Hello, I'm Ghazian Tsabit Alkamil 👋
-          </Typography>
+              justifyContent: "left", 
+              alignItems: "center", 
+              gap: 1
+            }}
+          >
+            <Typography 
+              variant="h5" 
+              component="div" 
+              color="white" 
+              sx={{ 
+                fontFamily: "'Ubuntu', sans-serif"
+              }}>
+                Hello, I'm Ghazian Tsabit Alkamil 👋
+            </Typography>
+            <Typography 
+              variant="body1" 
+              component="div" 
+              color="white"
+              sx={{ 
+                fontFamily: "'Ubuntu', sans-serif",
+                justifyContent: "left",
+                alignItems: "center",
+                textAlign: "justify",
+                marginLeft: "4px",
+                marginRight: "4px",
+              }}>
+              I'm a Software Engineer based in Indonesia, currently working at <a href="https://cermati.group/" target="_blank" rel="noopener noreferrer" style={{ color: "#005b96", textDecoration: "underline" }}>Cermati Fintech Group</a> as a Software Engineer - Data Platform.
+              Here i want to put myself on the internet, share my projects, and write about things that I find interesting.
+              <br />
+            </Typography>
+          </Stack>
         </Stack>
+        
         <Divider sx={{ 
-          bgcolor: "white",
+          bgcolor: "grey",
           marginLeft: "18px"
           }} />
+        
       </Container>
     </Box>
   );
