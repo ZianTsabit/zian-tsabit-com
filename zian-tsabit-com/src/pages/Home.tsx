@@ -82,16 +82,26 @@ function Home() {
                 gap: 1
               }}
               >
-              <Link
+                <Link
                 to="https://www.linkedin.com/in/ghaziantsabitalkamil/"
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{
-                  color: "#005b96",
-                  textDecoration: "underline",
+                  color: "white",
+                  textDecoration: "none",
                   fontFamily: "'Ubuntu', sans-serif",
                   fontSize: "16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px"
                 }}>
+                <img
+                  src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg"
+                  alt="LinkedIn"
+                  style={{ width: "20px", height: "20px" }}
+                />
                 linkedIn
-              </Link>
+                </Link>
               <Typography
                 variant="body1"
                 component="div"
@@ -99,16 +109,24 @@ function Home() {
                 sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
                 |
               </Typography>
-              <Link
-                to="https://github.com/ZianTsabit"
-                style={{
-                  color: "#005b96",
-                  textDecoration: "underline",
+                <Link
+                  to="https://github.com/ZianTsabit"
+                  style={{
+                  color: "white",
+                  textDecoration: "none",
                   fontFamily: "'Ubuntu', sans-serif",
                   fontSize: "16px",
-                }}>
-                github
-              </Link>
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px"
+                  }}>
+                    <img
+                      src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg"
+                      alt="GitHub"
+                      style={{ width: "20px", height: "20px" }}
+                    />
+                    github
+                  </Link>
               <Typography
                 variant="body1"
                 component="div"
@@ -116,16 +134,16 @@ function Home() {
                 sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
                 |
               </Typography>
-              <Link
-                to="mailto:tsabitghazian@gmail.com"
-                style={{
-                  color: "#005b96",
-                  textDecoration: "underline",
+                <Link
+                  to="mailto:tsabitghazian@gmail.com"
+                  style={{
+                  color: "white",
+                  textDecoration: "none",
                   fontFamily: "'Ubuntu', sans-serif",
                   fontSize: "16px",
-                }}>
-                email
-              </Link>
+                  }}>
+                  ✉️ email
+                </Link>
             </Stack>
           </Stack>
         </Stack>
