@@ -1,14 +1,26 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import Typography from '@mui/material/Typography';
 import List from '@mui/joy/List';
 import Stack from '@mui/material/Stack';
 import ListItem from '@mui/joy/ListItem';
 import '../css/Header.css';
 
 function Header() {
+    
+    const [isScrolled, setIsScrolled] = useState(false);
+
+    useEffect(() => {
+        const handleScroll = () => {
+        setIsScrolled(window.scrollY > 50);
+        };
+
+        window.addEventListener("scroll", handleScroll);
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
+    
     return (
         <header 
-            className='header'   
+            className={`header ${isScrolled ? "scrolled" : ""}`}
             style={{
                 display: "flex",
                 justifyContent: "center",
@@ -19,9 +31,16 @@ function Header() {
                 direction="row"
                 sx={{ alignItems: 'center', justifyContent: "center", gap: 56 }}
                 >
-                    <Typography variant="h5" component="div" sx={{ fontFamily: "'Ubuntu', sans-serif", color:"white"}}>
+                    <Link 
+                        to="/"
+                        style={{
+                        color: "white",
+                        textDecoration: "none",
+                        fontFamily: "'Ubuntu', sans-serif",
+                        fontSize: "25px",
+                        }}>
                         Zian Tsabit
-                    </Typography>
+                    </Link>
                     <List
                         role="menubar"
                         sx={{
