@@ -4,6 +4,7 @@ import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
+import { Link } from "react-router-dom";
 
 function Home() {
   return (
@@ -72,8 +73,60 @@ function Home() {
               }}>
               I'm a Software Engineer based in Indonesia, currently working at <a href="https://cermati.group/" target="_blank" rel="noopener noreferrer" style={{ color: "#005b96", textDecoration: "underline" }}>Cermati Fintech Group</a> as a Software Engineer - Data Platform.
               Here i want to put myself on the internet, share my projects, and write about things that I find interesting.
-              <br />
             </Typography>
+            <Stack
+              direction="row"
+              sx={{ 
+                justifyContent: "center", 
+                alignItems: "center", 
+                gap: 1
+              }}
+              >
+              <Link
+                to="https://www.linkedin.com/in/ghaziantsabitalkamil/"
+                style={{
+                  color: "#005b96",
+                  textDecoration: "underline",
+                  fontFamily: "'Ubuntu', sans-serif",
+                  fontSize: "16px",
+                }}>
+                linkedIn
+              </Link>
+              <Typography
+                variant="body1"
+                component="div"
+                color="white"
+                sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
+                |
+              </Typography>
+              <Link
+                to="https://github.com/ZianTsabit"
+                style={{
+                  color: "#005b96",
+                  textDecoration: "underline",
+                  fontFamily: "'Ubuntu', sans-serif",
+                  fontSize: "16px",
+                }}>
+                github
+              </Link>
+              <Typography
+                variant="body1"
+                component="div"
+                color="white"
+                sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
+                |
+              </Typography>
+              <Link
+                to="mailto:tsabitghazian@gmail.com"
+                style={{
+                  color: "#005b96",
+                  textDecoration: "underline",
+                  fontFamily: "'Ubuntu', sans-serif",
+                  fontSize: "16px",
+                }}>
+                email
+              </Link>
+            </Stack>
           </Stack>
         </Stack>
         
