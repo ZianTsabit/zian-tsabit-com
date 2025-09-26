@@ -19,8 +19,9 @@ import { Link } from "react-router-dom";
 
 
 function CV() {
-  const [openRows, setOpenRows] = useState<number[]>([]);
 
+  const [openRows, setOpenRows] = useState<number[]>([0, 1, 2, 3, 4]);
+    
   const toggleRow = (index: number) => {
     setOpenRows((prev) =>
       prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
@@ -305,16 +306,16 @@ function CV() {
                         <TableRow>
                         <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={3}>
                             <Collapse in={openRows.includes(index)} timeout="auto" unmountOnExit>
-                            <Box sx={{ margin: 1 }}>
+                            <Box sx={{ margin: 0 }}>
                                 <Typography
                                 variant="body2"
                                 component="div"
                                 color="white"
                                 sx={{
                                     fontFamily: "'Ubuntu', sans-serif",
-                                    textAlign: "justify"
-                                }}
-                                >
+                                    textAlign: "justify",
+                                    marginY: "0px",
+                                }}>
                                 {row.details.split('\n').map((line, idx) => (
                                     <React.Fragment key={idx}>
                                     {line}
@@ -332,7 +333,7 @@ function CV() {
                 </Table>
             </TableContainer>
         </Box>
-        
+
         <Box sx={{ marginTop: "18px", marginBottom: "36px" }}>
           <Typography
               variant="body1"
