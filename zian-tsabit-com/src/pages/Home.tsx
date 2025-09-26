@@ -9,7 +9,7 @@ function Home() {
   return (
     <Box
       sx={{
-        width: "75vh",
+        width: "100vh",
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",

@@ -95,7 +95,7 @@ function CV() {
   return (
     <Box
       sx={{
-        width: "75vh",
+        width: "100vh",
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
@@ -141,7 +141,7 @@ function CV() {
                 rel="noopener noreferrer"
                 style={{
                     color: "#6497b1",
-                    textDecoration: "none",
+                    textDecoration: "underline",
                     fontFamily: "'Ubuntu', sans-serif",
                     fontSize: "16px",
                     display: "flex",
@@ -166,7 +166,7 @@ function CV() {
                 to="https://github.com/ZianTsabit"
                 style={{
                 color: "#6497b1",
-                textDecoration: "none",
+                textDecoration: "underline",
                 fontFamily: "'Ubuntu', sans-serif",
                 fontSize: "16px",
                 display: "flex",
@@ -191,7 +191,7 @@ function CV() {
                 to="mailto:tsabitghazian@gmail.com"
                 style={{
                 color: "#6497b1",
-                textDecoration: "none",
+                textDecoration: "underline",
                 fontFamily: "'Ubuntu', sans-serif",
                 fontSize: "16px",
                 }}>
