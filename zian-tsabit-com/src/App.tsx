@@ -5,6 +5,7 @@ import Projects from "./pages/Projects";
 import Books from "./pages/Books";
 import Garage from "./pages/Garage";
 import About from "./pages/About";
+import CV from "./pages/CV";
 import './App.css'
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/about" element={<About />} />
+        <Route path="/curriculum-vitae" element={<CV />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/books" element={<Books />} />
         <Route path="/garage" element={<Garage />} />

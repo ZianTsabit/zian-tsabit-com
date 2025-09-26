@@ -53,6 +53,7 @@ function Header() {
                         >
                         {[
                             { to: "/about", label: "About" },
+                            { to: "/curriculum-vitae", label: "CV" },
                             { to: "/projects", label: "Projects" },
                             { to: "/books", label: "Books" },
                             { to: "/garage", label: "Garage Sale" },
