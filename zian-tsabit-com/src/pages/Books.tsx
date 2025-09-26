@@ -4,18 +4,43 @@ function Books() {
     return (
         <Box
             sx={{
-            width: "100%",
+            width: "75vh",
             minHeight: "100vh",
             display: "flex",
             flexDirection: "column",
             overflowY: "auto",
             bgcolor: "#0000",
-            alignItems: 'center',
-            justifyContent: 'center'
-        }}>
-            <Typography gutterBottom variant="h5" component="div" sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
-                Coming soon...
-            </Typography>
+            marginTop: "36px",
+            }}>
+            
+            <Box
+                sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    padding: "20px",
+                }}>
+                <Typography
+                    variant="h5"
+                    component="div"
+                    sx={{
+                        textAlign: "justify",
+                        marginBottom: "20px",
+                        fontStyle: "italic"
+                    }}>
+                    It is foolish to think that you have to read all the books you buy, as it is foolish to criticize those who buy more books than they will ever be able to read. <br />
+                    It would be like saying that you should use all the cutlery or glasses or screwdrivers or drill bits you bought before buying new ones. <br />
+                </Typography>
+                <Typography 
+                    variant="h5" 
+                    component="div" 
+                    sx={{ 
+                        textAlign: "right",
+                        fontStyle: "italic"
+                    }}>
+                    - Umberto Eco
+                </Typography>
+            </Box>
+            
         </Box>
     );
 }
