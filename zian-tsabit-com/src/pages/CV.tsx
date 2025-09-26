@@ -75,6 +75,9 @@ function CV() {
       link: "https://career.itb.ac.id/",
       duration: "Sep 2023 - Dec 2023",
       details: `
+        - Data acquisition from various sources (APIs, web scraping, databases).
+        - Data cleaning and preprocessing using Python (Pandas).
+        - Data analysis and visualization using Tableau.
       `,
     },
     {
@@ -83,6 +86,8 @@ function CV() {
       link: "https://www.cermati.group/",
       duration: "May 2023 - Sep 2023",
       details: `
+      - Migrate bigquery scheduled query to Apache Airflow and DBT.
+      - Maintain and develop Redash Data Platform.
       `,
     },
   ];
