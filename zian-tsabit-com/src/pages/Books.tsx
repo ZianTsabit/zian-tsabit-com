@@ -27,8 +27,7 @@ function Books() {
                         marginBottom: "20px",
                         fontStyle: "italic"
                     }}>
-                    It is foolish to think that you have to read all the books you buy, as it is foolish to criticize those who buy more books than they will ever be able to read. <br />
-                    It would be like saying that you should use all the cutlery or glasses or screwdrivers or drill bits you bought before buying new ones. <br />
+                    It is foolish to think that you have to read all the books you buy, as it is foolish to criticize those who buy more books than they will ever be able to read ...
                 </Typography>
                 <Typography 
                     variant="h5" 
@@ -40,7 +39,6 @@ function Books() {
                     - Umberto Eco
                 </Typography>
             </Box>
-            
         </Box>
     );
 }
