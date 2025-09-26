@@ -203,42 +203,76 @@ function CV() {
         <Divider sx={{ bgcolor: "grey", marginTop: "8px", marginBottom: "8px" }} />
         
         <Box sx={{ marginTop: "18px", marginBottom: "36px" }}>
-            <Typography
-                variant="body1"
-                component="div"
-                color="white"
-                sx={{
-                    fontFamily: "'Ubuntu', sans-serif",
-                    textAlign: "left",
-                    marginBottom: "12px",
-                    marginLeft: "4px",
-                    fontWeight: "bold",
-                    fontSize: "16px",
-                }}
-            >
-                📄 Summaries
-            </Typography>
+          <Typography
+            variant="body1"
+            component="div"
+            color="white"
+            sx={{
+              fontFamily: "'Ubuntu', sans-serif",
+              textAlign: "left",
+              marginBottom: "12px",
+              marginLeft: "4px",
+              fontWeight: "bold",
+              fontSize: "16px",
+            }}
+          >
+            📄 Summaries
+          </Typography>
 
-            <Typography
-                variant="body2"
-                component="div"
-                color="white"
-                sx={{
-                    fontFamily: "'Ubuntu', sans-serif",
-                    textAlign: "justify",
-                    marginLeft: "4px",
-                    marginRight: "4px",
-                    marginBottom: "12px",
-                    marginTop: "12px",
-                    whiteSpace: "pre-line",
-                }}
-            >
-                Data Engineer with a Computer Science degree from Bandung Institute of Technology (ITB). Proven ability to develop scalable data platforms and real-time data pipelines on Google Cloud Platform, Microsoft Azure, and on-premise infrastructure. Proficient in Python, Java, Go, and SQL. Expertise in database management systems including PostgreSQL, MongoDB, Elasticsearch, Redis, and Clickhouse. Skilled in orchestration and processing tools such as Apache Airflow, Apache Kafka, Apache Spark, Docker, and DBT, alongside data visualization platforms like Redash, Metabase, and Tableau.
-            </Typography>
-
+          <Typography
+            variant="body2"
+            component="div"
+            color="white"
+            sx={{
+              fontFamily: "'Ubuntu', sans-serif",
+              textAlign: "justify",
+              marginLeft: "4px",
+              marginRight: "4px",
+              marginBottom: "12px",
+              marginTop: "12px",
+              whiteSpace: "pre-line",
+            }}
+          >
+            Data Engineer with a Computer Science degree from Bandung Institute of Technology (ITB). Proven ability to develop scalable data platforms and real-time data pipelines on Google Cloud Platform, Microsoft Azure, and on-premise infrastructure. Proficient in Python, Java, Go, and SQL. Expertise in database management systems including PostgreSQL, MongoDB, Elasticsearch, Redis, and Clickhouse. Skilled in orchestration and processing tools such as Apache Airflow, Apache Kafka, Apache Spark, Docker, and DBT, alongside data visualization platforms like Redash, Metabase, and Tableau.
+          </Typography>
         </Box>
 
-        <Box sx={{ marginTop: "18px", marginBottom: "36px" }}>
+        <Box sx={{ marginBottom: "36px" }}>
+            <Typography
+            variant="body1"
+            component="div"
+            color="white"
+            sx={{
+              fontFamily: "'Ubuntu', sans-serif",
+              textAlign: "left",
+              marginLeft: "4px",
+              fontWeight: "bold",
+              fontSize: "16px",
+            }}
+            >
+            🛠️ Skills
+            </Typography>
+
+          <Typography
+            variant="body2"
+            component="div"
+            color="white"
+            sx={{
+              fontFamily: "'Ubuntu', sans-serif",
+              textAlign: "justify",
+              marginLeft: "4px",
+              marginRight: "4px",
+              marginTop: "12px",
+            }}
+          >
+            <b>Programing Language:</b> Python, Java, JavaScript, SQL <br />
+            <b>Cloud Platform:</b> GCP, Azure <br />
+            <b>Database:</b> PostgreSQL, MongoDB, Elasticsearch, Redis <br />
+            <b>Tools:</b> Airflow, Kafka, RabbitMQ, Spark, Debezium, Nifi, Docker, Git, DBT, Redash
+          </Typography>
+        </Box>
+
+        <Box sx={{ marginBottom: "36px" }}>
             <Typography
                 variant="body1"
                 component="div"
@@ -339,7 +373,7 @@ function CV() {
             </TableContainer>
         </Box>
 
-        <Box sx={{ marginTop: "18px", marginBottom: "36px" }}>
+        <Box sx={{ marginBottom: "36px" }}>
           <Typography
               variant="body1"
               component="div"
