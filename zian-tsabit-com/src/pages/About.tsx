@@ -2,8 +2,7 @@ import {
   Box,
   Typography,
   Stack,
-  Avatar,
-  Divider
+  Avatar
 } from "@mui/material";
 
 
