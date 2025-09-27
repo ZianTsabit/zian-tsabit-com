@@ -1,4 +1,5 @@
-import { Box, Typography } from '@mui/material';
+import { Box } from '@mui/material';
+import Typewriter from "../components/Typewriter";
 
 function Garage() {
     return (
@@ -13,9 +14,9 @@ function Garage() {
             alignItems: 'center',
             justifyContent: 'center',
         }}>
-            <Typography gutterBottom variant="h5" component="div" sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
-                Coming soon...
-            </Typography>
+            <Typewriter 
+                text="Coming soon..." 
+            />
         </Box>
     );
 }

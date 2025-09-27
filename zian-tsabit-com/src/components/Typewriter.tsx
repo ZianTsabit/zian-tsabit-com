@@ -17,7 +17,7 @@ const StyledBox = styled(Box)`
   }
 
   &.typewriter-effect:after {
-    content: " |";
+    content: " ";
     animation: blink 1s infinite;
     animation-timing-function: step-end;
   }
@@ -47,6 +47,7 @@ interface CustomStyles extends React.CSSProperties {
 
 interface TypewriterProps {
   text?: string;
+
 }
 
 function Typewriter({ text = "Typewriter Effect" }: TypewriterProps) {
@@ -56,7 +57,11 @@ function Typewriter({ text = "Typewriter Effect" }: TypewriterProps) {
 
   return (
     <StyledBox className="typewriter-effect">
-      <Box style={styles} className="text" id="typewriter-text">
+      <Box 
+        style={styles} 
+        className="text" 
+        id="typewriter-text"
+        sx={{ fontFamily: "'Ubuntu', sans-serif", color: "white", fontSize: "24px" }}>
         {text}
       </Box>
     </StyledBox>
