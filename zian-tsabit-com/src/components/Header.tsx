@@ -54,8 +54,8 @@ function Header() {
                         {[
                             { to: "/about", label: "About" },
                             { to: "/curriculum-vitae", label: "CV" },
-                            { to: "/projects", label: "Projects" },
                             { to: "/books", label: "Books" },
+                            { to: "/projects", label: "Projects" },
                             { to: "/garage", label: "Garage Sale" },
                         ].map((item) => (
                             <ListItem key={item.to} role="none" sx={{ width: "auto", p: 0 }}>
