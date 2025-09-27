@@ -14,11 +14,10 @@ function About() {
         width: "75vh",
         minHeight: "100vh",
         display: "flex",
-        flexDirection: "column",
-        bgcolor: "#0000",
-        padding: "18px",
-        marginTop: "36px",
-    }}>
+        justifyContent: "center",
+        alignItems: "center",
+        bgcolor: "black"
+      }}>
 
       <Stack
         direction="row"
