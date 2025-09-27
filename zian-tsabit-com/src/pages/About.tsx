@@ -92,7 +92,12 @@ function About() {
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
             }}>
-            My name is 
+              Hi, I’m Ghazian Tsabit Alkamil, living in Jakarta, Indonesia.<br />
+              I work as a Software Engineer on the Data Platform team at Cermati Fintech Group.<br />
+              I studied Computer Science at the School of Electrical Engineering and Informatics, Bandung Institute of Technology.<br />
+              Outside of work, I love spending time with books—especially Indonesian novels, with Eka Kurniawan as my favorite author—watching movies, and swimming, which I usually do about four times a week. <br />
+              Music is also a big part of my life, and I’m a huge fan of The Beatles and Bob Dylan. <br />
+              I enjoy learning new things, and recently I’ve started learning to play the guitar, inspired by the anime Bocchi the Rock!
           </Typography>
         </Stack>
 
