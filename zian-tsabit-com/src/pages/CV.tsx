@@ -14,7 +14,9 @@ import {
   TableHead,
   TableRow,
   Paper,
+  Button
 } from "@mui/material";
+import DownloadIcon from "@mui/icons-material/Download";
 import { Link } from "react-router-dom";
 
 
@@ -127,6 +129,7 @@ function CV() {
           >
             Ghazian Tsabit Alkamil
           </Typography>
+          
           <Stack
             direction="row"
             sx={{ 
@@ -163,23 +166,23 @@ function CV() {
             |
             </Typography>
             <Link
-                to="https://github.com/ZianTsabit"
-                style={{
-                color: "#6497b1",
-                textDecoration: "underline",
-                fontFamily: "'Ubuntu', sans-serif",
-                fontSize: "16px",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px"
-                }}>
-                <img
-                    src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg"
-                    alt="GitHub"
-                    style={{ width: "20px", height: "20px" }}
-                />
-                github
-                </Link>
+              to="https://github.com/ZianTsabit"
+              style={{
+              color: "#6497b1",
+              textDecoration: "underline",
+              fontFamily: "'Ubuntu', sans-serif",
+              fontSize: "16px",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px"
+              }}>
+              <img
+                  src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg"
+                  alt="GitHub"
+                  style={{ width: "20px", height: "20px" }}
+              />
+              github
+            </Link>
             <Typography
             variant="body1"
             component="div"
@@ -197,6 +200,32 @@ function CV() {
                 }}>
                 ✉️ email
             </Link>
+            <Typography
+              variant="body1"
+              component="div"
+              color="white"
+              sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
+              |
+            </Typography>
+            <Button
+              href="/latest_cv.pdf"
+              download="latest_cv.pdf"
+              endIcon={<DownloadIcon />}
+              sx={{
+                textTransform: "none",
+                textDecoration: "underline",
+                fontFamily: "'Ubuntu', sans-serif",
+                padding: "0px 0px",
+                fontSize: "16px",
+                color: "#6497b1",
+                "&:hover": {
+                  color: "#6497b1",
+                  backgroundColor: "transparent",
+                  textDecoration: "underline",
+                }
+              }}>
+              Download CV
+            </Button>
         </Stack>
         </Stack>
         
