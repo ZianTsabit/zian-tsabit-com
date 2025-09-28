@@ -61,7 +61,7 @@ function Typewriter({ text = "Typewriter Effect" }: TypewriterProps) {
         style={styles} 
         className="text" 
         id="typewriter-text"
-        sx={{ fontFamily: "'Ubuntu', sans-serif", color: "white", fontSize: "24px" }}>
+        sx={{ fontFamily: "'Ubuntu', sans-serif", color: "white", fontSize: { xs: "18px", sm: "18px", md: "18px", lg: "22px" } }}>
         {text}
       </Box>
     </StyledBox>

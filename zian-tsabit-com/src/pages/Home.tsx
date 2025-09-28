@@ -17,8 +17,7 @@ function Home() {
         overflowY: "auto",
         bgcolor: "#0000",
         alignItems: "center",
-        marginTop: "36px",
-        px: 2,
+        marginTop: "36px"
       }}
     >
       <Container maxWidth="md">
@@ -66,7 +65,7 @@ function Home() {
               color="white"
               sx={{ 
                 fontFamily: "'Ubuntu', sans-serif",
-                textAlign: { xs: "center", sm: "justify" },
+                textAlign: { xs: "justify", sm: "justify" },
                 mx: { xs: 0, sm: "4px" },
               }}
             >

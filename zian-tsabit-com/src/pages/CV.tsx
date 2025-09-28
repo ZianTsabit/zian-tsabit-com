@@ -100,7 +100,6 @@ function CV() {
         bgcolor: "#0000",
         alignItems: "center",
         marginTop: "36px",
-        px: 2,
       }}
     >
       <Container maxWidth="md">

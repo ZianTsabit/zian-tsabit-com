@@ -12,7 +12,6 @@ function Books() {
         bgcolor: "#0000",
         alignItems: "center",
         marginTop: "36px",
-        px: 2,
       }}
     >
       <Box
@@ -30,6 +29,7 @@ function Books() {
             marginBottom: "20px",
             fontStyle: "italic",
             color: "white",
+            fontSize: { xs: "12px", sm: "14px", md: "16px", lg: "22px" },
           }}
         >
           It is foolish to think that you have to read all the books you buy,
@@ -44,6 +44,7 @@ function Books() {
             textAlign: "right",
             fontStyle: "italic",
             color: "white",
+            fontSize: { xs: "12px", sm: "14px", md: "16px", lg: "22px" },
           }}
         >
           - Umberto Eco

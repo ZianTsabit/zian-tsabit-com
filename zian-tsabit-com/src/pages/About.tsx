@@ -14,7 +14,6 @@ function About() {
         justifyContent: "center",
         alignItems: "center",
         bgcolor: "black",
-        px: 2,
         py: 4,
       }}
     >
@@ -47,7 +46,7 @@ function About() {
               fontWeight: "700",
               color: "white",
               textAlign: "left",
-              fontSize: { xs: "20px", sm: "24px" },
+              fontSize: { xs: "16px", sm: "22px" },
               mb: 2,
             }}
           >
