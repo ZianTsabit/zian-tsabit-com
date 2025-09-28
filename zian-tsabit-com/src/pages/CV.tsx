@@ -233,7 +233,7 @@ function CV() {
               whiteSpace: "pre-line",
             }}
           >
-            Data Engineer with a Computer Science degree from Bandung Institute of Technology (ITB). Proven ability to develop scalable data platforms and real-time data pipelines on Google Cloud Platform, Microsoft Azure, and on-premise infrastructure. Proficient in Python, Java, Go, and SQL. Expertise in database management systems including PostgreSQL, MongoDB, Elasticsearch, Redis, and Clickhouse. Skilled in orchestration and processing tools such as Apache Airflow, Apache Kafka, Apache Spark, Docker, and DBT, alongside data visualization platforms like Redash, Metabase, and Tableau.
+            Data Engineer with a Computer Science degree from Bandung Institute of Technology (ITB). Proven ability to develop scalable data platforms and real-time data pipelines on Google Cloud Platform, Microsoft Azure, and on-premise infrastructure. Proficient in Python, Java, JavaScript, and SQL. Expertise in database management systems including PostgreSQL, MongoDB, and Elasticsearch. Skilled in orchestration and processing tools such as Apache Airflow, Apache Kafka, Apache Spark, Docker, and DBT, alongside data visualization platforms like Redash, Metabase, and Tableau.
           </Typography>
         </Box>
 
