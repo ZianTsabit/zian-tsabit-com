@@ -47,48 +47,27 @@ function About() {
               fontFamily: "'Ubuntu', sans-serif",
               fontWeight: "700",
               color: "white",
-              marginBottom: "12px",
-              textAlign: "left"
+              textAlign: "left",
+              fontSize: "24px"
             }}>
               About Me
           </Typography>
-          <Stack
-            direction="row"
-            spacing={2}
-            sx={{ 
-              width: "100%",
-              display: "flex", 
-              flexDirection: { xs: "column", sm: "row" },
-              alignItems: "center",
-              marginBottom: "12px"
-            }}  >
-            <Avatar
-              alt="Zian Tsabit"
-              src="/pp-github.png"
-              sx={{ 
-                  width: 120, 
-                  height: 120,
-                  marginRight: "8px",
-                  marginLeft: "8px"
-              }}
-            />
-          </Stack> 
-          <Typography 
+          <Typography
             variant="body1"
             component="div"
             sx={{
               fontSize: "18px",
               color: "white",
-              marginBottom: "12px",
               lineHeight: "2",
               letterSpacing: "1px",
               textAlign: "justify"
             }}>
               Hi, I’m Ghazian Tsabit Alkamil, living in Jakarta, Indonesia.
               I work as a Software Engineer on the Data Platform team at Cermati Fintech Group.
-              I studied Computer Science at the School of Electrical Engineering and Informatics, Bandung Institute of Technology. <br />
+              I studied Computer Science at the School of Electrical Engineering and Informatics, Bandung Institute of Technology.
+              I have a strong passion for data, software, and infrastructure engineering, and I enjoy exploring how these areas connect and support each other. <br />
               Outside of work, I love spending time with books—especially Indonesian novels, with Eka Kurniawan as my favorite author—watching movies, and swimming, which I usually do about four times a week.
-              Music is also a big part of my life, and I’m a huge fan of The Beatles and Bob Dylan. <br />
+              Music is also a big part of my life, and I’m a huge fan of The Beatles and Bob Dylan.
               I enjoy learning new things, and recently I’ve started learning to play the guitar, inspired by the anime <em>Bocchi the Rock!</em> 
           </Typography>
         </Stack>

@@ -4,6 +4,8 @@ import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
+import Typewriter from "../components/Typewriter";
+
 
 function Home() {
   return (
@@ -97,8 +99,24 @@ function Home() {
             }}>
               Latest Updates
           </Typography>
-          {/* create card that the data taken from backend application */}
         </Box>
+        
+        <Box
+          sx={{
+            width: "100%",
+            minHeight: "30vh",
+            display: "flex",
+            flexDirection: "column",
+            overflowY: "auto",
+            bgcolor: "#0000",
+            alignItems: 'center',
+            justifyContent: 'center',
+        }}>
+          <Typewriter 
+            text="Coming soon..." 
+          />
+        </Box>
+
       </Container>
     </Box>
   );
