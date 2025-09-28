@@ -286,9 +286,9 @@ function CV() {
                 fontSize: "16px",
                 }}
             >
-                💼 Working Experience
+                💼 Working Experiences
             </Typography>
-                
+
             <TableContainer
                 component={Paper}
                 sx={{
