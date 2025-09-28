@@ -224,7 +224,7 @@ function CV() {
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
               fontWeight: "bold",
-              fontSize: "16px",
+              fontSize: { xs: "14px", sm: "16px", md: "18px" },
               mb: 2,
               color: "white",
             }}
@@ -237,7 +237,7 @@ function CV() {
               fontFamily: "'Ubuntu', sans-serif",
               textAlign: "justify",
               color: "white",
-              fontSize: { xs: "14px", sm: "16px" },
+              fontSize: { xs: "12px", sm: "14px", md: "16px" },
             }}
           >
             Data Engineer with a Computer Science degree from Bandung Institute
@@ -259,7 +259,7 @@ function CV() {
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
               fontWeight: "bold",
-              fontSize: "16px",
+              fontSize: { xs: "14px", sm: "16px", md: "18px" },
               mb: 2,
               color: "white",
             }}
@@ -272,7 +272,7 @@ function CV() {
               fontFamily: "'Ubuntu', sans-serif",
               textAlign: "justify",
               color: "white",
-              fontSize: { xs: "14px", sm: "16px" },
+              fontSize: { xs: "12px", sm: "14px", md: "16px" },
             }}
           >
             <b>Programing Language:</b> Python, Java, JavaScript, SQL <br />
@@ -290,7 +290,7 @@ function CV() {
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
               fontWeight: "bold",
-              fontSize: "16px",
+              fontSize: { xs: "14px", sm: "16px", md: "18px" },
               mb: 2,
               color: "white",
             }}
@@ -310,9 +310,9 @@ function CV() {
             <Table size="medium">
               <TableHead>
                 <TableRow sx={{ backgroundColor: "#2c2c2c" }}>
-                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>Roles</TableCell>
-                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>Company</TableCell>
-                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>Duration</TableCell>
+                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif", fontSize: { xs: "12px", sm: "14px", md: "16px" } }}>Roles</TableCell>
+                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif", fontSize: { xs: "12px", sm: "14px", md: "16px" } }}>Company</TableCell>
+                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif", fontSize: { xs: "12px", sm: "14px", md: "16px" } }}>Duration</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -326,7 +326,7 @@ function CV() {
                         "&:hover": { backgroundColor: "#2c2c2c" },
                       }}
                     >
-                      <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>{row.role}</TableCell>
+                      <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif", fontSize: { xs: "12px", sm: "14px", md: "16px" } }}>{row.role}</TableCell>
                       <TableCell>
                         <Link
                           to={row.link}
@@ -336,12 +336,13 @@ function CV() {
                             color: "#6497b1",
                             textDecoration: "underline",
                             fontFamily: "'Ubuntu', sans-serif",
+                            fontSize: "inherit",
                           }}
                         >
                           {row.company}
                         </Link>
                       </TableCell>
-                      <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>{row.duration}</TableCell>
+                      <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif", fontSize: { xs: "12px", sm: "14px", md: "16px" } }}>{row.duration}</TableCell>
                     </TableRow>
 
                     <TableRow>
@@ -354,7 +355,7 @@ function CV() {
                                 fontFamily: "'Ubuntu', sans-serif",
                                 textAlign: "justify",
                                 color: "white",
-                                fontSize: { xs: "14px", sm: "16px" },
+                                fontSize: { xs: "12px", sm: "14px", md: "16px" },
                               }}
                             >
                               {row.details.split("\n").map((line, idx) => (
@@ -383,7 +384,7 @@ function CV() {
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
               fontWeight: "bold",
-              fontSize: "16px",
+              fontSize: { xs: "14px", sm: "16px", md: "18px" },
               mb: 2,
               color: "white",
             }}
@@ -398,7 +399,7 @@ function CV() {
               color: "#6497b1",
               textDecoration: "underline",
               fontFamily: "'Ubuntu', sans-serif",
-              fontSize: "16px",
+              fontSize: "inherit",
               display: "flex",
               flexWrap: "wrap",
             }}
@@ -411,7 +412,7 @@ function CV() {
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
               color: "white",
-              fontSize: { xs: "14px", sm: "16px" },
+              fontSize: { xs: "12px", sm: "14px", md: "16px" },
               mt: 1,
             }}
           >
@@ -423,7 +424,7 @@ function CV() {
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
               color: "white",
-              fontSize: { xs: "14px", sm: "16px" },
+              fontSize: { xs: "12px", sm: "14px", md: "16px" },
               mt: 1,
             }}
           >

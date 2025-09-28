@@ -29,6 +29,7 @@ function Books() {
             textAlign: "justify",
             marginBottom: "20px",
             fontStyle: "italic",
+            color: "white",
           }}
         >
           It is foolish to think that you have to read all the books you buy,
@@ -42,6 +43,7 @@ function Books() {
           sx={{
             textAlign: "right",
             fontStyle: "italic",
+            color: "white",
           }}
         >
           - Umberto Eco
