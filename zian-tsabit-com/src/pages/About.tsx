@@ -46,7 +46,7 @@ function About() {
               fontWeight: "700",
               color: "white",
               textAlign: "left",
-              fontSize: { xs: "16px", sm: "22px" },
+              fontSize: { xs: "18px", sm: "22px" },
               mb: 2,
             }}
           >
@@ -61,6 +61,7 @@ function About() {
               lineHeight: 1.8,
               letterSpacing: "0.5px",
               textAlign: "justify",
+              fontFamily: "'Ubuntu', sans-serif",
             }}
           >
             Hi, I’m Ghazian Tsabit Alkamil, living in Jakarta, Indonesia.  

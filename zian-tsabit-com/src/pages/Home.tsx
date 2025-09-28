@@ -103,7 +103,7 @@ function Home() {
               mb: "12px",
               ml: "4px",
               fontWeight: "bold",
-              fontSize: "18px",
+              fontSize: { xs: "16px", sm: "20px" },
             }}
           >
             Latest Updates
