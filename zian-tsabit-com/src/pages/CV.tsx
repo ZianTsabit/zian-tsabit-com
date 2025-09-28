@@ -1,5 +1,4 @@
-import React from "react";
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   Box,
   Typography,
@@ -19,11 +18,9 @@ import {
 import DownloadIcon from "@mui/icons-material/Download";
 import { Link } from "react-router-dom";
 
-
 function CV() {
-
   const [openRows, setOpenRows] = useState<number[]>([0, 1, 2, 3, 4]);
-    
+
   const toggleRow = (index: number) => {
     setOpenRows((prev) =>
       prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
@@ -41,7 +38,6 @@ function CV() {
         - Responsible for developing and maintaining the Redash Data Platform.
         - Responsible for developing and maintaining Airflow and DBT.
         - Work closely with the Business Intelligence and Risk Analsyt Team.
-
       `,
     },
     {
@@ -56,7 +52,6 @@ function CV() {
         - Create data services API using FastAPI.
         - Setup secret management using Hashicorp Secret Vault.
         - Setup monorepo and CI/CD in the company code base.
-
       `,
     },
     {
@@ -88,8 +83,8 @@ function CV() {
       link: "https://www.cermati.group/",
       duration: "May 2023 - Sep 2023",
       details: `
-      - Migrate bigquery scheduled query to Apache Airflow and DBT.
-      - Maintain and develop Redash Data Platform.
+        - Migrate BigQuery scheduled query to Apache Airflow and DBT.
+        - Maintain and develop Redash Data Platform.
       `,
     },
   ];
@@ -97,7 +92,7 @@ function CV() {
   return (
     <Box
       sx={{
-        width: "100vh",
+        width: "100%",
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
@@ -105,9 +100,11 @@ function CV() {
         bgcolor: "#0000",
         alignItems: "center",
         marginTop: "36px",
+        px: 2,
       }}
     >
       <Container maxWidth="md">
+        {/* Header */}
         <Stack
           direction="column"
           sx={{
@@ -115,6 +112,7 @@ function CV() {
             alignItems: "center",
             marginBottom: "18px",
             marginTop: "18px",
+            textAlign: "center",
           }}
         >
           <Typography
@@ -124,89 +122,76 @@ function CV() {
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
               marginTop: "24px",
-              fontWeight: "bold"
+              fontWeight: "bold",
+              fontSize: { xs: "22px", sm: "28px" },
+              color: "white",
             }}
           >
             Ghazian Tsabit Alkamil
           </Typography>
-          
+
+          {/* Social Links */}
           <Stack
-            direction="row"
-            sx={{ 
-            justifyContent: "center", 
-            alignItems: "center", 
-            gap: 1
-            }}
-            >
+            direction={{ xs: "column", sm: "row" }}
+            spacing={{ xs: 1, sm: 2 }}
+            sx={{ justifyContent: "center", alignItems: "center", mt: 1 }}
+          >
             <Link
-                to="https://www.linkedin.com/in/ghaziantsabitalkamil/"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                    color: "#6497b1",
-                    textDecoration: "underline",
-                    fontFamily: "'Ubuntu', sans-serif",
-                    fontSize: "16px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px"
-                }}>
-                <img
-                    src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg"
-                    alt="LinkedIn"
-                    style={{ width: "20px", height: "20px" }}
-                />
-                linkedIn
-            </Link>
-            <Typography
-            variant="body1"
-            component="div"
-            color="white"
-            sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
-            |
-            </Typography>
-            <Link
-              to="https://github.com/ZianTsabit"
+              to="https://www.linkedin.com/in/ghaziantsabitalkamil/"
+              target="_blank"
+              rel="noopener noreferrer"
               style={{
-              color: "#6497b1",
-              textDecoration: "underline",
-              fontFamily: "'Ubuntu', sans-serif",
-              fontSize: "16px",
-              display: "flex",
-              alignItems: "center",
-              gap: "4px"
-              }}>
-              <img
-                  src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg"
-                  alt="GitHub"
-                  style={{ width: "20px", height: "20px" }}
-              />
-              github
-            </Link>
-            <Typography
-            variant="body1"
-            component="div"
-            color="white"
-            sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
-            |
-            </Typography>
-            <Link
-                to="mailto:tsabitghazian@gmail.com"
-                style={{
                 color: "#6497b1",
                 textDecoration: "underline",
                 fontFamily: "'Ubuntu', sans-serif",
                 fontSize: "16px",
-                }}>
-                ✉️ email
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <img
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg"
+                alt="LinkedIn"
+                style={{ width: "20px", height: "20px" }}
+              />
+              LinkedIn
             </Link>
-            <Typography
-              variant="body1"
-              component="div"
-              color="white"
-              sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
-              |
-            </Typography>
+
+            <Link
+              to="https://github.com/ZianTsabit"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: "#6497b1",
+                textDecoration: "underline",
+                fontFamily: "'Ubuntu', sans-serif",
+                fontSize: "16px",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <img
+                src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg"
+                alt="GitHub"
+                style={{ width: "20px", height: "20px" }}
+              />
+              GitHub
+            </Link>
+
+            <Link
+              to="mailto:tsabitghazian@gmail.com"
+              style={{
+                color: "#6497b1",
+                textDecoration: "underline",
+                fontFamily: "'Ubuntu', sans-serif",
+                fontSize: "16px",
+              }}
+            >
+              ✉️ Email
+            </Link>
+
             <Button
               href="/latest_cv.pdf"
               download="latest_cv.pdf"
@@ -215,83 +200,79 @@ function CV() {
                 textTransform: "none",
                 textDecoration: "underline",
                 fontFamily: "'Ubuntu', sans-serif",
-                padding: "0px 0px",
                 fontSize: "16px",
                 color: "#6497b1",
                 "&:hover": {
                   color: "#6497b1",
                   backgroundColor: "transparent",
                   textDecoration: "underline",
-                }
-              }}>
+                },
+              }}
+            >
               Download CV
             </Button>
+          </Stack>
         </Stack>
-        </Stack>
-        
-        <Divider sx={{ bgcolor: "grey", marginTop: "8px", marginBottom: "8px" }} />
-        
-        <Box sx={{ marginTop: "18px", marginBottom: "36px" }}>
+
+        <Divider sx={{ bgcolor: "grey", my: 2 }} />
+
+        {/* Summaries */}
+        <Box sx={{ mb: 4 }}>
           <Typography
             variant="body1"
-            component="div"
-            color="white"
+            align="left"
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
-              textAlign: "left",
-              marginBottom: "12px",
-              marginLeft: "4px",
               fontWeight: "bold",
               fontSize: "16px",
+              mb: 2,
+              color: "white",
             }}
           >
             📄 Summaries
           </Typography>
-
           <Typography
             variant="body2"
-            component="div"
-            color="white"
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
               textAlign: "justify",
-              marginLeft: "4px",
-              marginRight: "4px",
-              marginBottom: "12px",
-              marginTop: "12px",
-              whiteSpace: "pre-line",
+              color: "white",
+              fontSize: { xs: "14px", sm: "16px" },
             }}
           >
-            Data Engineer with a Computer Science degree from Bandung Institute of Technology (ITB). Proven ability to develop scalable data platforms and real-time data pipelines on Google Cloud Platform, Microsoft Azure, and on-premise infrastructure. Proficient in Python, Java, JavaScript, and SQL. Expertise in database management systems including PostgreSQL, MongoDB, and Elasticsearch. Skilled in orchestration and processing tools such as Apache Airflow, Apache Kafka, Apache Spark, Docker, and DBT, alongside data visualization platforms like Redash, Metabase, and Tableau.
+            Data Engineer with a Computer Science degree from Bandung Institute
+            of Technology (ITB). Proven ability to develop scalable data platforms
+            and real-time data pipelines on Google Cloud Platform, Microsoft Azure,
+            and on-premise infrastructure. Proficient in Python, Java, JavaScript,
+            and SQL. Expertise in database management systems including PostgreSQL,
+            MongoDB, and Elasticsearch. Skilled in orchestration and processing tools
+            such as Apache Airflow, Apache Kafka, Apache Spark, Docker, and DBT,
+            alongside data visualization platforms like Redash, Metabase, and Tableau.
           </Typography>
         </Box>
 
-        <Box sx={{ marginBottom: "36px" }}>
-            <Typography
+        {/* Skills */}
+        <Box sx={{ mb: 4 }}>
+          <Typography
             variant="body1"
-            component="div"
-            color="white"
+            align="left"
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
-              textAlign: "left",
-              marginLeft: "4px",
               fontWeight: "bold",
               fontSize: "16px",
+              mb: 2,
+              color: "white",
             }}
-            >
+          >
             🛠️ Skills
-            </Typography>
-
+          </Typography>
           <Typography
             variant="body2"
-            component="div"
-            color="white"
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
               textAlign: "justify",
-              marginLeft: "4px",
-              marginRight: "4px",
-              marginTop: "12px",
+              color: "white",
+              fontSize: { xs: "14px", sm: "16px" },
             }}
           >
             <b>Programing Language:</b> Python, Java, JavaScript, SQL <br />
@@ -301,165 +282,158 @@ function CV() {
           </Typography>
         </Box>
 
-        <Box sx={{ marginBottom: "36px" }}>
-            <Typography
-                variant="body1"
-                component="div"
-                color="white"
-                sx={{
-                fontFamily: "'Ubuntu', sans-serif",
-                textAlign: "left",
-                marginBottom: "12px",
-                marginLeft: "4px",
-                fontWeight: "bold",
-                fontSize: "16px",
-                }}
-            >
-                💼 Working Experiences
-            </Typography>
-
-            <TableContainer
-                component={Paper}
-                sx={{
-                backgroundColor: "#1e1e1e",
-                boxShadow: "none",
-                border: "1px solid grey",
-                borderRadius: "2px",
-                }}
-            >
-                <Table sx={{ minWidth: 650 }} size="medium">
-                <TableHead>
-                    <TableRow sx={{ backgroundColor: "#2c2c2c" }}>
-                    <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>
-                        Roles
-                    </TableCell>
-                    <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>
-                        Company
-                    </TableCell>
-                    <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>
-                        Duration
-                    </TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {rows.map((row, index) => (
-                    <React.Fragment key={index}>
-                        <TableRow
-                        onClick={() => toggleRow(index)}
-                        sx={{
-                            backgroundColor: "#1e1e1e",
-                            cursor: "pointer",
-                            "&:hover": { backgroundColor: "#2c2c2c" },
-                        }}
-                        >
-                        <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>
-                            {row.role}
-                        </TableCell>
-                        <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>
-                            <Link
-                            to={row.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            color="inherit"
-                            style={{ color: "#6497b1", textDecoration: "underline" }}
-                            >
-                            {row.company}
-                            </Link>
-                        </TableCell>
-                        <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>
-                            {row.duration}
-                        </TableCell>
-                        </TableRow>
-
-                        <TableRow>
-                        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={3}>
-                            <Collapse in={openRows.includes(index)} timeout="auto" unmountOnExit>
-                            <Box sx={{ margin: 0 }}>
-                                <Typography
-                                variant="body2"
-                                component="div"
-                                color="white"
-                                sx={{
-                                    fontFamily: "'Ubuntu', sans-serif",
-                                    textAlign: "justify",
-                                    marginY: "0px",
-                                }}>
-                                {row.details.split('\n').map((line, idx) => (
-                                    <React.Fragment key={idx}>
-                                    {line}
-                                    <br />
-                                    </React.Fragment>
-                                ))}
-                                </Typography>
-                            </Box>
-                            </Collapse>
-                        </TableCell>
-                        </TableRow>
-                    </React.Fragment>
-                    ))}
-                </TableBody>
-                </Table>
-            </TableContainer>
-        </Box>
-
-        <Box sx={{ marginBottom: "36px" }}>
+        {/* Working Experiences */}
+        <Box sx={{ mb: 4 }}>
           <Typography
-              variant="body1"
-              component="div"
-              color="white"
-              sx={{
+            variant="body1"
+            align="left"
+            sx={{
               fontFamily: "'Ubuntu', sans-serif",
-              textAlign: "left",
-              marginBottom: "12px",
-              marginLeft: "4px",
               fontWeight: "bold",
               fontSize: "16px",
-              }}
+              mb: 2,
+              color: "white",
+            }}
           >
-          🎓 Education
+            💼 Working Experiences
+          </Typography>
+          <TableContainer
+            component={Paper}
+            sx={{
+              backgroundColor: "#1e1e1e",
+              boxShadow: "none",
+              border: "1px solid grey",
+              borderRadius: "2px",
+              overflowX: "auto",
+            }}
+          >
+            <Table size="medium">
+              <TableHead>
+                <TableRow sx={{ backgroundColor: "#2c2c2c" }}>
+                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>Roles</TableCell>
+                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>Company</TableCell>
+                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>Duration</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((row, index) => (
+                  <React.Fragment key={index}>
+                    <TableRow
+                      onClick={() => toggleRow(index)}
+                      sx={{
+                        backgroundColor: "#1e1e1e",
+                        cursor: "pointer",
+                        "&:hover": { backgroundColor: "#2c2c2c" },
+                      }}
+                    >
+                      <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>{row.role}</TableCell>
+                      <TableCell>
+                        <Link
+                          to={row.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: "#6497b1",
+                            textDecoration: "underline",
+                            fontFamily: "'Ubuntu', sans-serif",
+                          }}
+                        >
+                          {row.company}
+                        </Link>
+                      </TableCell>
+                      <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif" }}>{row.duration}</TableCell>
+                    </TableRow>
+
+                    <TableRow>
+                      <TableCell colSpan={3} sx={{ p: 0 }}>
+                        <Collapse in={openRows.includes(index)} timeout="auto">
+                          <Box sx={{ m: 2 }}>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontFamily: "'Ubuntu', sans-serif",
+                                textAlign: "justify",
+                                color: "white",
+                                fontSize: { xs: "14px", sm: "16px" },
+                              }}
+                            >
+                              {row.details.split("\n").map((line, idx) => (
+                                <React.Fragment key={idx}>
+                                  {line}
+                                  <br />
+                                </React.Fragment>
+                              ))}
+                            </Typography>
+                          </Box>
+                        </Collapse>
+                      </TableCell>
+                    </TableRow>
+                  </React.Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+
+        {/* Education */}
+        <Box sx={{ mb: 4 }}>
+          <Typography
+            variant="body1"
+            align="left"
+            sx={{
+              fontFamily: "'Ubuntu', sans-serif",
+              fontWeight: "bold",
+              fontSize: "16px",
+              mb: 2,
+              color: "white",
+            }}
+          >
+            🎓 Education
           </Typography>
           <Link
             to="https://stei.itb.ac.id/"
             target="_blank"
             rel="noopener noreferrer"
             style={{
-                color: "#6497b1",
-                textDecoration: "underline",
-                fontFamily: "'Ubuntu', sans-serif",
-                fontSize: "16px",
-                display: "flex"
-            }}>
+              color: "#6497b1",
+              textDecoration: "underline",
+              fontFamily: "'Ubuntu', sans-serif",
+              fontSize: "16px",
+              display: "flex",
+              flexWrap: "wrap",
+            }}
+          >
             School of Electrical Engineering and Informatics, Bandung Institute of Technology
           </Link>
           <Typography
             variant="body2"
-            component="div"
-            color="white"
-            sx={{
-                fontFamily: "'Ubuntu', sans-serif",
-                textAlign: "justify",
-                marginBottom: "12px",
-                whiteSpace: "pre-line",
-            }}
-            >
-              Computer Science, GPA: 3.54/4.00
-          </Typography>
-            <Typography
-            variant="body2"
-            component="div"
-            color="white"
-            gutterBottom
+            align="left"
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
-              textAlign: "justify",
-              marginBottom: "12px",
-              whiteSpace: "pre-line",
+              color: "white",
+              fontSize: { xs: "14px", sm: "16px" },
+              mt: 1,
             }}
-            >
-              - <b>Thesis:</b> Development of a Transformation Mechanism from Document-Oriented NoSQL Database to Relational Database.
-              <br />
-              - <b>Completed Modules:</b> database management, AI & ML, parallel and distributed system, computer networks, big data technology, information retrieval system, data and information visualization.
-            </Typography>
+          >
+            Computer Science, GPA: 3.54/4.00
+          </Typography>
+          <Typography
+            variant="body2"
+            align="justify"
+            sx={{
+              fontFamily: "'Ubuntu', sans-serif",
+              color: "white",
+              fontSize: { xs: "14px", sm: "16px" },
+              mt: 1,
+            }}
+          >
+            - <b>Thesis:</b> Development of a Transformation Mechanism from
+            Document-Oriented NoSQL Database to Relational Database.
+            <br />
+            - <b>Completed Modules:</b> database management, AI & ML, parallel
+            and distributed system, computer networks, big data technology,
+            information retrieval system, data and information visualization.
+          </Typography>
         </Box>
       </Container>
     </Box>

@@ -3,12 +3,12 @@
   top: 0;
   left: 0;
   width: 100%;
-  background: rgba(0, 0, 0, 0.8);
-  padding: 1rem;
+  height: 64px;
   z-index: 1000;
+  background-color: transparent;
+  transition: background-color 0.3s ease;
 }
 
 .header.scrolled {
-  background-color: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(15px);
+  background-color: rgba(0, 0, 0, 0.85);
 }

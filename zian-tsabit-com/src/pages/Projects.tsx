@@ -1,22 +1,30 @@
-import { Box } from '@mui/material';
+import { Box, Container } from '@mui/material';
 import Typewriter from "../components/Typewriter";
 
 function Projects() {
     return (
         <Box
             sx={{
-            width: "100%",
-            minHeight: "100vh",
-            display: "flex",
-            flexDirection: "column",
-            overflowY: "auto",
-            bgcolor: "#0000",
-            alignItems: 'center',
-            justifyContent: 'center',
-        }}>
-            <Typewriter 
-                text="Coming soon..." 
-            />
+                width: "100%",
+                minHeight: "100vh",
+                display: "flex",
+                flexDirection: "column",
+                bgcolor: "black",
+            }}
+            >
+            <Container
+                maxWidth="md"
+                sx={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                alignItems: "center",
+                py: { xs: 4, md: 6 },
+                }}
+            >
+                <Typewriter text="Coming soon..." />
+            </Container>
         </Box>
     );
 }
