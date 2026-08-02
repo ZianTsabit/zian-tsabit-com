@@ -2,7 +2,6 @@ import { Box, Typography, Container, Stack, Divider } from "@mui/material";
 import TimelineItem from "../components/TimelineItem";
 import SectionHeading from "../components/SectionHeading";
 import { TagChipRow } from "../components/TagChip";
-import { PAGE_MIN_HEIGHT } from "../constants/layout";
 
 const summary = `Data Engineer with experience architecting high-throughput data platforms across GCP, Azure, and on-premise environments. Proven track record of leading event tracking services handling ~2,500 RPS and ~500 GB of daily data, achieving significant cloud cost reductions of ~30% for BigQuery and ~35% for Dataflow and Pub/Sub. Expertise spans the full data lifecycle, including implementing Medallion Architecture, orchestrating 800+ DBT models with Apache Airflow, and deploying AI-driven RAG pipelines using Gemma 3. Proficient in building scalable infrastructure and implementing observability infrastructure.`;
 
@@ -100,7 +99,7 @@ const education = [
     title: "B.Sc. Computer Science",
     subtitle: "Bandung Institute of Technology",
     subtitleLink: "https://stei.itb.ac.id/",
-    duration: "2020 - 2025",
+    duration: "",
     points: [
       "CGPA: 3.54 / 4.00",
       "Thesis: Development of a Transformation Mechanism from Document-Oriented NoSQL Database to Relational Database.",
@@ -128,7 +127,7 @@ function CV() {
     <Box
       sx={{
         width: "100%",
-        minHeight: PAGE_MIN_HEIGHT,
+        flex: 1,
         display: "flex",
         flexDirection: "column",
         bgcolor: "transparent",
@@ -136,7 +135,7 @@ function CV() {
         pt: { xs: 2, sm: 3 },
       }}
     >
-      <Container maxWidth="md" sx={{ pb: { xs: 5, sm: 7 } }}>
+      <Container maxWidth="md">
         {/* Header */}
         <Stack
           direction="column"

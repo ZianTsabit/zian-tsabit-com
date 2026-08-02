@@ -5,14 +5,13 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import Typewriter from "../components/Typewriter";
-import { PAGE_MIN_HEIGHT } from "../constants/layout";
 
 function Home() {
   return (
     <Box
       sx={{
         width: "100%",
-        minHeight: PAGE_MIN_HEIGHT,
+        flex: 1,
         display: "flex",
         flexDirection: "column",
         bgcolor: "transparent",
@@ -20,7 +19,10 @@ function Home() {
         pt: { xs: 2, sm: 3 },
       }}
     >
-      <Container maxWidth="md">
+      <Container
+        maxWidth="md"
+        sx={{ flex: 1, display: "flex", flexDirection: "column" }}
+      >
         {/* Profile Section */}
         <Stack
           direction={{ xs: "column", sm: "row" }}
@@ -116,7 +118,10 @@ function Home() {
         <Box
           sx={{
             width: "100%",
-            minHeight: "30vh",
+            // Absorbs the leftover space instead of adding a fixed 30vh, which
+            // pushed the page just past the viewport on a phone.
+            flex: 1,
+            minHeight: { xs: "20vh", sm: "30vh" },
             display: "flex",
             flexDirection: "column",
             bgcolor: "transparent",

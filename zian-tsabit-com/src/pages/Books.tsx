@@ -1,12 +1,11 @@
 import { Box, Container, Typography } from '@mui/material';
-import { PAGE_MIN_HEIGHT } from "../constants/layout";
 
 function Books() {
   return (
     <Box
       sx={{
         width: "100%",
-        minHeight: PAGE_MIN_HEIGHT,
+        flex: 1,
         display: "flex",
         flexDirection: "column",
         bgcolor: "transparent",

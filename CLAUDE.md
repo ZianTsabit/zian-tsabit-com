@@ -39,7 +39,7 @@ No test runner is configured for the frontend.
 
 ### Adding a page
 
-`src/App.tsx` is the whole routing table — a `<Header />` sits above `<Routes>`, so it persists across navigation and every page renders beneath a fixed bar (56px on `xs`, 64px from `sm`). A new page is three coordinated edits:
+`src/App.tsx` is the whole routing table and the app shell — `<Header />` and `<Footer />` live there, so both persist across navigation and a new page inherits them for free. Every page renders beneath a fixed bar (56px on `xs`, 64px from `sm`). A new page is three coordinated edits:
 
 1. `src/pages/X.tsx` — default-exported function component.
 2. A `<Route path="/x" element={<X />} />` in `App.tsx`.
@@ -73,16 +73,17 @@ Note the two schemes do **not** share a link colour: dark uses `#6497b1`, light 
 
 Those background hex values are duplicated from `palette.background.default`; if you change one, change the other. That is the only place a colour literal belongs outside `theme.ts`.
 
-### Page layout and the fixed header
+### Page layout: the sticky-footer shell
 
-The header is `position: fixed`, so its height has to be subtracted from page height in two places. Both come from `src/constants/layout.ts`:
+`App.tsx` is a flex column at least `100vh` tall holding `<main>` and `<Footer />`. `<main>` carries `flex: 1` (plus `pt: HEADER_HEIGHT`, since the header is `position: fixed` and out of flow), so it absorbs the slack and the footer lands at the bottom of a short page rather than one screen below the fold.
 
-- `HEADER_HEIGHT` — used by `Header.tsx` for its own height, and by the `<Box component="main">` wrapper in `App.tsx` for `pt`. That wrapper is what pushes every route clear of the bar, so **pages must not add their own top margin for the header**; an earlier `marginTop: "36px"` under a 64px bar left content sitting behind it.
-- `PAGE_MIN_HEIGHT` — `calc(100vh - <header>)`. A page that uses a bare `100vh` alongside the wrapper's padding is one header taller than the viewport and introduces a permanent scrollbar.
+**A page therefore sets `flex: 1`, never a height of its own.** There is deliberately no `PAGE_MIN_HEIGHT` constant any more — a page using `minHeight: 100vh` or `calc(100vh - header)` inside this shell is taller than the space available and reintroduces a permanent scrollbar. `HEADER_HEIGHT` in `src/constants/layout.ts` is the only remaining metric, shared by `Header.tsx` and `<main>`'s padding. Pages must not add their own top margin for the header; an earlier `marginTop: "36px"` under a 64px bar left content sitting behind it.
+
+A child that should soak up leftover vertical space needs an unbroken `flex: 1` chain down from `<main>` — this is why `Home`'s `Container` is itself a flex column, so the typewriter block can grow instead of pinning a fixed `30vh` that pushed the page just past the viewport on a phone.
 
 Pages are built from `Box`/`Container`/`Stack` with inline `sx` — no CSS modules, no styled-components except `Typewriter`. Existing pages follow one of two shapes; copy the closer one:
 
-- **Content page** (`Home`, `CV`, `Books`): `Box` with `minHeight: PAGE_MIN_HEIGHT`, `bgcolor: "transparent"`, `pt: { xs: 2, sm: 3 }`, wrapping a `Container maxWidth="md"`.
+- **Content page** (`Home`, `CV`, `About`, `Books`): `Box` with `flex: 1`, `bgcolor: "transparent"`, `pt: { xs: 2, sm: 3 }`, wrapping a `Container maxWidth="md"`. Don't add bottom padding for breathing room — the footer's top border now terminates the page.
 - **Coming-soon placeholder** (`Projects`, `Garage` — byte-identical apart from the name): `bgcolor: "background.default"`, a flex-centered `Container maxWidth="md"`, and a single `<Typewriter text="Coming soon..." />`.
 
 Use `Container` (or explicit `px`) rather than a bare `maxWidth` on a `Box` — `Container` supplies the responsive side gutters that keep text off the screen edge on phones.
@@ -97,6 +98,7 @@ Responsive values use the MUI breakpoint object form (`{ xs: "12px", sm: "14px",
 ### Component notes
 
 - `Header.tsx` owns everything in `sx` — there is no longer a `Header.css`. A scroll listener flips `isScrolled` past 50px, which swaps `bgcolor` between `transparent` and `palette.headerScrolled` under a `background-color` transition. It had to move out of CSS because a hardcoded `rgba(0,0,0,0.85)` cannot follow the colour scheme.
+- `Footer.tsx` is copyright plus LinkedIn/GitHub/Email. It uses `@mui/icons-material` icons rather than the CDN devicon images the CV header uses, so the glyphs take `currentColor` and follow the theme instead of staying fixed-colour.
 - `SectionHeading.tsx` and `TagChip.tsx` (with its `TagChipRow` export) are shared by the CV and About pages — they were duplicated inline before, so both pages drifting apart was a matter of time. Reuse them rather than restyling a heading or pill locally.
 - `TimelineItem.tsx` renders one LinkedIn-style entry: an absolutely positioned dot plus a `&::before` rail that runs from under the dot to the bottom of the entry, so consecutive items join into one continuous line. Pass `last` on the final entry of a section to suppress the trailing rail. Title and date sit on one row at `sm`+ and stack at `xs`.
 - `Typewriter.tsx` is the one emotion `styled()` component. Width is driven by a `--characters` CSS custom property computed from `text.length`, typed via `interface CustomStyles extends React.CSSProperties`; the animation loops forever, so it reads as a placeholder, not a one-shot reveal.

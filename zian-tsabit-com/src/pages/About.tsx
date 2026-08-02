@@ -1,7 +1,6 @@
 import { Box, Container, Stack, Typography } from "@mui/material";
 import SectionHeading from "../components/SectionHeading";
 import { TagChipRow } from "../components/TagChip";
-import { PAGE_MIN_HEIGHT } from "../constants/layout";
 
 const interests = [
   "Indonesian novels",
@@ -29,7 +28,7 @@ function About() {
     <Box
       sx={{
         width: "100%",
-        minHeight: PAGE_MIN_HEIGHT,
+        flex: 1,
         display: "flex",
         flexDirection: "column",
         bgcolor: "transparent",
@@ -37,7 +36,7 @@ function About() {
         pt: { xs: 2, sm: 3 },
       }}
     >
-      <Container maxWidth="md" sx={{ pb: { xs: 5, sm: 7 } }}>
+      <Container maxWidth="md">
         {/* Portrait + identity */}
         <Stack
           direction={{ xs: "column", sm: "row" }}
