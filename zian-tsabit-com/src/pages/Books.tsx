@@ -1,22 +1,22 @@
-import { Box, Typography } from '@mui/material';
+import { Box, Container, Typography } from '@mui/material';
+import { PAGE_MIN_HEIGHT } from "../constants/layout";
 
 function Books() {
   return (
     <Box
       sx={{
         width: "100%",
-        minHeight: "100vh",
+        minHeight: PAGE_MIN_HEIGHT,
         display: "flex",
         flexDirection: "column",
-        overflowY: "auto",
-        bgcolor: "#0000",
+        bgcolor: "transparent",
         alignItems: "center",
-        marginTop: "36px",
+        pt: { xs: 2, sm: 3 },
       }}
     >
-      <Box
+      <Container
+        maxWidth="md"
         sx={{
-          maxWidth: "800px",
           display: "flex",
           flexDirection: "column",
         }}
@@ -28,7 +28,7 @@ function Books() {
             textAlign: "justify",
             marginBottom: "20px",
             fontStyle: "italic",
-            color: "white",
+            color: "text.primary",
             fontSize: { xs: "12px", sm: "14px", md: "16px", lg: "22px" },
           }}
         >
@@ -43,13 +43,13 @@ function Books() {
           sx={{
             textAlign: "right",
             fontStyle: "italic",
-            color: "white",
+            color: "text.primary",
             fontSize: { xs: "12px", sm: "14px", md: "16px", lg: "22px" },
           }}
         >
           - Umberto Eco
         </Typography>
-      </Box>
+      </Container>
     </Box>
   );
 }

@@ -3,9 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/pp-github.png" />
-    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- The ital axis is required: index.css sets font-synthesis: none, so
+         without a real italic face <em> and fontStyle: "italic" render
+         identically to regular text. -->
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,400;0,500;0,700;1,400;1,700&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hello, I'm Zian Tsabit 👋</title>
+    <script>
+      // Applies the stored colour scheme before first paint, so a returning
+      // visitor never sees the wrong background flash. Must stay in sync with
+      // MUI's storage key ("mui-mode") and colorSchemeSelector ("class").
+      // Visitors with no stored choice are handled by the media queries in
+      // index.css, so nothing is done for them here.
+      (function () {
+        try {
+          var mode = localStorage.getItem('mui-mode');
+          if (mode === 'light' || mode === 'dark') {
+            document.documentElement.classList.add(mode);
+          }
+        } catch (e) {
+          /* private mode / blocked storage: fall back to the media queries */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

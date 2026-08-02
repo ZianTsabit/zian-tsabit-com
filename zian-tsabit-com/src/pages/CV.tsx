@@ -1,439 +1,308 @@
-import React, { useState } from "react";
-import {
-  Box,
-  Typography,
-  Container,
-  Stack,
-  Divider,
-  Collapse,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Button
-} from "@mui/material";
-import DownloadIcon from "@mui/icons-material/Download";
-import { Link } from "react-router-dom";
+import { Box, Typography, Container, Stack, Divider } from "@mui/material";
+import TimelineItem from "../components/TimelineItem";
+import SectionHeading from "../components/SectionHeading";
+import { TagChipRow } from "../components/TagChip";
+import { PAGE_MIN_HEIGHT } from "../constants/layout";
+
+const summary = `Data Engineer with experience architecting high-throughput data platforms across GCP, Azure, and on-premise environments. Proven track record of leading event tracking services handling ~2,500 RPS and ~500 GB of daily data, achieving significant cloud cost reductions of ~30% for BigQuery and ~35% for Dataflow and Pub/Sub. Expertise spans the full data lifecycle, including implementing Medallion Architecture, orchestrating 800+ DBT models with Apache Airflow, and deploying AI-driven RAG pipelines using Gemma 3. Proficient in building scalable infrastructure and implementing observability infrastructure.`;
+
+const experience = [
+  {
+    title: "Software Engineer - Data",
+    subtitle: "Cermati Fintech Group",
+    subtitleLink: "https://www.cermati.group/",
+    location: "Jakarta, Indonesia",
+    duration: "June 2025 - Present",
+    blurb:
+      "Cermati Fintech Group (CFG) is a fintech company founded in 2015, consisting of five entities. I am part of the Data Platform Team, supporting all entities under CFG (officially under the Indodana entity).",
+    points: [
+      "Owned a high-scale event tracking service adopted by the engineering team across the group company, managing ~2,500 RPS and ~500 GB of daily throughput. Redesigned data pipelines to slash Pub/Sub and Dataflow costs by ~35% (yielding ~$2,000 USD in monthly savings) and implemented a strict data retention strategy of the event's BigQuery table that successfully optimized the BigQuery costs by ~30% for several events.",
+      "Maintained and enhanced a large-scale DBT project consisting of 800+ models, streamlined through the orchestration of 186+ Apache Airflow DAGs to assist the Business Intelligence team building and architecting the group company data warehouse and data mart.",
+      "Maintained and managed group company-wide Apache Airflow infrastructure and successfully solved a critical memory leak in the Airflow Triggerer component thus removing the whole on-call routine related to that case.",
+    ],
+  },
+  {
+    title: "Data Engineer (Infrastructure)",
+    subtitle: "Intiva",
+    subtitleLink: "https://intiva.id/",
+    location: "Jakarta, Indonesia",
+    duration: "Sept 2024 - June 2025",
+    blurb:
+      "Intiva is an IT consulting and services company specializing in software development, automation, machine learning, and big data analytics.",
+    points: [
+      "Engineered the Bamtren MVP, a news analytics platform using Gemma 3 for RAG-driven content generation and sentiment analysis, processing hundreds of thousands of daily messages via a robust pipeline of Airflow, MongoDB, RabbitMQ, and Celery.",
+      "Built internal LLM infrastructure and FastAPI services utilized by 5+ engineers and data scientists, integrating Ollama and LangChain while implementing a full-stack monitoring suite (Grafana, Prometheus, Loki) to track on-premise performance.",
+      "Standardized DevOps and security protocols by establishing monorepo CI/CD pipelines and implementing HashiCorp Vault secret management, successfully adopted across two production projects to enhance deployment security and efficiency.",
+    ],
+  },
+  {
+    title: "Data Governance (Intern)",
+    subtitle: "Sinar Mas Land",
+    subtitleLink: "https://www.sinarmasland.com/",
+    location: "Tangerang, Indonesia",
+    duration: "April - July 2024",
+    blurb:
+      "Sinar Mas Land is one of Indonesia's largest real estate developers, part of the Sinarmas Group conglomerate.",
+    points: [
+      "Designed and managed metadata-driven ingestion pipelines to the Bronze layer in Medallion Architecture using Microsoft Azure Data Fabric, streamlining the integration of diverse data sources into a centralized environment.",
+    ],
+  },
+];
+
+const projects = [
+  {
+    title: "HomeLab Infrastructure Project",
+    duration: "Oct 2025 - Present",
+    points: [
+      "Constructed self-hosted Kubernetes cluster on Proxmox virtualization, configured a multi-node architecture (1 control plane, 2 worker nodes) to master service orchestration and infrastructure management, also implemented observability across multi-node and across the homelab using Grafana and Prometheus, providing real-time monitoring and health metrics for the entire cluster lifecycle.",
+    ],
+  },
+];
+
+const skills = [
+  { label: "Programing Language", items: ["Python", "Java", "JavaScript"] },
+  {
+    label: "Data Engineering & Orchestration",
+    items: ["Apache Airflow", "DBT", "Apache Beam"],
+  },
+  {
+    label: "Database & Data Platforms",
+    items: [
+      "PostgreSQL",
+      "Google BigQuery",
+      "MongoDB",
+      "Redis",
+      "Elasticsearch",
+      "Redash",
+    ],
+  },
+  {
+    label: "Cloud & Infrastructure",
+    items: ["Google Cloud Platform", "Microsoft Azure", "Docker", "Kubernetes"],
+  },
+  { label: "Messaging & Streaming", items: ["RabbitMQ", "Google Pub/Sub"] },
+  {
+    label: "Monitoring, Logging, & Observability",
+    items: ["Grafana", "Prometheus", "Loki", "Promtail"],
+  },
+  {
+    label: "Security & DevOps",
+    items: ["Keycloak", "HashiCorp Vault", "GitLab CI", "GitLab Runner"],
+  },
+  {
+    label: "Machine Learning & LLM",
+    items: ["LangChain", "Ollama", "Langfuse"],
+  },
+];
+
+const education = [
+  {
+    title: "B.Sc. Computer Science",
+    subtitle: "Bandung Institute of Technology",
+    subtitleLink: "https://stei.itb.ac.id/",
+    duration: "2020 - 2025",
+    points: [
+      "CGPA: 3.54 / 4.00",
+      "Thesis: Development of a Transformation Mechanism from Document-Oriented NoSQL Database to Relational Database.",
+    ],
+  },
+  {
+    title: "Associate Cloud Engineer",
+    subtitle: "Google Cloud Platform",
+    duration: "2024 - 2027",
+  },
+];
+
+const socialLinkStyle = {
+  color: "primary.main",
+  textDecoration: "underline",
+  fontFamily: "'Ubuntu', sans-serif",
+  fontSize: { xs: "14px", sm: "16px" },
+  display: "flex",
+  alignItems: "center",
+  gap: "4px",
+};
 
 function CV() {
-  const [openRows, setOpenRows] = useState<number[]>([0, 1, 2, 3, 4]);
-
-  const toggleRow = (index: number) => {
-    setOpenRows((prev) =>
-      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
-    );
-  };
-
-  const rows = [
-    {
-      role: "Software Engineer I - Data",
-      company: "Cermati Fintech Group",
-      link: "https://www.cermati.group/",
-      duration: "June 2025 - Present",
-      details: `
-        - Being a PIC for one of the most used services at the entire Cermati Fintech Group, event tracking services.
-        - Responsible for developing and maintaining the Redash Data Platform.
-        - Responsible for developing and maintaining Airflow and DBT.
-        - Work closely with the Business Intelligence and Risk Analsyt Team.
-      `,
-    },
-    {
-      role: "Data Engineer",
-      company: "Intiva",
-      link: "https://intiva.id/",
-      duration: "June 2022 - June 2025",
-      details: `
-        - Create data and RAG pipelines using Airflow, MongoDB, Rabbit MQ, Elastic Stack, and Celery Worker.
-        - Setup infrastructure and services monitoring, logging, and alerting using Grafana, Prometheus, Loki, and Promtail.
-        - Setup LLM services and playground using Ollama, Langchain, Langfuse, and OpenWebUI.
-        - Create data services API using FastAPI.
-        - Setup secret management using Hashicorp Secret Vault.
-        - Setup monorepo and CI/CD in the company code base.
-      `,
-    },
-    {
-      role: "Data Governance Intern",
-      company: "Sinar Mas Land",
-      link: "https://www.sinarmasland.com/",
-      duration: "Apr 2024 - July 2024",
-      details: `
-        - Learn how to create metadata-driven data pipelines using Microsoft Azure Data Fabric.
-        - Create and maintain data pipelines in Azure Synapse Analytics and Azure Data Fabric.
-        - Migrate data pipelines from Azure Synapse Analytics to Azure Data Fabric.
-        - Create documentation regarding existing data pipelines in both Azure Data Fabric and Azure Synapse Analytics.
-      `,
-    },
-    {
-      role: "Data Engineer Intern",
-      company: "ITB Career Center",
-      link: "https://career.itb.ac.id/",
-      duration: "Sep 2023 - Dec 2023",
-      details: `
-        - Data acquisition from various sources (APIs, web scraping, databases).
-        - Data cleaning and preprocessing using Python (Pandas).
-        - Data analysis and visualization using Tableau.
-      `,
-    },
-    {
-      role: "Data Engineer Intern",
-      company: "Cermati Fintech Group",
-      link: "https://www.cermati.group/",
-      duration: "May 2023 - Sep 2023",
-      details: `
-        - Migrate BigQuery scheduled query to Apache Airflow and DBT.
-        - Maintain and develop Redash Data Platform.
-      `,
-    },
-  ];
-
   return (
     <Box
       sx={{
         width: "100%",
-        minHeight: "100vh",
+        minHeight: PAGE_MIN_HEIGHT,
         display: "flex",
         flexDirection: "column",
-        overflowY: "auto",
-        bgcolor: "#0000",
+        bgcolor: "transparent",
         alignItems: "center",
-        marginTop: "36px",
+        pt: { xs: 2, sm: 3 },
       }}
     >
-      <Container maxWidth="md">
+      <Container maxWidth="md" sx={{ pb: { xs: 5, sm: 7 } }}>
         {/* Header */}
         <Stack
           direction="column"
           sx={{
             justifyContent: "center",
             alignItems: "center",
-            marginBottom: "18px",
-            marginTop: "18px",
+            mb: "18px",
+            mt: "18px",
             textAlign: "center",
           }}
         >
           <Typography
             gutterBottom
-            variant="h4"
             component="div"
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
-              marginTop: "24px",
+              mt: "24px",
               fontWeight: "bold",
               fontSize: { xs: "22px", sm: "28px" },
-              color: "white",
+              color: "text.primary",
             }}
           >
             Ghazian Tsabit Alkamil
           </Typography>
 
-          {/* Social Links */}
+          <Typography
+            component="div"
+            sx={{
+              fontFamily: "'Ubuntu', sans-serif",
+              color: "text.secondary",
+              fontSize: { xs: "13px", sm: "15px" },
+              mb: 1,
+            }}
+          >
+            Jakarta, Indonesia
+          </Typography>
+
           <Stack
             direction={{ xs: "column", sm: "row" }}
             spacing={{ xs: 1, sm: 2 }}
-            sx={{ justifyContent: "center", alignItems: "center", mt: 1 }}
+            sx={{
+              justifyContent: "center",
+              alignItems: "center",
+              flexWrap: "wrap",
+              mt: 1,
+            }}
           >
-            <Link
-              to="https://www.linkedin.com/in/ghaziantsabitalkamil/"
+            <Box
+              component="a"
+              href="https://www.linkedin.com/in/ghaziantsabitalkamil/"
               target="_blank"
               rel="noopener noreferrer"
-              style={{
-                color: "#6497b1",
-                textDecoration: "underline",
-                fontFamily: "'Ubuntu', sans-serif",
-                fontSize: "16px",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
+              sx={socialLinkStyle}
             >
-              <img
+              <Box
+                component="img"
                 src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg"
-                alt="LinkedIn"
-                style={{ width: "20px", height: "20px" }}
+                alt=""
+                sx={{ width: "20px", height: "20px" }}
               />
               LinkedIn
-            </Link>
+            </Box>
 
-            <Link
-              to="https://github.com/ZianTsabit"
+            <Box
+              component="a"
+              href="https://github.com/ZianTsabit"
               target="_blank"
               rel="noopener noreferrer"
-              style={{
-                color: "#6497b1",
-                textDecoration: "underline",
-                fontFamily: "'Ubuntu', sans-serif",
-                fontSize: "16px",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
+              sx={socialLinkStyle}
             >
-              <img
+              <Box
+                component="img"
                 src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg"
-                alt="GitHub"
-                style={{ width: "20px", height: "20px" }}
+                alt=""
+                sx={{ width: "20px", height: "20px" }}
               />
               GitHub
-            </Link>
+            </Box>
 
-            <Link
-              to="mailto:tsabitghazian@gmail.com"
-              style={{
-                color: "#6497b1",
-                textDecoration: "underline",
-                fontFamily: "'Ubuntu', sans-serif",
-                fontSize: "16px",
-              }}
+            <Box
+              component="a"
+              href="mailto:tsabitghazian@gmail.com"
+              sx={socialLinkStyle}
             >
               ✉️ Email
-            </Link>
-
-            <Button
-              href="/latest_cv.pdf"
-              download="latest_cv.pdf"
-              endIcon={<DownloadIcon />}
-              sx={{
-                textTransform: "none",
-                textDecoration: "underline",
-                fontFamily: "'Ubuntu', sans-serif",
-                fontSize: "16px",
-                color: "#6497b1",
-                "&:hover": {
-                  color: "#6497b1",
-                  backgroundColor: "transparent",
-                  textDecoration: "underline",
-                },
-              }}
-            >
-              Download CV
-            </Button>
+            </Box>
           </Stack>
         </Stack>
 
-        <Divider sx={{ bgcolor: "grey", my: 2 }} />
+        <Divider sx={{ bgcolor: "divider", my: 2 }} />
 
-        {/* Summaries */}
+        {/* Summary */}
         <Box sx={{ mb: 4 }}>
+          <SectionHeading>📄 Summary</SectionHeading>
           <Typography
-            variant="body1"
-            align="left"
+            component="div"
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
-              fontWeight: "bold",
-              fontSize: { xs: "14px", sm: "16px", md: "18px" },
-              mb: 2,
-              color: "white",
-            }}
-          >
-            📄 Summaries
-          </Typography>
-          <Typography
-            variant="body2"
-            sx={{
-              fontFamily: "'Ubuntu', sans-serif",
-              textAlign: "justify",
-              color: "white",
+              textAlign: { xs: "left", sm: "justify" },
+              color: "text.primary",
               fontSize: { xs: "12px", sm: "14px", md: "16px" },
+              lineHeight: 1.7,
             }}
           >
-            Data Engineer with a Computer Science degree from Bandung Institute
-            of Technology (ITB). Proven ability to develop scalable data platforms
-            and real-time data pipelines on Google Cloud Platform, Microsoft Azure,
-            and on-premise infrastructure. Proficient in Python, Java, JavaScript,
-            and SQL. Expertise in database management systems including PostgreSQL,
-            MongoDB, and Elasticsearch. Skilled in orchestration and processing tools
-            such as Apache Airflow, Apache Kafka, Apache Spark, Docker, and DBT,
-            alongside data visualization platforms like Redash, Metabase, and Tableau.
+            {summary}
           </Typography>
+        </Box>
+
+        {/* Experience */}
+        <Box sx={{ mb: 4 }}>
+          <SectionHeading>💼 Experience</SectionHeading>
+          {experience.map((item, index) => (
+            <TimelineItem
+              key={item.title + item.subtitle}
+              {...item}
+              last={index === experience.length - 1}
+            />
+          ))}
+        </Box>
+
+        {/* Projects */}
+        <Box sx={{ mb: 4 }}>
+          <SectionHeading>🛠️ Projects</SectionHeading>
+          {projects.map((item, index) => (
+            <TimelineItem
+              key={item.title}
+              {...item}
+              last={index === projects.length - 1}
+            />
+          ))}
         </Box>
 
         {/* Skills */}
         <Box sx={{ mb: 4 }}>
-          <Typography
-            variant="body1"
-            align="left"
-            sx={{
-              fontFamily: "'Ubuntu', sans-serif",
-              fontWeight: "bold",
-              fontSize: { xs: "14px", sm: "16px", md: "18px" },
-              mb: 2,
-              color: "white",
-            }}
-          >
-            🛠️ Skills
-          </Typography>
-          <Typography
-            variant="body2"
-            sx={{
-              fontFamily: "'Ubuntu', sans-serif",
-              textAlign: "justify",
-              color: "white",
-              fontSize: { xs: "12px", sm: "14px", md: "16px" },
-            }}
-          >
-            <b>Programing Language:</b> Python, Java, JavaScript, SQL <br />
-            <b>Cloud Platform:</b> GCP, Azure <br />
-            <b>Database:</b> PostgreSQL, MongoDB, Elasticsearch, Redis <br />
-            <b>Tools:</b> Airflow, Kafka, RabbitMQ, Spark, Debezium, Nifi, Docker, Git, DBT, Redash
-          </Typography>
+          <SectionHeading>⚙️ Skills</SectionHeading>
+          <Stack direction="column" spacing={2}>
+            {skills.map((group) => (
+              <Box key={group.label}>
+                <Typography
+                  component="div"
+                  sx={{
+                    fontFamily: "'Ubuntu', sans-serif",
+                    fontWeight: 700,
+                    color: "text.secondary",
+                    fontSize: { xs: "12px", sm: "13px", md: "14px" },
+                    mb: 1,
+                  }}
+                >
+                  {group.label}
+                </Typography>
+                <TagChipRow labels={group.items} />
+              </Box>
+            ))}
+          </Stack>
         </Box>
 
-        {/* Working Experiences */}
+        {/* Education & Certifications */}
         <Box sx={{ mb: 4 }}>
-          <Typography
-            variant="body1"
-            align="left"
-            sx={{
-              fontFamily: "'Ubuntu', sans-serif",
-              fontWeight: "bold",
-              fontSize: { xs: "14px", sm: "16px", md: "18px" },
-              mb: 2,
-              color: "white",
-            }}
-          >
-            💼 Working Experiences
-          </Typography>
-          <TableContainer
-            component={Paper}
-            sx={{
-              backgroundColor: "#1e1e1e",
-              boxShadow: "none",
-              border: "1px solid grey",
-              borderRadius: "2px",
-              overflowX: "auto",
-            }}
-          >
-            <Table size="medium">
-              <TableHead>
-                <TableRow sx={{ backgroundColor: "#2c2c2c" }}>
-                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif", fontSize: { xs: "12px", sm: "14px", md: "16px" } }}>Roles</TableCell>
-                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif", fontSize: { xs: "12px", sm: "14px", md: "16px" } }}>Company</TableCell>
-                  <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif", fontSize: { xs: "12px", sm: "14px", md: "16px" } }}>Duration</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((row, index) => (
-                  <React.Fragment key={index}>
-                    <TableRow
-                      onClick={() => toggleRow(index)}
-                      sx={{
-                        backgroundColor: "#1e1e1e",
-                        cursor: "pointer",
-                        "&:hover": { backgroundColor: "#2c2c2c" },
-                      }}
-                    >
-                      <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif", fontSize: { xs: "12px", sm: "14px", md: "16px" } }}>{row.role}</TableCell>
-                      <TableCell>
-                        <Link
-                          to={row.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            color: "#6497b1",
-                            textDecoration: "underline",
-                            fontFamily: "'Ubuntu', sans-serif",
-                            fontSize: "inherit",
-                          }}
-                        >
-                          {row.company}
-                        </Link>
-                      </TableCell>
-                      <TableCell sx={{ color: "white", fontFamily: "'Ubuntu', sans-serif", fontSize: { xs: "12px", sm: "14px", md: "16px" } }}>{row.duration}</TableCell>
-                    </TableRow>
-
-                    <TableRow>
-                      <TableCell colSpan={3} sx={{ p: 0 }}>
-                        <Collapse in={openRows.includes(index)} timeout="auto">
-                          <Box sx={{ m: 2 }}>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontFamily: "'Ubuntu', sans-serif",
-                                textAlign: "justify",
-                                color: "white",
-                                fontSize: { xs: "12px", sm: "14px", md: "16px" },
-                              }}
-                            >
-                              {row.details.split("\n").map((line, idx) => (
-                                <React.Fragment key={idx}>
-                                  {line}
-                                  <br />
-                                </React.Fragment>
-                              ))}
-                            </Typography>
-                          </Box>
-                        </Collapse>
-                      </TableCell>
-                    </TableRow>
-                  </React.Fragment>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
-
-        {/* Education */}
-        <Box sx={{ mb: 4 }}>
-          <Typography
-            variant="body1"
-            align="left"
-            sx={{
-              fontFamily: "'Ubuntu', sans-serif",
-              fontWeight: "bold",
-              fontSize: { xs: "14px", sm: "16px", md: "18px" },
-              mb: 2,
-              color: "white",
-            }}
-          >
-            🎓 Education
-          </Typography>
-          <Link
-            to="https://stei.itb.ac.id/"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              color: "#6497b1",
-              textDecoration: "underline",
-              fontFamily: "'Ubuntu', sans-serif",
-              fontSize: "inherit",
-              display: "flex",
-              flexWrap: "wrap",
-            }}
-          >
-            School of Electrical Engineering and Informatics, Bandung Institute of Technology
-          </Link>
-          <Typography
-            variant="body2"
-            align="left"
-            sx={{
-              fontFamily: "'Ubuntu', sans-serif",
-              color: "white",
-              fontSize: { xs: "12px", sm: "14px", md: "16px" },
-              mt: 1,
-            }}
-          >
-            Computer Science, GPA: 3.54/4.00
-          </Typography>
-          <Typography
-            variant="body2"
-            align="justify"
-            sx={{
-              fontFamily: "'Ubuntu', sans-serif",
-              color: "white",
-              fontSize: { xs: "12px", sm: "14px", md: "16px" },
-              mt: 1,
-            }}
-          >
-            - <b>Thesis:</b> Development of a Transformation Mechanism from
-            Document-Oriented NoSQL Database to Relational Database.
-            <br />
-            - <b>Completed Modules:</b> database management, AI & ML, parallel
-            and distributed system, computer networks, big data technology,
-            information retrieval system, data and information visualization.
-          </Typography>
+          <SectionHeading>🎓 Education &amp; Certifications</SectionHeading>
+          {education.map((item, index) => (
+            <TimelineItem
+              key={item.title}
+              {...item}
+              last={index === education.length - 1}
+            />
+          ))}
         </Box>
       </Container>
     </Box>

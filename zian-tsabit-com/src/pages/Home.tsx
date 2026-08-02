@@ -5,19 +5,19 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import Typewriter from "../components/Typewriter";
+import { PAGE_MIN_HEIGHT } from "../constants/layout";
 
 function Home() {
   return (
     <Box
       sx={{
         width: "100%",
-        minHeight: "100vh",
+        minHeight: PAGE_MIN_HEIGHT,
         display: "flex",
         flexDirection: "column",
-        overflowY: "auto",
-        bgcolor: "#0000",
+        bgcolor: "transparent",
         alignItems: "center",
-        marginTop: "36px"
+        pt: { xs: 2, sm: 3 },
       }}
     >
       <Container maxWidth="md">
@@ -54,7 +54,7 @@ function Home() {
             <Typography 
               variant="h5"
               component="div" 
-              color="white"
+              color="text.primary"
               sx={{ fontFamily: "'Ubuntu', sans-serif" }}
             >
               Hello, I'm Ghazian Tsabit Alkamil 👋
@@ -62,22 +62,24 @@ function Home() {
             <Typography 
               variant="body1" 
               component="div" 
-              color="white"
-              sx={{ 
+              color="text.primary"
+              sx={{
                 fontFamily: "'Ubuntu', sans-serif",
-                textAlign: { xs: "justify", sm: "justify" },
+                // Justifying a ~35-character line opens up rivers of whitespace.
+                textAlign: { xs: "left", sm: "justify" },
                 mx: { xs: 0, sm: "4px" },
               }}
             >
               I'm a Software Engineer based in Indonesia, currently working at{" "}
-              <a
+              <Box
+                component="a"
                 href="https://cermati.group/"
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: "#6497b1", textDecoration: "underline" }}
+                sx={{ color: "primary.main", textDecoration: "underline" }}
               >
                 Cermati Fintech Group
-              </a>{" "}
+              </Box>{" "}
               as a Software Engineer - Data Platform. Here I want to put myself on the internet, share my projects, and write about things that I find interesting.
             </Typography>
           </Stack>
@@ -86,7 +88,7 @@ function Home() {
         {/* Divider */}
         <Divider
           sx={{
-            bgcolor: "grey",
+            bgcolor: "divider",
             my: "8px",
           }}
         />
@@ -96,7 +98,7 @@ function Home() {
           <Typography
             variant="body1"
             component="div"
-            color="white"
+            color="text.primary"
             sx={{
               fontFamily: "'Ubuntu', sans-serif",
               textAlign: "left",
@@ -117,7 +119,7 @@ function Home() {
             minHeight: "30vh",
             display: "flex",
             flexDirection: "column",
-            bgcolor: "#0000",
+            bgcolor: "transparent",
             alignItems: "center",
             justifyContent: "center",
           }}

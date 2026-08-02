@@ -1,15 +1,16 @@
 import { Box, Container } from '@mui/material';
 import Typewriter from "../components/Typewriter";
+import { PAGE_MIN_HEIGHT } from "../constants/layout";
 
 function Garage() {
   return (
     <Box
       sx={{
         width: "100%",
-        minHeight: "100vh",
+        minHeight: PAGE_MIN_HEIGHT,
         display: "flex",
         flexDirection: "column",
-        bgcolor: "black",
+        bgcolor: "background.default",
       }}
     >
       <Container

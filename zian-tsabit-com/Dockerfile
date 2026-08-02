@@ -12,6 +12,9 @@ RUN npm run build
 
 FROM nginx:alpine
 
+# Replaces the stock config, which 404s on client-side routes like /about.
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80

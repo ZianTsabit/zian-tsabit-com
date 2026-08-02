@@ -7,6 +7,8 @@ const StyledBox = styled(Box)`
     display: flex;
     justify-content: center;
     font-family: monospace;
+    max-width: 100%;
+    overflow: hidden;
   }
 
   &.typewriter-effect > .text {
@@ -25,7 +27,8 @@ const StyledBox = styled(Box)`
   @keyframes typing {
     75%,
     100% {
-      max-width: calc(var(--characters) * 1ch);
+      /* Clamp to the container so long text cannot widen a narrow screen. */
+      max-width: min(calc(var(--characters) * 1ch), 100%);
     }
   }
 
@@ -61,7 +64,7 @@ function Typewriter({ text = "Typewriter Effect" }: TypewriterProps) {
         style={styles} 
         className="text" 
         id="typewriter-text"
-        sx={{ fontFamily: "'Ubuntu', sans-serif", color: "white", fontSize: { xs: "18px", sm: "18px", md: "18px", lg: "22px" } }}>
+        sx={{ fontFamily: "'Ubuntu', sans-serif", color: "text.primary", fontSize: { xs: "18px", sm: "18px", md: "18px", lg: "22px" } }}>
         {text}
       </Box>
     </StyledBox>
