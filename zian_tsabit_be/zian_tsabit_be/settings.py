@@ -38,6 +38,18 @@ ALLOWED_HOSTS = os.environ.get(
     'DJANGO_ALLOWED_HOSTS', 'localhost 127.0.0.1 [::1]'
 ).split()
 
+# The SPA is always on a different origin than this API -- Vite on :5173 in
+# development, nginx on :8080 in Docker -- so every browser fetch is cross-origin
+# and dies at preflight without these. Defaults cover both local setups; set the
+# variable to the real site origin when deploying.
+# 5173 is `npm run dev`, 4173 is `npm run preview`, 8080 is the nginx container.
+CORS_ALLOWED_ORIGINS = os.environ.get(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173 http://127.0.0.1:5173 '
+    'http://localhost:4173 http://127.0.0.1:4173 '
+    'http://localhost:8080 http://127.0.0.1:8080',
+).split()
+
 
 # Application definition
 
@@ -48,6 +60,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'rest_framework',
     'drf_spectacular',
     'myapp',
@@ -81,6 +94,9 @@ SPECTACULAR_SETTINGS = {
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    # Has to sit above CommonMiddleware: preflight OPTIONS requests need a
+    # response before anything else gets a chance to redirect or reject them.
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',

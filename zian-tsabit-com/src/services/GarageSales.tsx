@@ -1,1 +1,0 @@
-// Hooks to fetch garage sales data

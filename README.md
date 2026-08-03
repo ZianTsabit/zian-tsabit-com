@@ -151,6 +151,7 @@ Read by `zian_tsabit_be/settings.py`; the defaults are what a bare `manage.py ru
 | `DEBUG` | `1` | Any of `0`, `false`, `False`, empty turns it off |
 | `DJANGO_ALLOWED_HOSTS` | `localhost 127.0.0.1 [::1]` | Space-separated |
 | `DJANGO_SECRET_KEY` | the insecure dev key | Set this for anything deployed |
+| `CORS_ALLOWED_ORIGINS` | `:5173`, `:4173`, `:8080` on localhost and 127.0.0.1 | Space-separated. Must include whichever origin serves the SPA |
 
 ---
 
@@ -163,8 +164,24 @@ Read by `zian_tsabit_be/settings.py`; the defaults are what a bare `manage.py ru
 | `8080` | Frontend, Docker (nginx) |
 | `8000` | Backend, local or Docker |
 
+## Running the two together
+
+`/books`, `/projects` and `/garage` fetch their content from the API, so they need the backend up. Two terminals:
+
+```bash
+# terminal 1
+cd zian_tsabit_be && source .venv/bin/activate && python manage.py runserver
+
+# terminal 2
+cd zian-tsabit-com && npm run dev
+```
+
+The SPA reads its API location from `VITE_API_BASE_URL`, defaulting to `http://localhost:8000/api` — the default is correct for the setup above, so there is nothing to configure locally. To point it elsewhere, copy `zian-tsabit-com/.env.example` to `.env`. **Vite inlines env vars at build time**, so a change means restarting `npm run dev` or rebuilding.
+
+The two are always on different origins, so every request is cross-origin. `CORS_ALLOWED_ORIGINS` on the backend already lists `:5173`, `:4173` and `:8080`; **an origin missing from that list gets its responses discarded by the browser**, which surfaces as the same "Could not reach the API" message as a backend that is simply down.
+
+Each of those three pages has four states: a spinner, an error with a **Retry** button, the original `Coming soon...` placeholder when the category has no posts, and a list of cards once it does. Add content through `/admin/` or `POST /api/posts/` — remember `status: "published"`, since drafts are invisible to the site.
+
 ## Not wired up yet
 
-The frontend does not call the API. There is no HTTP client dependency and no API base URL, the files in `src/services/` are empty stubs, and `/projects` and `/garage` still render a `Coming soon...` placeholder.
-
-`django-cors-headers` is **not** installed. The SPA and the API are on different origins in every setup here — `:5173` or `:8080` against `:8000` — so the first `fetch` from the browser will fail on CORS preflight until it is added.
+Home's "Latest Updates" section is still a `Coming soon...` placeholder, and `src/services/Updates.tsx` is still an empty stub — posts have no "update" category, so that feed has no backend behind it. `/`, `/about` and `/curriculum-vitae` are hardcoded copy by design.

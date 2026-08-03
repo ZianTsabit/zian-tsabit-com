@@ -1,4 +1,5 @@
 import { Box, Container, Typography } from '@mui/material';
+import PostList from "../components/PostList";
 
 function Books() {
   return (
@@ -13,9 +14,12 @@ function Books() {
         pt: { xs: 2, sm: 3 },
       }}
     >
+      {/* flex: 1 so PostList's loading and empty states centre in what is left
+          below the quote. */}
       <Container
         maxWidth="md"
         sx={{
+          flex: 1,
           display: "flex",
           flexDirection: "column",
         }}
@@ -44,10 +48,13 @@ function Books() {
             fontStyle: "italic",
             color: "text.primary",
             fontSize: { xs: "12px", sm: "14px", md: "16px", lg: "22px" },
+            mb: 3,
           }}
         >
           - Umberto Eco
         </Typography>
+
+        <PostList category="books" />
       </Container>
     </Box>
   );

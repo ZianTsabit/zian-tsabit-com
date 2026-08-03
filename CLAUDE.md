@@ -196,6 +196,19 @@ The image is `python:3.12-slim` running `runserver`, with `entrypoint.sh` applyi
 
 ## Frontend/backend seam
 
-`src/services/{Books,Projects,Updates,GarageSales}.tsx` each contain a single comment naming an intended data-fetching hook and nothing else; none is imported anywhere. Nothing in the frontend calls the backend yet — there is no HTTP client dependency, no API base URL, and no `.env`/`import.meta.env` usage.
+`/books`, `/projects` and `/garage` render live data from `GET /api/posts/?category=…`. `/` and the CV/About pages are still hardcoded copy.
 
-The API those services want now exists (`GET /api/posts/?category=…`), so wiring one up means: add CORS (`django-cors-headers` is **not** installed, and the SPA is served from a different origin than Django in every setup here — dev on `:5173` vs `:8000`, container on `:8080` vs `:8000` — so the first `fetch` will fail on preflight until it is), pick an API base URL, fill in the service, and swap that page's `Coming soon...` placeholder for real content. Note the service files are split per section while the API is one endpoint filtered by `category`, so they collapse into one client plus a category argument.
+Three files, no HTTP client dependency — `fetch` and two hooks are enough:
+
+- **`src/services/posts.ts`** — types mirroring `PostSerializer`, plus `fetchPosts(category, signal)` and `fetchPostPage(url, signal)`. The per-section stubs (`Books.tsx`, `Projects.tsx`, `GarageSales.tsx`) were deleted: the API is one endpoint filtered by `category`, so they collapsed into this. `Updates.tsx` survives as a marker — Home's "Latest Updates" is not wired and has no category.
+- **`src/services/usePosts.ts`** — owns the four states a page has to render (loading / error / empty / populated) and appends pages via `loadMore`, since the API returns 20 per page.
+- **`src/components/PostList.tsx`** — renders those states. **It needs an unbroken `flex: 1` chain from `<main>`**, which is why all three pages make their `Container` a flex column; without it the loading spinner and the empty placeholder stop being vertically centred.
+
+`API_BASE_URL` is `import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api"`, typed in `src/vite-env.d.ts` and documented in `.env.example`. Trailing slashes are stripped, because `//posts/` earns an `APPEND_SLASH` redirect instead of a response.
+
+Points worth keeping intact:
+
+- **An aborted request is not an error.** Every fetch takes an `AbortSignal`; the effect cancels on unmount and on a category change, and both the client and the hook check `isAbort` before reporting anything. Skip that and a fast navigation logs a spurious "Could not reach the API", or a resolved request writes state into an unmounted component.
+- **`fetch` rejects identically for a dead backend and a CORS failure** — the browser only ever says `Failed to fetch`. `posts.ts` rewrites that into `Could not reach the API at <url>. Is the backend running?` with a Retry button, because the raw message tells nobody anything.
+- **The empty state is the old `Coming soon...` typewriter.** A section with no posts looks exactly as the page did before it was wired, so publishing the first post is what changes the page.
+- **`CORS_ALLOWED_ORIGINS` must list whatever origin serves the SPA.** Defaults cover `:5173` (dev), `:4173` (preview) and `:8080` (nginx container); a deployed site needs its real origin added or every response is discarded by the browser.

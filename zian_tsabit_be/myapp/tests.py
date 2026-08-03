@@ -191,6 +191,28 @@ class PostAPITests(APITestCase):
         self.published.refresh_from_db()
         self.assertEqual(self.published.title, "Renamed")
 
+    def test_allowed_origin_gets_cors_header(self):
+        # Without this header the browser discards the response and the SPA sees
+        # an opaque network error, so it is worth asserting rather than assuming.
+        response = self.client.get(self.list_url, HTTP_ORIGIN="http://localhost:5173")
+        self.assertEqual(
+            response.headers.get("Access-Control-Allow-Origin"),
+            "http://localhost:5173",
+        )
+
+    def test_preflight_is_answered(self):
+        response = self.client.options(
+            self.list_url,
+            HTTP_ORIGIN="http://localhost:5173",
+            HTTP_ACCESS_CONTROL_REQUEST_METHOD="GET",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("Access-Control-Allow-Headers", response.headers)
+
+    def test_unknown_origin_gets_no_cors_header(self):
+        response = self.client.get(self.list_url, HTTP_ORIGIN="http://evil.example")
+        self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
+
     def test_delete_removes_the_post(self):
         self.client.force_authenticate(self.user)
         response = self.client.delete(self.detail_url(self.sale))

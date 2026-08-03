@@ -1,1 +1,0 @@
-// Hooks to fetch projects data

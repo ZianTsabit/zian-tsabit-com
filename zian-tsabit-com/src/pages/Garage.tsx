@@ -1,5 +1,5 @@
 import { Box, Container } from '@mui/material';
-import Typewriter from "../components/Typewriter";
+import PostList from "../components/PostList";
 
 function Garage() {
   return (
@@ -12,18 +12,18 @@ function Garage() {
         bgcolor: "background.default",
       }}
     >
+      {/* Flex column with flex: 1 so PostList can centre its loading and empty
+          states in the leftover space. */}
       <Container
         maxWidth="md"
         sx={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
           py: { xs: 4, md: 6 },
         }}
       >
-        <Typewriter text="Coming soon..." />
+        <PostList category="garage_sale" />
       </Container>
     </Box>
   );
