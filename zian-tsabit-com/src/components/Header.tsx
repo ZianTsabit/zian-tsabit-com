@@ -80,7 +80,10 @@ function Header() {
           sx={{
             ...linkStyle,
             fontFamily: "'Ubuntu', sans-serif",
-            fontSize: "clamp(16px, 2vw, 28px)",
+            // A plain 2vw preferred value only clears the 16px floor above an
+            // 800px viewport, so the logo was pinned at its minimum on every
+            // phone. The rem term makes it scale across the whole range.
+            fontSize: "clamp(20px, 1.25rem + 0.7vw, 28px)",
             fontWeight: "bold",
             whiteSpace: "nowrap",
           }}

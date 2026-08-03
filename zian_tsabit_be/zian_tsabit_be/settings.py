@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -19,13 +20,23 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
+# The three settings below read the environment, because docker-compose.yml has
+# always passed DEBUG and DJANGO_ALLOWED_HOSTS and nothing here looked at them.
+# The defaults keep a bare `manage.py runserver` working as before.
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-zs8oieo0yf+afuwc-@typ_rbq_4*2@tbwf9aoz18-q3s=ne43w'
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-zs8oieo0yf+afuwc-@typ_rbq_4*2@tbwf9aoz18-q3s=ne43w',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', '1') not in ('0', 'false', 'False', '')
 
-ALLOWED_HOSTS = []
+# Space-separated, matching the form the compose file already used.
+ALLOWED_HOSTS = os.environ.get(
+    'DJANGO_ALLOWED_HOSTS', 'localhost 127.0.0.1 [::1]'
+).split()
 
 
 # Application definition
@@ -37,7 +48,35 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'drf_spectacular',
+    'myapp',
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+    # Session auth covers the browsable API while logged into /admin/; basic auth
+    # makes `curl -u user:pass` work for writes from a terminal.
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'ziantsabit.com API',
+    'DESCRIPTION': (
+        'Content API for ziantsabit.com. Posts are filed under one category — '
+        'books, projects or garage_sale — and addressed by slug.'
+    ),
+    'VERSION': '1.0.0',
+    # The schema endpoint is served separately; listing it inside its own output
+    # is noise.
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

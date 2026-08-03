@@ -1,3 +1,203 @@
-from django.test import TestCase
+import base64
 
-# Create your tests here.
+from django.contrib.auth.models import User
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APITestCase
+
+from .models import Post
+
+
+class PostModelTests(APITestCase):
+    def test_slug_is_derived_from_title(self):
+        post = Post.objects.create(title="Clean Code", category=Post.Category.BOOKS)
+        self.assertEqual(post.slug, "clean-code")
+
+    def test_duplicate_titles_get_distinct_slugs(self):
+        first = Post.objects.create(title="Clean Code", category=Post.Category.BOOKS)
+        second = Post.objects.create(title="Clean Code", category=Post.Category.BOOKS)
+        third = Post.objects.create(title="Clean Code", category=Post.Category.BOOKS)
+        self.assertEqual(
+            [first.slug, second.slug, third.slug],
+            ["clean-code", "clean-code-2", "clean-code-3"],
+        )
+
+    def test_explicit_slug_is_kept(self):
+        post = Post.objects.create(
+            title="Clean Code", slug="the-one", category=Post.Category.BOOKS
+        )
+        self.assertEqual(post.slug, "the-one")
+
+    def test_publishing_stamps_published_at(self):
+        post = Post.objects.create(
+            title="Shipped",
+            category=Post.Category.PROJECTS,
+            status=Post.Status.PUBLISHED,
+        )
+        self.assertIsNotNone(post.published_at)
+
+    def test_draft_has_no_published_at(self):
+        post = Post.objects.create(title="Draft", category=Post.Category.BOOKS)
+        self.assertIsNone(post.published_at)
+
+    def test_title_of_only_punctuation_still_gets_a_slug(self):
+        post = Post.objects.create(title="!!!", category=Post.Category.BOOKS)
+        self.assertEqual(post.slug, "post")
+
+
+class PostAPITests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("post-list")
+        cls.published = Post.objects.create(
+            title="Published Book",
+            category=Post.Category.BOOKS,
+            status=Post.Status.PUBLISHED,
+        )
+        cls.draft = Post.objects.create(
+            title="Draft Project", category=Post.Category.PROJECTS
+        )
+        cls.sale = Post.objects.create(
+            title="Old Desk",
+            category=Post.Category.GARAGE_SALE,
+            status=Post.Status.PUBLISHED,
+        )
+
+    def detail_url(self, post):
+        return reverse("post-detail", kwargs={"slug": post.slug})
+
+    # --- read ---------------------------------------------------------------
+
+    def test_anonymous_list_shows_only_published(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        slugs = {row["slug"] for row in response.data["results"]}
+        self.assertEqual(slugs, {self.published.slug, self.sale.slug})
+
+    def test_anonymous_cannot_retrieve_a_draft_by_slug(self):
+        response = self.client.get(self.detail_url(self.draft))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_authenticated_list_includes_drafts(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.list_url)
+        self.assertEqual(len(response.data["results"]), 3)
+
+    def test_filter_by_category(self):
+        response = self.client.get(self.list_url, {"category": "garage_sale"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([r["slug"] for r in response.data["results"]], ["old-desk"])
+
+    def test_unknown_category_is_rejected(self):
+        response = self.client.get(self.list_url, {"category": "book"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("category", response.data)
+
+    def test_filter_by_status_when_authenticated(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.list_url, {"status": "draft"})
+        self.assertEqual([r["slug"] for r in response.data["results"]], ["draft-project"])
+
+    def test_retrieve_by_slug(self):
+        response = self.client.get(self.detail_url(self.published))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["title"], "Published Book")
+
+    # --- write --------------------------------------------------------------
+
+    def test_anonymous_cannot_create(self):
+        response = self.client.post(
+            self.list_url, {"title": "Nope", "category": "books"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(Post.objects.count(), 3)
+
+    def test_create_generates_slug_and_defaults_to_draft(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            {"title": "A New Post", "category": "books", "body": "hello"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["slug"], "a-new-post")
+        self.assertEqual(response.data["status"], "draft")
+
+    def test_basic_auth_can_create(self):
+        # Covers the `curl -u user:password` flow the README documents; every
+        # other write test here authenticates in-process instead.
+        token = base64.b64encode(b"zian:pw-for-tests").decode()
+        response = self.client.post(
+            self.list_url,
+            {"title": "Via Curl", "category": "books"},
+            format="json",
+            HTTP_AUTHORIZATION=f"Basic {token}",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_create_rejects_unknown_category(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url, {"title": "X", "category": "recipes"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("category", response.data)
+
+    def test_create_rejects_blank_slug(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            {"title": "X", "category": "books", "slug": "   "},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("slug", response.data)
+
+    def test_patch_updates_a_field(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.published), {"excerpt": "short"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.published.refresh_from_db()
+        self.assertEqual(self.published.excerpt, "short")
+
+    def test_patch_publishing_a_draft_stamps_published_at(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.draft), {"status": "published"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.draft.refresh_from_db()
+        self.assertIsNotNone(self.draft.published_at)
+
+    def test_put_replaces_the_post(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.put(
+            self.detail_url(self.published),
+            {
+                "title": "Renamed",
+                "slug": self.published.slug,
+                "category": "books",
+                "excerpt": "",
+                "body": "",
+                "status": "published",
+                "published_at": None,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.published.refresh_from_db()
+        self.assertEqual(self.published.title, "Renamed")
+
+    def test_delete_removes_the_post(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.delete(self.detail_url(self.sale))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Post.objects.filter(pk=self.sale.pk).exists())
+
+    def test_anonymous_cannot_delete(self):
+        response = self.client.delete(self.detail_url(self.sale))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Post.objects.filter(pk=self.sale.pk).exists())

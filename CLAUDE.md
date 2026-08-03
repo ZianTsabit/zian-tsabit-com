@@ -30,7 +30,8 @@ python manage.py runserver
 python manage.py makemigrations myapp && python manage.py migrate
 python manage.py test              # whole suite
 python manage.py test myapp.tests.ClassName.test_name   # single test
-docker compose up --build          # Django dev server on :8000
+python manage.py spectacular --validate --fail-on-warn --file /dev/null   # check OpenAPI schema
+docker compose up --build          # Django dev server on :8000, Swagger at /api/docs/
 ```
 
 No test runner is configured for the frontend.
@@ -131,13 +132,70 @@ Routing is client-side, so `/about`, `/books`, … exist only in `App.tsx` — t
 
 ## Backend status
 
-The Django project is scaffolding, not a working API:
+`myapp` is installed and serves one working resource: a DRF `ModelViewSet` over `Post`. `requirements.txt` is `Django>=4.2` plus `djangorestframework>=3.15`. Database is SQLite (`db.sqlite3`, committed). Postgres and MinIO compose files existed but were removed in `29dd34b`.
 
-- `myapp` is **not** in `INSTALLED_APPS` (`zian_tsabit_be/settings.py`), so its models are inert and `migrations/` is empty apart from `__init__.py`. Adding it is the first step for any backend work.
-- `myapp/views.py` is empty and `urls.py` only routes `admin/`. No REST framework or serializers are installed — `requirements.txt` is just `Django>=4.2`.
-- Models defined but unused: `Book`, `Project`, `Update`, `GarageSale`. These mirror the site's `/books`, `/projects`, `/garage` pages.
-- Database is SQLite (`db.sqlite3`, committed). Postgres and MinIO compose files existed but were removed in `29dd34b`.
+### The Post model
+
+`Post` is the whole content model, and it replaced the earlier `Book` / `Project` / `GarageSale` / `Update` models — four near-identical title-plus-fields tables for what the site renders as sections of one feed. **Add a section by adding a `Post.Category` member, not a new model.** `migrations/0001_initial.py` creates only `myapp_post`; the old models never had a migration, so there is nothing to clean up if you go looking for their tables.
+
+Two things happen in `Post.save()` rather than in the serializer, so they hold for the admin and shell too:
+
+- **`slug` is derived from `title` when left blank**, and deduped with a `-2`, `-3` suffix. It stays writable so a URL can be pinned by hand. A slug of only whitespace passes the model's unique check and then collides inside `save()`, which surfaces as a 500 — `PostSerializer.validate_slug` rejects it as a 400 first.
+- **`status="published"` with no `published_at` stamps it `now()`**. `Meta.ordering` is `["-published_at", "-created_at"]`, so without that a published post with a null date would sort below every draft.
+
+### API surface
+
+Routed at `api/` from the project `urls.py` via `myapp/urls.py`'s `DefaultRouter`; `DefaultRouter` also serves the index at `/api/` and the browsable HTML API.
+
+| | |
+| --- | --- |
+| `GET /api/posts/` | list, paginated 20 per page (`?category=`, `?status=`) |
+| `POST /api/posts/` | create |
+| `GET|PUT|PATCH|DELETE /api/posts/{slug}/` | detail |
+| `GET /api/schema/` | OpenAPI 3 document (drf-spectacular) |
+| `GET /api/docs/` | Swagger UI |
+| `GET /api/redoc/` | ReDoc |
+
+**Lookup is by `slug`, not `id`** (`lookup_field = "slug"`), matching the URLs the frontend will use.
+
+`permission_classes = [IsAuthenticatedOrReadOnly]`: reads are open, writes need a logged-in user. Auth is session (for the browsable API while logged into `/admin/`) plus basic (`curl -u`). There is no user in the committed `db.sqlite3` — `manage.py createsuperuser` before trying a write by hand.
+
+Two deliberate details in `PostViewSet.get_queryset`:
+
+- **Drafts are filtered for anonymous users on every route, not just the list.** Filtering only the list would still hand an unpublished post to anyone who guessed its slug.
+- **An unknown `?category=` or `?status=` is a 400, not an empty result.** Dropping an unrecognised filter silently would answer a typo'd `?category=book` with every post on the site.
+
+### Swagger / OpenAPI
+
+`drf-spectacular` generates the schema from the serializer and viewset; the three doc routes are declared in `myapp/urls.py` **above** `include(router.urls)`, and `SPECTACULAR_SETTINGS` lives in `settings.py`.
+
+Because `category` and `status` are read straight off `request.query_params` in `get_queryset` rather than declared by a filter backend, **the generator cannot see them** — they are documented by the `@extend_schema_view(list=extend_schema(parameters=[...]))` decorator on `PostViewSet`, with `enum` pulled from the model's `TextChoices` so the two cannot drift. Any new hand-rolled query param needs the same treatment or it will be missing from Swagger.
+
+Check the schema after touching a serializer or viewset:
+
+```bash
+python manage.py spectacular --validate --fail-on-warn --file /dev/null
+```
+
+Swagger UI and ReDoc load their JS from a CDN, so the pages need internet; the `/api/schema/` document itself does not, and no `collectstatic` is involved.
+
+### Tests
+
+`myapp/tests.py` is a real suite (23 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, filter validation, basic-auth writes, and each CRUD verb for both anonymous and authenticated callers. Run it with `python manage.py test`.
+
+### Settings and the container
+
+`SECRET_KEY`, `DEBUG` and `ALLOWED_HOSTS` read the environment (`DJANGO_SECRET_KEY`, `DEBUG`, `DJANGO_ALLOWED_HOSTS`), with defaults that keep a bare `manage.py runserver` behaving as it did. The compose file had been passing `DEBUG` and `DJANGO_ALLOWED_HOSTS` since it was written while `settings.py` hardcoded both, so those variables did nothing; changing one and seeing no effect was the symptom.
+
+The image is `python:3.12-slim` running `runserver`, with `entrypoint.sh` applying migrations before handing off to `CMD` — a fresh container has no other opportunity to create `myapp_post`, and the API 500s on its first request without it. Two constraints:
+
+- **It runs as UID 1000 (`app`), not root.** Compose bind-mounts the source tree, so `db.sqlite3` is the host's file; if `id -u` on the host is not 1000 the mounted database is read-only to the container and the migrate on start fails. The commented-out `user:` line in `docker-compose.yml` is the fix.
+- **`.dockerignore` excludes `db.sqlite3`**, so the image never carries a copy of the dev database. Compose runs still use the host one through the mount.
+
+`requirements.txt` pins nothing but lower bounds, and it shows: the container resolves **Django 6.0** while a local venv built earlier may hold 5.2. The suite passes on both, but pin the versions if that drift matters.
 
 ## Frontend/backend seam
 
-`src/services/{Books,Projects,Updates,GarageSales}.tsx` each contain a single comment naming an intended data-fetching hook and nothing else; none is imported anywhere. Nothing in the frontend calls the backend yet — there is no HTTP client dependency, no API base URL, and no `.env`/`import.meta.env` usage. The service names line up with the four Django models and with the `Coming soon...` pages, so wiring one up means: build the API in `myapp`, add CORS, fill in the service, and swap that page's placeholder for real content.
+`src/services/{Books,Projects,Updates,GarageSales}.tsx` each contain a single comment naming an intended data-fetching hook and nothing else; none is imported anywhere. Nothing in the frontend calls the backend yet — there is no HTTP client dependency, no API base URL, and no `.env`/`import.meta.env` usage.
+
+The API those services want now exists (`GET /api/posts/?category=…`), so wiring one up means: add CORS (`django-cors-headers` is **not** installed, and the SPA is served from a different origin than Django in every setup here — dev on `:5173` vs `:8000`, container on `:8080` vs `:8000` — so the first `fetch` will fail on preflight until it is), pick an API base URL, fill in the service, and swap that page's `Coming soon...` placeholder for real content. Note the service files are split per section while the API is one endpoint filtered by `category`, so they collapse into one client plus a category argument.

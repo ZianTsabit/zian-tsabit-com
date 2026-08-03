@@ -107,7 +107,9 @@ function Home() {
               mb: "12px",
               ml: "4px",
               fontWeight: "bold",
-              fontSize: { xs: "16px", sm: "20px" },
+              // Same scale as SectionHeading, so section titles are one size
+              // across Home, CV and About.
+              fontSize: { xs: "16px", sm: "18px", md: "20px" },
             }}
           >
             Latest Updates
