@@ -17,6 +17,11 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def _env_flag(name, default='0'):
+    """Read a boolean from the environment, treating '0'/'false'/'' as off."""
+    return os.environ.get(name, default) not in ('0', 'false', 'False', '')
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
@@ -31,7 +36,7 @@ SECRET_KEY = os.environ.get(
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', '1') not in ('0', 'false', 'False', '')
+DEBUG = _env_flag('DEBUG', '1')
 
 # Space-separated, matching the form the compose file already used.
 ALLOWED_HOSTS = os.environ.get(
@@ -49,6 +54,28 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
     'http://localhost:4173 http://127.0.0.1:4173 '
     'http://localhost:8080 http://127.0.0.1:8080',
 ).split()
+
+# The SPA's admin page logs in with a session cookie, so the browser has to be
+# allowed to attach credentials to a cross-origin request. Without this the
+# cookie is silently dropped and every write is 403 despite a successful login.
+CORS_ALLOW_CREDENTIALS = True
+
+# Django compares the Origin of an unsafe cross-origin request against this list
+# before it even looks at the CSRF token. It defaults to the CORS origins,
+# because the SPA allowed to read the API is the one that has to write to it.
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    'CSRF_TRUSTED_ORIGINS', ' '.join(CORS_ALLOWED_ORIGINS)
+).split()
+
+# 'Lax' is enough as long as the SPA and the API share a registrable domain --
+# both on localhost in development, ziantsabit.com and api.ziantsabit.com in
+# production; a port does not make two origins cross-*site*. A deployment where
+# they genuinely differ needs 'None', which browsers only honour on a Secure
+# cookie, so change all four of these together in that case.
+SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
+SESSION_COOKIE_SECURE = _env_flag('SESSION_COOKIE_SECURE')
+CSRF_COOKIE_SECURE = _env_flag('CSRF_COOKIE_SECURE')
 
 
 # Application definition

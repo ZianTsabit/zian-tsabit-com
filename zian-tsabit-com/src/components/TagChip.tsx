@@ -1,16 +1,21 @@
 import { Box } from "@mui/material";
 
-/** Pill used for CV skills and About interests. */
-function TagChip({ label }: { label: string }) {
+/**
+ * Pill used for CV skills, About interests and the admin list's labels.
+ *
+ * `emphasis` picks one out of a row of them -- the admin page marks a published
+ * post with it. It defaults off, so every existing caller renders as before.
+ */
+function TagChip({ label, emphasis = false }: { label: string; emphasis?: boolean }) {
   return (
     <Box
       sx={{
         fontFamily: "'Ubuntu', sans-serif",
         fontSize: { xs: "11px", sm: "13px", md: "14px" },
-        color: "text.primary",
+        color: emphasis ? "primary.main" : "text.primary",
         bgcolor: "background.paper",
         border: "1px solid",
-        borderColor: "divider",
+        borderColor: emphasis ? "primary.main" : "divider",
         borderRadius: "999px",
         px: { xs: 1.25, sm: 1.5 },
         py: 0.5,

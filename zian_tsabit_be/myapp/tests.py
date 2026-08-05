@@ -3,7 +3,7 @@ import base64
 from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
 
 from .models import Post
 
@@ -223,3 +223,148 @@ class PostAPITests(APITestCase):
         response = self.client.delete(self.detail_url(self.sale))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertTrue(Post.objects.filter(pk=self.sale.pk).exists())
+
+
+class SessionAuthTests(APITestCase):
+    """The cookie-and-CSRF flow behind the SPA's /admin page."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.session_url = reverse("auth-session")
+        cls.login_url = reverse("auth-login")
+        cls.logout_url = reverse("auth-logout")
+        cls.posts_url = reverse("post-list")
+
+    def setUp(self):
+        # CSRF is what these tests are about, so the check has to be on: the
+        # default test client skips the one thing a browser will not.
+        self.client = APIClient(enforce_csrf_checks=True)
+
+    def start_session(self):
+        """GET the session endpoint, returning the CSRF token it hands out."""
+        return self.client.get(self.session_url).data["csrf_token"]
+
+    def log_in(self):
+        """Log in, returning the post-login CSRF token."""
+        response = self.client.post(
+            self.login_url,
+            {"username": "zian", "password": "pw-for-tests"},
+            format="json",
+            HTTP_X_CSRFTOKEN=self.start_session(),
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.data["csrf_token"]
+
+    def create_post(self, token, title="Written By The Admin Page"):
+        return self.client.post(
+            self.posts_url,
+            {"title": title, "category": "books"},
+            format="json",
+            HTTP_X_CSRFTOKEN=token,
+        )
+
+    # --- session state ------------------------------------------------------
+
+    def test_session_reports_anonymous_and_sets_the_csrf_cookie(self):
+        response = self.client.get(self.session_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["authenticated"])
+        self.assertIsNone(response.data["username"])
+        self.assertIn("csrftoken", response.cookies)
+
+    def test_session_reports_the_user_after_login(self):
+        self.log_in()
+        response = self.client.get(self.session_url)
+        self.assertTrue(response.data["authenticated"])
+        self.assertEqual(response.data["username"], "zian")
+
+    # --- login --------------------------------------------------------------
+
+    def test_login_returns_the_username(self):
+        response = self.client.post(
+            self.login_url,
+            {"username": "zian", "password": "pw-for-tests"},
+            format="json",
+            HTTP_X_CSRFTOKEN=self.start_session(),
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["authenticated"])
+        self.assertEqual(response.data["username"], "zian")
+
+    def test_login_rejects_a_bad_password(self):
+        response = self.client.post(
+            self.login_url,
+            {"username": "zian", "password": "wrong"},
+            format="json",
+            HTTP_X_CSRFTOKEN=self.start_session(),
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("detail", response.data)
+
+    def test_login_requires_a_csrf_token(self):
+        # DRF's as_view() is csrf_exempt and an anonymous request is never
+        # CSRF-checked by SessionAuthentication, so this only holds because
+        # LoginView carries csrf_protect.
+        response = self.client.post(
+            self.login_url,
+            {"username": "zian", "password": "pw-for-tests"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    # --- writing with the session -------------------------------------------
+
+    def test_write_with_a_session_but_no_csrf_token_is_rejected(self):
+        self.log_in()
+        response = self.client.post(
+            self.posts_url, {"title": "No Token", "category": "books"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Post.objects.filter(title="No Token").exists())
+
+    def test_write_succeeds_with_the_token_login_returned(self):
+        response = self.create_post(self.log_in())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_the_token_from_before_login_no_longer_works(self):
+        # login() rotates the CSRF secret, which is why the login response
+        # carries a fresh token instead of leaving the client to reuse its own.
+        stale = self.start_session()
+        self.log_in()
+        self.assertEqual(
+            self.create_post(stale).status_code, status.HTTP_403_FORBIDDEN
+        )
+
+    def test_session_write_can_see_and_publish_a_draft(self):
+        # The admin page's whole job: drafts are invisible anonymously.
+        token = self.log_in()
+        draft = Post.objects.create(title="Hidden", category=Post.Category.BOOKS)
+        detail = reverse("post-detail", kwargs={"slug": draft.slug})
+
+        self.assertEqual(
+            self.client.get(detail).status_code, status.HTTP_200_OK
+        )
+        response = self.client.patch(
+            detail, {"status": "published"}, format="json", HTTP_X_CSRFTOKEN=token
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        draft.refresh_from_db()
+        self.assertIsNotNone(draft.published_at)
+
+    # --- logout -------------------------------------------------------------
+
+    def test_logout_ends_the_session(self):
+        token = self.log_in()
+        response = self.client.post(
+            self.logout_url, format="json", HTTP_X_CSRFTOKEN=token
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["authenticated"])
+        self.assertFalse(self.client.get(self.session_url).data["authenticated"])
+
+    def test_logout_requires_authentication(self):
+        response = self.client.post(
+            self.logout_url, format="json", HTTP_X_CSRFTOKEN=self.start_session()
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

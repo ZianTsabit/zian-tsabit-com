@@ -9,6 +9,7 @@ import Books from "./pages/Books";
 import Garage from "./pages/Garage";
 import About from "./pages/About";
 import CV from "./pages/CV";
+import Admin from "./pages/Admin";
 import './App.css'
 
 function App() {
@@ -44,6 +45,8 @@ function App() {
             <Route path="/projects" element={<Projects />} />
             <Route path="/books" element={<Books />} />
             <Route path="/garage" element={<Garage />} />
+            {/* Not in Header's navItems: the owner's page, not a visitor's. */}
+            <Route path="/admin" element={<Admin />} />
           </Routes>
         </Box>
         <Footer />

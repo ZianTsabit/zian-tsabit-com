@@ -6,14 +6,15 @@ from drf_spectacular.views import (
 )
 from rest_framework.routers import DefaultRouter
 
+from .auth import LoginView, LogoutView, SessionView
 from .views import PostViewSet
 
 router = DefaultRouter()
 router.register(r"posts", PostViewSet, basename="post")
 
 urlpatterns = [
-    # Docs first: the router's own index lives at "" and would otherwise be a
-    # candidate for these paths.
+    # Docs and auth first: the router's own index lives at "" and would
+    # otherwise be a candidate for these paths.
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "docs/",
@@ -21,5 +22,9 @@ urlpatterns = [
         name="swagger-ui",
     ),
     path("redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    # Session login for the SPA's admin page.
+    path("auth/session/", SessionView.as_view(), name="auth-session"),
+    path("auth/login/", LoginView.as_view(), name="auth-login"),
+    path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
     path("", include(router.urls)),
 ]
