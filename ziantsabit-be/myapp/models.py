@@ -12,6 +12,7 @@ class Post(models.Model):
     """
 
     class Category(models.TextChoices):
+        POSTS = "posts", "Posts"
         BOOKS = "books", "Books"
         PROJECTS = "projects", "Projects"
         GARAGE_SALE = "garage_sale", "Garage Sale"

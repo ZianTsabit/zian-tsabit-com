@@ -10,6 +10,7 @@ import { HEADER_HEIGHT } from "../constants/layout";
 const navItems = [
   { to: "/about", label: "About" },
   { to: "/curriculum-vitae", label: "CV" },
+  { to: "/posts", label: "Posts" },
   { to: "/books", label: "Books" },
   { to: "/projects", label: "Projects" },
   { to: "/garage", label: "Garage Sale" },

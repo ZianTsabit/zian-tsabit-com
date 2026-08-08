@@ -89,6 +89,18 @@ class PostAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual([r["slug"] for r in response.data["results"]], ["old-desk"])
 
+    def test_filter_by_posts_category(self):
+        ordinary = Post.objects.create(
+            title="Just a Post",
+            category=Post.Category.POSTS,
+            status=Post.Status.PUBLISHED,
+        )
+        response = self.client.get(self.list_url, {"category": "posts"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [r["slug"] for r in response.data["results"]], [ordinary.slug]
+        )
+
     def test_unknown_category_is_rejected(self):
         response = self.client.get(self.list_url, {"category": "book"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

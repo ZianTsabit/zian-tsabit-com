@@ -4,6 +4,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import { HEADER_HEIGHT } from "./constants/layout";
 import Home from "./pages/Home";
+import Posts from "./pages/Posts";
 import Projects from "./pages/Projects";
 import Books from "./pages/Books";
 import Garage from "./pages/Garage";
@@ -43,6 +44,11 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
             <Route path="/curriculum-vitae" element={<CV />} />
+            <Route path="/posts" element={<Posts />} />
+            <Route
+              path="/posts/:slug"
+              element={<PostDetail backTo="/posts" backLabel="Posts" />}
+            />
             <Route path="/projects" element={<Projects />} />
             <Route
               path="/projects/:slug"

@@ -12,6 +12,7 @@ import type { Post, PostCategory, PostPage } from "./posts";
 export type PostStatus = Post["status"];
 
 export const CATEGORIES: { value: PostCategory; label: string }[] = [
+  { value: "posts", label: "Posts" },
   { value: "books", label: "Books" },
   { value: "projects", label: "Projects" },
   { value: "garage_sale", label: "Garage Sale" },

@@ -1,11 +1,11 @@
 /**
  * Client for the Django posts API.
  *
- * There is one endpoint for all three sections -- /api/posts/ filtered by
+ * There is one endpoint for all four sections -- /api/posts/ filtered by
  * category -- which is why this replaced the per-section service stubs.
  */
 
-export type PostCategory = "books" | "projects" | "garage_sale";
+export type PostCategory = "posts" | "books" | "projects" | "garage_sale";
 
 /** One post, mirroring `myapp.serializers.PostSerializer`. */
 export interface Post {
@@ -32,6 +32,7 @@ export interface PostPage {
 
 /** Display label for a category, e.g. on the detail page's badge. */
 export const CATEGORY_LABELS: Record<PostCategory, string> = {
+  posts: "Posts",
   books: "Books",
   projects: "Projects",
   garage_sale: "Garage Sale",

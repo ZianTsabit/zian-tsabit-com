@@ -35,7 +35,7 @@ class PostViewSet(viewsets.ModelViewSet):
     can be exposed to the site without handing anyone a public delete button.
 
     Query params on list:
-      ?category=books|projects|garage_sale
+      ?category=posts|books|projects|garage_sale
       ?status=draft|published   (authenticated only; anonymous never sees drafts)
     """
 
