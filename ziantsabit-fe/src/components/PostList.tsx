@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import {
   Alert,
   Box,
@@ -9,27 +10,8 @@ import {
 
 import type { Post, PostCategory } from "../services/posts";
 import { usePosts } from "../services/usePosts";
+import Centered from "./Centered";
 import Typewriter from "./Typewriter";
-
-/** Wrapper for the three states that have nothing to list yet, so each one is
- *  centred in the space the page left over rather than clinging to the top. */
-function Centered({ children }: { children: React.ReactNode }) {
-  return (
-    <Box
-      sx={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 2,
-        py: 4,
-      }}
-    >
-      {children}
-    </Box>
-  );
-}
 
 function formatDate(post: Post): string {
   // published_at is null only on drafts, which the public API never returns;
@@ -44,19 +26,28 @@ function formatDate(post: Post): string {
   });
 }
 
-function PostCard({ post }: { post: Post }) {
+function PostCard({ post, to }: { post: Post; to: string }) {
   // Excerpt is the summary when there is one; otherwise the body stands in, so
   // a post written without an excerpt is not a bare title.
   const text = post.excerpt || post.body;
 
   return (
     <Box
-      component="article"
+      component={Link}
+      to={to}
       sx={{
+        display: "block",
         border: "1px solid",
         borderColor: "divider",
         borderRadius: 1,
         p: { xs: 2, sm: 2.5 },
+        textDecoration: "none",
+        color: "inherit",
+        transition: "border-color 0.15s ease, background-color 0.15s ease",
+        "&:hover": {
+          borderColor: "primary.main",
+          bgcolor: "action.hover",
+        },
       }}
     >
       <Stack
@@ -116,9 +107,18 @@ function PostCard({ post }: { post: Post }) {
  * Fetches and renders one category's posts.
  *
  * Needs an unbroken `flex: 1` chain from <main> to grow into, which is why the
- * pages using it make their Container a flex column.
+ * pages using it make their Container a flex column. `basePath` is the
+ * section's own route (e.g. "/books") -- it can't be derived from `category`
+ * since "garage_sale" doesn't match "/garage" -- and is where each card links,
+ * appending the post's slug.
  */
-function PostList({ category }: { category: PostCategory }) {
+function PostList({
+  category,
+  basePath,
+}: {
+  category: PostCategory;
+  basePath: string;
+}) {
   const { posts, next, phase, error, loadingMore, loadMore, retry } =
     usePosts(category);
 
@@ -161,7 +161,11 @@ function PostList({ category }: { category: PostCategory }) {
   return (
     <Stack sx={{ gap: 2, width: "100%" }}>
       {posts.map((post) => (
-        <PostCard key={post.slug} post={post} />
+        <PostCard
+          key={post.slug}
+          post={post}
+          to={`${basePath}/${encodeURIComponent(post.slug)}`}
+        />
       ))}
 
       {/* An error raised by load-more, with the rows already fetched still shown. */}

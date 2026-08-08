@@ -23,7 +23,7 @@ function Garage() {
           py: { xs: 4, md: 6 },
         }}
       >
-        <PostList category="garage_sale" />
+        <PostList category="garage_sale" basePath="/garage" />
       </Container>
     </Box>
   );

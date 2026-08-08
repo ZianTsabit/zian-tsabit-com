@@ -54,7 +54,7 @@ function Books() {
           - Umberto Eco
         </Typography>
 
-        <PostList category="books" />
+        <PostList category="books" basePath="/books" />
       </Container>
     </Box>
   );

@@ -10,6 +10,7 @@ import Garage from "./pages/Garage";
 import About from "./pages/About";
 import CV from "./pages/CV";
 import Admin from "./pages/Admin";
+import PostDetail from "./pages/PostDetail";
 import './App.css'
 
 function App() {
@@ -43,8 +44,20 @@ function App() {
             <Route path="/about" element={<About />} />
             <Route path="/curriculum-vitae" element={<CV />} />
             <Route path="/projects" element={<Projects />} />
+            <Route
+              path="/projects/:slug"
+              element={<PostDetail backTo="/projects" backLabel="Projects" />}
+            />
             <Route path="/books" element={<Books />} />
+            <Route
+              path="/books/:slug"
+              element={<PostDetail backTo="/books" backLabel="Books" />}
+            />
             <Route path="/garage" element={<Garage />} />
+            <Route
+              path="/garage/:slug"
+              element={<PostDetail backTo="/garage" backLabel="Garage" />}
+            />
             {/* Not in Header's navItems: the owner's page, not a visitor's. */}
             <Route path="/admin" element={<Admin />} />
           </Routes>

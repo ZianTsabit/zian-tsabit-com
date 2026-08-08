@@ -23,7 +23,7 @@ function Projects() {
                 py: { xs: 4, md: 6 },
                 }}
             >
-                <PostList category="projects" />
+                <PostList category="projects" basePath="/projects" />
             </Container>
         </Box>
     );
