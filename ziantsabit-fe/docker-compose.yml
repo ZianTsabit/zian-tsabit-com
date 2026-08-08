@@ -1,9 +1,31 @@
-version: "3.8"
-
+# `version:` is gone -- Compose v2 ignores it and warns that it is obsolete.
 services:
+  # Production image: nginx serving the built dist/. Changing a source file
+  # here needs `docker compose up --build` -- use frontend-dev instead.
   frontend:
     build: .
     container_name: ziantsabit-fe_frontend
     ports:
       - "8080:80"
     restart: always
+
+  # Vite dev server with hot module replacement:
+  #   docker compose --profile dev up
+  # then open http://localhost:5173. Behind a profile so a plain
+  # `docker compose up` still runs only the production service.
+  frontend-dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      target: dev
+    container_name: ziantsabit-fe_frontend_dev
+    ports:
+      - "5173:5173"
+    volumes:
+      # The source, live. Vite watches it, so an edit on the host reloads the
+      # browser -- no rebuild, no restart.
+      - .:/app
+      # Anonymous volume shadowing the bind mount, so the container keeps the
+      # node_modules npm install put in the image. Without it the host directory
+      # wins and the container starts with whatever (or nothing) is on the host.
+      - /app/node_modules
