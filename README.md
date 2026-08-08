@@ -89,7 +89,7 @@ python manage.py createsuperuser
 
 | Method | Path | |
 | --- | --- | --- |
-| `GET` | `/api/posts/` | List, 20 per page. `?category=books\|projects\|garage_sale`, `?status=draft\|published` |
+| `GET` | `/api/posts/` | List, 20 per page. `?category=posts\|books\|projects\|garage_sale`, `?status=draft\|published` |
 | `POST` | `/api/posts/` | Create |
 | `GET` | `/api/posts/{slug}/` | Retrieve |
 | `PUT` / `PATCH` | `/api/posts/{slug}/` | Replace / update |
@@ -178,7 +178,7 @@ See `ziantsabit-be/.env.example` for a copy-pasteable `.env`.
 
 ## Running the two together
 
-`/books`, `/projects` and `/garage` fetch their content from the API, so they need the backend up. Two terminals:
+`/books`, `/projects` and `/posts` fetch their content from the API, so they need the backend up. Two terminals:
 
 ```bash
 # terminal 1

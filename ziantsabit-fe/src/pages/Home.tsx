@@ -4,7 +4,7 @@ import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
-import Typewriter from "../components/Typewriter";
+import LatestUpdates from "../components/LatestUpdates";
 
 function Home() {
   return (
@@ -116,22 +116,23 @@ function Home() {
           </Typography>
         </Box>
 
-        {/* Typewriter Section */}
+        {/* Latest Updates feed */}
         <Box
           sx={{
             width: "100%",
             // Absorbs the leftover space instead of adding a fixed 30vh, which
-            // pushed the page just past the viewport on a phone.
+            // pushed the page just past the viewport on a phone. LatestUpdates
+            // centres its own loading/error/empty states via Centered, so this
+            // wrapper doesn't need alignItems/justifyContent itself -- doing
+            // both would also centre the populated card list, which should
+            // stay left-aligned and full width.
             flex: 1,
             minHeight: { xs: "20vh", sm: "30vh" },
             display: "flex",
             flexDirection: "column",
-            bgcolor: "transparent",
-            alignItems: "center",
-            justifyContent: "center",
           }}
         >
-          <Typewriter text="Coming soon..." />
+          <LatestUpdates limit={5} />
         </Box>
       </Container>
     </Box>

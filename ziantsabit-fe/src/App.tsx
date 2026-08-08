@@ -7,7 +7,6 @@ import Home from "./pages/Home";
 import Posts from "./pages/Posts";
 import Projects from "./pages/Projects";
 import Books from "./pages/Books";
-import Garage from "./pages/Garage";
 import About from "./pages/About";
 import CV from "./pages/CV";
 import Admin from "./pages/Admin";
@@ -58,11 +57,6 @@ function App() {
             <Route
               path="/books/:slug"
               element={<PostDetail backTo="/books" backLabel="Books" />}
-            />
-            <Route path="/garage" element={<Garage />} />
-            <Route
-              path="/garage/:slug"
-              element={<PostDetail backTo="/garage" backLabel="Garage" />}
             />
             {/* Not in Header's navItems: the owner's page, not a visitor's. */}
             <Route path="/admin" element={<Admin />} />

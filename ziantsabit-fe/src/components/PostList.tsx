@@ -26,7 +26,9 @@ function formatDate(post: Post): string {
   });
 }
 
-function PostCard({ post, to }: { post: Post; to: string }) {
+/** Exported for reuse by Home's "Latest Updates" feed, which mixes posts from
+ *  every category and so needs to build each card's `to` itself. */
+export function PostCard({ post, to }: { post: Post; to: string }) {
   // Excerpt is the summary when there is one; otherwise the body stands in, so
   // a post written without an excerpt is not a bare title.
   const text = post.excerpt || post.body;
@@ -108,8 +110,8 @@ function PostCard({ post, to }: { post: Post; to: string }) {
  *
  * Needs an unbroken `flex: 1` chain from <main> to grow into, which is why the
  * pages using it make their Container a flex column. `basePath` is the
- * section's own route (e.g. "/books") -- it can't be derived from `category`
- * since "garage_sale" doesn't match "/garage" -- and is where each card links,
+ * section's own route (e.g. "/books") -- a category's route isn't always
+ * derivable from the category value itself, so this is where each card links,
  * appending the post's slug.
  */
 function PostList({

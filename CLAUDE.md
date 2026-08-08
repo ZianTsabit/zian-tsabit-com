@@ -85,7 +85,7 @@ A child that should soak up leftover vertical space needs an unbroken `flex: 1` 
 Pages are built from `Box`/`Container`/`Stack` with inline `sx` — no CSS modules, no styled-components except `Typewriter`. Existing pages follow one of two shapes; copy the closer one:
 
 - **Content page** (`Home`, `CV`, `About`, `Books`): `Box` with `flex: 1`, `bgcolor: "transparent"`, `pt: { xs: 2, sm: 3 }`, wrapping a `Container maxWidth="md"`. Don't add bottom padding for breathing room — the footer's top border now terminates the page.
-- **Coming-soon placeholder** (`Projects`, `Garage` — byte-identical apart from the name): `bgcolor: "background.default"`, a flex-centered `Container maxWidth="md"`, and a single `<Typewriter text="Coming soon..." />`.
+- **List page** (`Projects`, `Posts`): `bgcolor: "background.default"`, a `Container maxWidth="md"` with `py: { xs: 4, md: 6 }`. `Typewriter text="Coming soon..."` only ever appears now as the *empty state* a section's post list renders itself when it has nothing published — not as page content a page author writes. There is no Garage page any more; see "Frontend/backend seam" below.
 
 Use `Container` (or explicit `px`) rather than a bare `maxWidth` on a `Box` — `Container` supplies the responsive side gutters that keep text off the screen edge on phones.
 
@@ -195,13 +195,20 @@ The image is `python:3.12-slim` running `runserver`, with `entrypoint.sh` applyi
 
 ## Frontend/backend seam
 
-`/books`, `/projects` and `/garage` render live data from `GET /api/posts/?category=…`. `/` and the CV/About pages are still hardcoded copy.
+`/books`, `/projects`, `/posts` and each one's `/…/:slug` detail route render live data from `GET /api/posts/`. `/` and the CV/About pages are still hardcoded copy, except Home's "Latest Updates" block, which is also live (see below).
 
-Three files, no HTTP client dependency — `fetch` and two hooks are enough:
+**There is no `/garage` page.** `Post.Category.GARAGE_SALE` is still a valid backend category — the admin console can still file a post under it — but nothing public links there any more; the page, its route, and its nav item were deleted. `VISIBLE_CATEGORIES` in `posts.ts` (`posts`, `books`, `projects`) is the list every cross-category view filters to, so a stray `garage_sale` post can never end up linked from a page that no longer exists.
 
-- **`src/services/posts.ts`** — types mirroring `PostSerializer`, plus `fetchPosts(category, signal)` and `fetchPostPage(url, signal)`. The per-section stubs (`Books.tsx`, `Projects.tsx`, `GarageSales.tsx`) were deleted: the API is one endpoint filtered by `category`, so they collapsed into this. `Updates.tsx` survives as a marker — Home's "Latest Updates" is not wired and has no category.
-- **`src/services/usePosts.ts`** — owns the four states a page has to render (loading / error / empty / populated) and appends pages via `loadMore`, since the API returns 20 per page.
-- **`src/components/PostList.tsx`** — renders those states. **It needs an unbroken `flex: 1` chain from `<main>`**, which is why all three pages make their `Container` a flex column; without it the loading spinner and the empty placeholder stop being vertically centred.
+**`/posts` is the odd one out: it browses every visible category, not just its own.** `/books` and `/projects` are still single-category pages built on `PostList` + `usePosts`, exactly as before. `/posts` instead has its own category filter (`TextField select`, defaulting to "All categories") and numbered `Pagination` instead of a "Load more" button — see `usePaginatedPosts.ts` and `Posts.tsx`.
+
+No HTTP client dependency anywhere — `fetch` plus a handful of hooks:
+
+- **`src/services/posts.ts`** — types mirroring `PostSerializer`, plus every fetch function: `fetchPosts(category, signal)` (one category), `fetchPost(slug, signal)` (one post, for a detail page — throws `PostNotFoundError` on a 404 so a "not found" state is distinguishable from a real error), `fetchLatestPosts(signal)` (newest posts across all categories, unfiltered — the API's default ordering is already newest-first), `fetchPostsPage({category, page}, signal)` (one numbered page, category optional), and the shared `fetchPostPage(url, signal)` they all funnel through. Also `CATEGORY_LABELS`, `CATEGORY_BASE_PATHS` (category → route, needed only where a caller doesn't already know its own category statically) and `VISIBLE_CATEGORIES`.
+- **`src/services/usePosts.ts`** — one category, loading/error/empty/populated, appends pages via `loadMore`. Used by `Books`/`Projects`.
+- **`src/services/usePost.ts`** — one post by slug, for a `PostDetail` page; adds a `not-found` phase on top of the usual three.
+- **`src/services/useLatestPosts.ts`** — newest `limit` posts across `VISIBLE_CATEGORIES`, no pagination. Backs Home's `LatestUpdates` component.
+- **`src/services/usePaginatedPosts.ts`** — one numbered page, category optional; backs `Posts.tsx`. When no category is given it filters `garage_sale` out client-side, so `count`/`totalPages` can run slightly high if any such post exists — not worth a backend change for a category the site no longer surfaces.
+- **`src/components/PostList.tsx`** — renders the four states for a single-category page; also exports `PostCard` so `LatestUpdates` and `Posts.tsx`'s all-categories view can reuse the same card without a second implementation. **Needs an unbroken `flex: 1` chain from `<main>`**, which is why every page using it makes its `Container` a flex column; without it the loading spinner and the empty placeholder stop being vertically centred. `src/components/Centered.tsx` is that centring wrapper, shared by `PostList`, `PostDetail` and `LatestUpdates`.
 
 `API_BASE_URL` is `import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api"`, typed in `src/vite-env.d.ts` and documented in `.env.example`. Trailing slashes are stripped, because `//posts/` earns an `APPEND_SLASH` redirect instead of a response.
 

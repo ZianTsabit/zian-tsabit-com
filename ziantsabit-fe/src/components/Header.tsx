@@ -13,7 +13,6 @@ const navItems = [
   { to: "/posts", label: "Posts" },
   { to: "/books", label: "Books" },
   { to: "/projects", label: "Projects" },
-  { to: "/garage", label: "Garage Sale" },
 ];
 
 function Header() {

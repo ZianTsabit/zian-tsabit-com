@@ -38,6 +38,33 @@ export const CATEGORY_LABELS: Record<PostCategory, string> = {
   garage_sale: "Garage Sale",
 };
 
+/** Route each category's list page lives at. Every other caller already knows
+ *  its own category statically; this exists for Home's "Latest Updates" feed
+ *  and the Posts page's "all categories" view, which mix posts from more than
+ *  one category and so have to look the route up per post.
+ *
+ *  `garage_sale` has no page of its own -- the category is still valid on the
+ *  backend, just with nothing public to browse it on -- so `VISIBLE_CATEGORIES`
+ *  filters those posts out of both feeds before this map is ever consulted for
+ *  one. The entry below only exists to keep this a total map over
+ *  `PostCategory`; it should never actually be reached.
+ */
+export const CATEGORY_BASE_PATHS: Record<PostCategory, string> = {
+  posts: "/posts",
+  books: "/books",
+  projects: "/projects",
+  garage_sale: "/posts",
+};
+
+/** Categories with a public page to browse them on -- everything except
+ *  `garage_sale`. Cross-category views (Home's "Latest Updates", the Posts
+ *  page's "all categories" filter) filter to this list so they never link to
+ *  the now-removed Garage Sale page. */
+export const VISIBLE_CATEGORIES: PostCategory[] = ["posts", "books", "projects"];
+
+// Matches REST_FRAMEWORK.PAGE_SIZE in settings.py.
+export const PAGE_SIZE = 20;
+
 // Trailing slashes are stripped so a value of "http://host/api/" cannot produce
 // a double slash, which Django's APPEND_SLASH handling answers with a redirect.
 export const API_BASE_URL = (
@@ -78,6 +105,29 @@ export async function fetchPosts(
 ): Promise<PostPage> {
   const url = `${API_BASE_URL}/posts/?category=${encodeURIComponent(category)}`;
   return fetchPostPage(url, signal);
+}
+
+/** Fetch the newest posts across every category, unfiltered -- for Home's
+ *  "Latest Updates" feed. The API's default ordering is already newest-first,
+ *  so the first page is exactly what a caller wants to take the top few from. */
+export async function fetchLatestPosts(signal?: AbortSignal): Promise<PostPage> {
+  return fetchPostPage(`${API_BASE_URL}/posts/`, signal);
+}
+
+/** Fetch one numbered page of posts, optionally filtered by category -- for
+ *  the Posts page's category filter + Prev/Next pagination. `page` omitted or
+ *  1 asks for the first page: DRF's PageNumberPagination treats a `page` param
+ *  of "1" the same as no param, so leaving it out for that case avoids a
+ *  meaningless `?page=1` in the URL. */
+export async function fetchPostsPage(
+  { category, page }: { category?: PostCategory; page?: number },
+  signal?: AbortSignal,
+): Promise<PostPage> {
+  const params = new URLSearchParams();
+  if (category) params.set("category", category);
+  if (page && page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return fetchPostPage(`${API_BASE_URL}/posts/${query ? `?${query}` : ""}`, signal);
 }
 
 /**
