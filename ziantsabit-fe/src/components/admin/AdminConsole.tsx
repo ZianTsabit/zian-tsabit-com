@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import {
   Alert,
   Box,
@@ -14,8 +15,8 @@ import {
   Typography,
 } from "@mui/material";
 
+import type { AdminOutletContext } from "./AdminOutletContext";
 import AdminPostList from "./AdminPostList";
-import PostEditor from "./PostEditor";
 import { ApiError } from "../../services/api";
 import {
   CATEGORIES,
@@ -28,29 +29,25 @@ import { useAdminPosts } from "../../services/useAdminPosts";
 
 const ALL = "";
 
-interface Props {
-  username: string | null;
-  onSignOut: () => void;
-  /** Re-checks the session; called when a write comes back 403. */
-  onSessionSuspect: () => void;
-}
-
 /**
- * The signed-in half of the admin page.
+ * The signed-in half of the admin page: the post list plus its filters.
  *
- * Split out from `Admin` so `useAdminPosts` is only ever mounted behind a valid
- * session -- a hook cannot be called conditionally, and fetching the list while
- * the login form is still on screen would just be a request thrown away.
+ * Rendered as `/admin`'s index route via `<Outlet>`, so `useAdminPosts` is only
+ * ever mounted behind a valid session -- a hook cannot be called conditionally,
+ * and fetching the list while the login form is still on screen would just be
+ * a request thrown away.
  */
-function AdminConsole({ username, onSignOut, onSessionSuspect }: Props) {
+function AdminConsole() {
+  const { username, onSignOut, onSessionSuspect } =
+    useOutletContext<AdminOutletContext>();
+  const navigate = useNavigate();
+
   const [category, setCategory] = useState<string>(ALL);
   const [status, setStatus] = useState<string>(ALL);
   const list = useAdminPosts(category, status);
   // Stable across renders, unlike `list` itself, so the callbacks below are too.
   const { reload } = list;
 
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editing, setEditing] = useState<Post | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Post | null>(null);
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -83,9 +80,19 @@ function AdminConsole({ username, onSignOut, onSessionSuspect }: Props) {
     [handleFailure, reload],
   );
 
-  const openEditor = (post: Post | null) => {
-    setEditing(post);
-    setEditorOpen(true);
+  const openEditor = (post: Post) => {
+    // The post is already in memory from the list just rendered, so it rides
+    // along as router state -- AdminEditPost opens with it instantly instead
+    // of re-fetching what's already on screen.
+    navigate(`/admin/edit/${encodeURIComponent(post.slug)}`, { state: { post } });
+  };
+
+  const handleNewPost = () => {
+    // A post created while looking at a filtered list lands back in that same
+    // section, unless the filter is "all".
+    navigate("/admin/new", {
+      state: { category: (category as PostCategory) || undefined },
+    });
   };
 
   const handleToggleStatus = (post: Post) =>
@@ -123,7 +130,7 @@ function AdminConsole({ username, onSignOut, onSessionSuspect }: Props) {
         </Box>
 
         <Stack direction="row" sx={{ gap: 1, flexShrink: 0 }}>
-          <Button variant="contained" onClick={() => openEditor(null)}>
+          <Button variant="contained" onClick={handleNewPost}>
             New post
           </Button>
           <Button color="inherit" onClick={onSignOut}>
@@ -184,18 +191,6 @@ function AdminConsole({ username, onSignOut, onSessionSuspect }: Props) {
         onEdit={openEditor}
         onToggleStatus={handleToggleStatus}
         onDelete={setPendingDelete}
-      />
-
-      <PostEditor
-        open={editorOpen}
-        post={editing}
-        // A new post lands in the section being looked at, unless that is "all".
-        defaultCategory={(category as PostCategory) || undefined}
-        onClose={() => setEditorOpen(false)}
-        onSaved={() => {
-          setEditorOpen(false);
-          reload();
-        }}
       />
 
       <Dialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)}>

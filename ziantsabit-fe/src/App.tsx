@@ -10,6 +10,9 @@ import Books from "./pages/Books";
 import About from "./pages/About";
 import CV from "./pages/CV";
 import Admin from "./pages/Admin";
+import AdminConsole from "./components/admin/AdminConsole";
+import AdminNewPost from "./pages/AdminNewPost";
+import AdminEditPost from "./pages/AdminEditPost";
 import PostDetail from "./pages/PostDetail";
 import './App.css'
 
@@ -58,8 +61,14 @@ function App() {
               path="/books/:slug"
               element={<PostDetail backTo="/books" backLabel="Books" />}
             />
-            {/* Not in Header's navItems: the owner's page, not a visitor's. */}
-            <Route path="/admin" element={<Admin />} />
+            {/* Not in Header's navItems: the owner's page, not a visitor's.
+                Nested so `Admin` checks the session exactly once and hands it
+                down via `<Outlet context>` to whichever of these is active. */}
+            <Route path="/admin" element={<Admin />}>
+              <Route index element={<AdminConsole />} />
+              <Route path="new" element={<AdminNewPost />} />
+              <Route path="edit/:slug" element={<AdminEditPost />} />
+            </Route>
           </Routes>
         </Box>
         <Footer />

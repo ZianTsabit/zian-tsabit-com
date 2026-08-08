@@ -1,6 +1,7 @@
 import { Alert, Box, Button, CircularProgress, Container } from "@mui/material";
+import { Outlet } from "react-router-dom";
 
-import AdminConsole from "../components/admin/AdminConsole";
+import type { AdminOutletContext } from "../components/admin/AdminOutletContext";
 import LoginForm from "../components/admin/LoginForm";
 import { useSession } from "../services/auth";
 
@@ -13,6 +14,13 @@ import { useSession } from "../services/auth";
  *
  * Wider than the content pages (`lg`, not `md`) because a row here carries a
  * title, a slug, two labels, a date and three buttons.
+ *
+ * This is a route shell, not a single page: `App.tsx` nests the post list
+ * (index route) and `AdminNewPost` ("new") underneath it, so session-checking
+ * happens exactly once here rather than once per nested route. The signed-in
+ * case hands both a `useSession` caller would otherwise have to re-derive --
+ * `username`, `onSignOut`, `onSessionSuspect` -- down through `<Outlet
+ * context>`, typed by `AdminOutletContext`.
  */
 function Admin() {
   const { phase, username, error, signIn, signOut, recheck } = useSession();
@@ -73,10 +81,14 @@ function Admin() {
         {phase === "signed-out" && <LoginForm onSubmit={signIn} />}
 
         {phase === "signed-in" && (
-          <AdminConsole
-            username={username}
-            onSignOut={() => void signOut()}
-            onSessionSuspect={recheck}
+          <Outlet
+            context={
+              {
+                username,
+                onSignOut: () => void signOut(),
+                onSessionSuspect: recheck,
+              } satisfies AdminOutletContext
+            }
           />
         )}
       </Container>

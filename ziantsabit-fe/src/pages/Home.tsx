@@ -1,9 +1,9 @@
-import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
+import FlipPhoto from "../components/FlipPhoto";
 import LatestUpdates from "../components/LatestUpdates";
 
 function Home() {
@@ -35,14 +35,12 @@ function Home() {
             textAlign: { xs: "center", sm: "left" }
           }}
         >
-          <Avatar
+          <FlipPhoto
             alt="Zian Tsabit"
-            src="/pp-github.png"
-            sx={{ 
-              width: { xs: 100, sm: 120 },
-              height: { xs: 100, sm: 120 },
-              mx: { xs: "auto", sm: "8px" },
-            }}
+            frontSrc="/pp-github.png"
+            backSrc="/professional-photo.jpeg"
+            size={{ xs: 100, sm: 120 }}
+            sx={{ mx: { xs: "auto", sm: "8px" } }}
           />
           <Stack
             direction="column"

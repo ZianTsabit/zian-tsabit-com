@@ -1,0 +1,319 @@
+import type { ReactNode } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkBreaks from "remark-breaks";
+import remarkGfm from "remark-gfm";
+import { Box } from "@mui/material";
+
+const FONT = "'Ubuntu', sans-serif";
+
+/**
+ * Markdown headings are demoted one level.
+ *
+ * The page already spends its single `<h1>` on the post title, so a `#` in the
+ * body becomes an `<h2>` element -- two `<h1>`s on one page is a genuine
+ * screen-reader problem. The *visual* size still follows what was typed, so
+ * the author's hierarchy reads the way they wrote it. `######` has nowhere
+ * left to go and stays an `<h6>`.
+ */
+const HEADINGS = {
+  h1: { as: "h2", size: { xs: "20px", sm: "24px" } },
+  h2: { as: "h3", size: { xs: "18px", sm: "21px" } },
+  h3: { as: "h4", size: { xs: "17px", sm: "19px" } },
+  h4: { as: "h5", size: { xs: "16px", sm: "18px" } },
+  h5: { as: "h6", size: { xs: "16px", sm: "17px" } },
+  h6: { as: "h6", size: { xs: "15px", sm: "16px" } },
+} as const;
+
+function heading(level: keyof typeof HEADINGS) {
+  const { as, size } = HEADINGS[level];
+  return function Heading({ children }: { children?: ReactNode }) {
+    return (
+      <Box
+        component={as}
+        sx={{
+          fontFamily: FONT,
+          fontWeight: "bold",
+          fontSize: size,
+          color: "text.primary",
+          // Bound to the heading's top so it groups with the text it
+          // introduces rather than floating between two blocks.
+          mt: 3,
+          mb: 1,
+          "&:first-of-type": { mt: 0 },
+        }}
+      >
+        {children}
+      </Box>
+    );
+  };
+}
+
+const components: Components = {
+  h1: heading("h1"),
+  h2: heading("h2"),
+  h3: heading("h3"),
+  h4: heading("h4"),
+  h5: heading("h5"),
+  h6: heading("h6"),
+
+  p: ({ children }) => (
+    <Box
+      component="p"
+      sx={{
+        fontFamily: FONT,
+        fontSize: { xs: "15px", sm: "17px" },
+        color: "text.primary",
+        lineHeight: 1.7,
+        my: 2,
+        // A justified ~35-character phone line opens visible rivers of
+        // whitespace, so justification is sm and up only -- same rule the
+        // rest of the site follows.
+        textAlign: { xs: "left", sm: "justify" },
+      }}
+    >
+      {children}
+    </Box>
+  ),
+
+  a: ({ href, children }) => {
+    // A bare "#anchor" or a relative path stays in the tab it was clicked in.
+    const external = /^https?:\/\//.test(href ?? "");
+    return (
+      <Box
+        component="a"
+        href={href}
+        target={external ? "_blank" : undefined}
+        rel={external ? "noopener noreferrer" : undefined}
+        sx={{ color: "primary.main", textDecoration: "underline" }}
+      >
+        {children}
+      </Box>
+    );
+  },
+
+  ul: ({ children }) => (
+    <Box
+      component="ul"
+      sx={{
+        fontFamily: FONT,
+        fontSize: { xs: "15px", sm: "17px" },
+        color: "text.primary",
+        lineHeight: 1.7,
+        my: 2,
+        pl: 3,
+      }}
+    >
+      {children}
+    </Box>
+  ),
+
+  ol: ({ children }) => (
+    <Box
+      component="ol"
+      sx={{
+        fontFamily: FONT,
+        fontSize: { xs: "15px", sm: "17px" },
+        color: "text.primary",
+        lineHeight: 1.7,
+        my: 2,
+        pl: 3,
+      }}
+    >
+      {children}
+    </Box>
+  ),
+
+  li: ({ children }) => <Box component="li" sx={{ mb: 0.5 }}>{children}</Box>,
+
+  blockquote: ({ children }) => (
+    <Box
+      component="blockquote"
+      sx={{
+        borderLeft: "3px solid",
+        borderColor: "divider",
+        pl: 2,
+        my: 2,
+        mx: 0,
+        color: "text.secondary",
+        fontStyle: "italic",
+      }}
+    >
+      {children}
+    </Box>
+  ),
+
+  hr: () => (
+    <Box
+      component="hr"
+      sx={{ border: 0, borderTop: "1px solid", borderColor: "divider", my: 3 }}
+    />
+  ),
+
+  // Inline code. A fenced block's <code> sits inside <pre>, which resets these
+  // below -- the block already supplies its own background and padding.
+  code: ({ children }) => (
+    <Box
+      component="code"
+      sx={{
+        fontFamily: "monospace",
+        fontSize: "0.9em",
+        bgcolor: "background.paper",
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 0.5,
+        px: 0.75,
+        py: 0.25,
+      }}
+    >
+      {children}
+    </Box>
+  ),
+
+  pre: ({ children }) => (
+    <Box
+      component="pre"
+      sx={{
+        bgcolor: "background.paper",
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 1,
+        p: 2,
+        my: 2,
+        // A long line pans inside its own box; letting it widen the page would
+        // put a horizontal scrollbar on the whole document.
+        overflowX: "auto",
+        "& code": {
+          bgcolor: "transparent",
+          border: 0,
+          p: 0,
+          fontSize: { xs: "13px", sm: "14px" },
+        },
+      }}
+    >
+      {children}
+    </Box>
+  ),
+
+  table: ({ children }) => (
+    // Same reason as <pre>: a wide table scrolls in its own container rather
+    // than stretching the page.
+    <Box sx={{ overflowX: "auto", my: 2 }}>
+      <Box
+        component="table"
+        sx={{
+          fontFamily: FONT,
+          fontSize: { xs: "14px", sm: "15px" },
+          color: "text.primary",
+          borderCollapse: "collapse",
+          width: "100%",
+        }}
+      >
+        {children}
+      </Box>
+    </Box>
+  ),
+
+  th: ({ children }) => (
+    <Box
+      component="th"
+      sx={{
+        border: "1px solid",
+        borderColor: "divider",
+        px: 1.5,
+        py: 1,
+        textAlign: "left",
+        fontWeight: "bold",
+      }}
+    >
+      {children}
+    </Box>
+  ),
+
+  td: ({ children }) => (
+    <Box
+      component="td"
+      sx={{ border: "1px solid", borderColor: "divider", px: 1.5, py: 1 }}
+    >
+      {children}
+    </Box>
+  ),
+
+  img: ({ src, alt }) => (
+    <Box
+      component="img"
+      src={typeof src === "string" ? src : undefined}
+      alt={alt ?? ""}
+      sx={{ maxWidth: "100%", height: "auto", borderRadius: 1, my: 2 }}
+    />
+  ),
+};
+
+/**
+ * Flatten Markdown to bare text, for the card previews that fall back to the
+ * body when a post has no excerpt.
+ *
+ * Deliberately regex rather than a real parse: the output is a one-or-two-line
+ * teaser that gets clamped anyway, so "close enough, and cheap" beats pulling
+ * the whole AST just to throw it away. It only has to stop `## Heading` and
+ * `[text](url)` from showing up as literal syntax on a card.
+ */
+export function toPlainText(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]*)`/g, "$1")
+    // Images before links: image syntax is link syntax with a leading "!".
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s{0,3}(?:[-*+]|\d+\.)\s+/gm, "")
+    .replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, " ")
+    // Tables: drop the `| --- | --- |` separator row outright, then unwrap the
+    // remaining rows so their cells read as words instead of `| one | two |`.
+    // Runs after the horizontal-rule rule above, which only matches a line of
+    // bare dashes and so never eats a separator row.
+    .replace(/^\s*\|[-:\s|]*\|\s*$/gm, " ")
+    .replace(/^\s*\|(.*)\|\s*$/gm, "$1")
+    .replace(/\s*\|\s*/g, " ")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Renders a post body written in Markdown.
+ *
+ * `react-markdown` does not render raw HTML unless `rehype-raw` is added, so
+ * a body containing `<script>` is shown as text rather than executed -- worth
+ * keeping that way, since post bodies are stored and replayed verbatim.
+ *
+ * Plugins:
+ * - `remark-gfm` for tables, strikethrough and autolinks.
+ * - `remark-breaks` so a single newline is still a line break. Bodies written
+ *   before this page understood Markdown were rendered with `pre-line`, and
+ *   without this plugin every one of them would silently reflow into one
+ *   paragraph.
+ */
+function Markdown({ children }: { children: string }) {
+  return (
+    <Box
+      sx={{
+        // The first and last blocks' own margins would otherwise add to the
+        // gap the surrounding Stack already provides.
+        "& > *:first-of-type": { mt: 0 },
+        "& > *:last-child": { mb: 0 },
+      }}
+    >
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkBreaks]}
+        components={components}
+      >
+        {children}
+      </ReactMarkdown>
+    </Box>
+  );
+}
+
+export default Markdown;

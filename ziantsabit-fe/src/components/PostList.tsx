@@ -11,6 +11,7 @@ import {
 import type { Post, PostCategory } from "../services/posts";
 import { usePosts } from "../services/usePosts";
 import Centered from "./Centered";
+import { toPlainText } from "./Markdown";
 import Typewriter from "./Typewriter";
 
 function formatDate(post: Post): string {
@@ -30,8 +31,9 @@ function formatDate(post: Post): string {
  *  every category and so needs to build each card's `to` itself. */
 export function PostCard({ post, to }: { post: Post; to: string }) {
   // Excerpt is the summary when there is one; otherwise the body stands in, so
-  // a post written without an excerpt is not a bare title.
-  const text = post.excerpt || post.body;
+  // a post written without an excerpt is not a bare title. The body is
+  // Markdown, so it is flattened first -- a card is no place for `## Heading`.
+  const text = post.excerpt || toPlainText(post.body);
 
   return (
     <Box
@@ -96,6 +98,13 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
             // of ~35 characters opens rivers of whitespace, hence sm and up only.
             whiteSpace: "pre-line",
             textAlign: { xs: "left", sm: "justify" },
+            // A card is a teaser. Bodies are Markdown documents now, so an
+            // unclamped fallback preview can run to the length of the whole
+            // post; three lines keeps every card the same rough size.
+            display: "-webkit-box",
+            WebkitBoxOrient: "vertical",
+            WebkitLineClamp: 3,
+            overflow: "hidden",
           }}
         >
           {text}

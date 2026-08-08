@@ -94,6 +94,14 @@ export function fetchAdminPostPage(
   return apiRequest<PostPage>(url, { signal });
 }
 
+/** One post by slug, drafts included -- for the edit page when it's reached
+ *  without the post already in hand (a direct link, or a page reload). The
+ *  common path (clicking "Edit" from the list) skips this and passes the post
+ *  through router state instead, since the list already has it in memory. */
+export function fetchAdminPost(slug: string, signal?: AbortSignal): Promise<Post> {
+  return apiRequest<Post>(`/posts/${encodeURIComponent(slug)}/`, { signal });
+}
+
 export function createPost(draft: PostDraft): Promise<Post> {
   return apiRequest<Post>("/posts/", { method: "POST", body: payload(draft) });
 }
