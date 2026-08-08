@@ -1,5 +1,5 @@
 """
-URL configuration for zian_tsabit_be project.
+URL configuration for ziantsabit_be project.
 
 The `urlpatterns` list routes URLs to views. For more information please see:
     https://docs.djangoproject.com/en/5.2/topics/http/urls/

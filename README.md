@@ -5,8 +5,8 @@ My portfolio website — a React SPA plus a Django content API.
 The two halves are independent projects that happen to share a repo. Each has its own `Dockerfile` and `docker-compose.yml`, and there is **no root-level build, package manager or compose file** tying them together: you run and build them separately, from their own directories.
 
 ```
-zian-tsabit-com/      React 19 + TypeScript + Vite  (the live site)
-zian_tsabit_be/       Django + DRF                  (posts API)
+ziantsabit-fe/        React 19 + TypeScript + Vite  (the live site)
+ziantsabit-be/        Django + DRF                  (posts API)
 ```
 
 ## Prerequisites
@@ -15,16 +15,17 @@ zian_tsabit_be/       Django + DRF                  (posts API)
 | --- | --- | --- |
 | Node.js | **20.19+ or 22.12+** | Required by Vite 7. On Node 18, `npm run build` still passes but `npm run dev` fails with `TypeError: crypto.hash is not a function`. |
 | Python | 3.10+ | The container image uses 3.12. |
+| PostgreSQL | 16+ | Required for the backend even outside Docker — there is no sqlite fallback. `docker compose up` starts one for you; running the backend bare needs your own. |
 | Docker | Compose v2 | Optional — only for the containerised runs below. |
 
 ---
 
 ## Frontend
 
-All commands run from `zian-tsabit-com/`.
+All commands run from `ziantsabit-fe/`.
 
 ```bash
-cd zian-tsabit-com
+cd ziantsabit-fe
 npm install
 npm run dev
 ```
@@ -49,7 +50,7 @@ npm run build
 ### Frontend in Docker
 
 ```bash
-cd zian-tsabit-com
+cd ziantsabit-fe
 docker compose up --build
 ```
 
@@ -61,10 +62,16 @@ Routing is client-side, so `dist/` contains no `about.html` — any static host 
 
 ## Backend
 
-All commands run from `zian_tsabit_be/`.
+All commands run from `ziantsabit-be/`. The database is Postgres, with no sqlite fallback, so create it before the first `migrate`:
 
 ```bash
-cd zian_tsabit_be
+createdb zian_tsabit_be   # or: psql -c "CREATE DATABASE zian_tsabit_be"
+```
+
+That matches `settings.py`'s defaults (`POSTGRES_DB` and `POSTGRES_USER` both `zian_tsabit_be`, `POSTGRES_PASSWORD=postgres`, on `localhost:5432`) — either create a matching role, or copy `ziantsabit-be/.env.example` to `.env` and point the `POSTGRES_*` variables at whatever server you already have.
+
+```bash
+cd ziantsabit-be
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -72,9 +79,7 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-The API is then at <http://localhost:8000/api/> and Swagger UI at <http://localhost:8000/api/docs/>.
-
-`db.sqlite3` is committed, so there is no database to create — but it contains no user account. Create one for the admin and for any write request:
+The API is then at <http://localhost:8000/api/> and Swagger UI at <http://localhost:8000/api/docs/>. A fresh database has no user account — create one for the admin and for any write request:
 
 ```bash
 python manage.py createsuperuser
@@ -125,13 +130,13 @@ Run the schema check after editing a serializer or viewset. Note that `?category
 ### Backend in Docker
 
 ```bash
-cd zian_tsabit_be
+cd ziantsabit-be
 docker compose up --build
 ```
 
-Serves the same URLs on port 8000. Migrations are applied on every start by `entrypoint.sh`, and the source tree is bind-mounted so autoreload and `db.sqlite3` writes behave like a local run.
+Starts a `db` (Postgres 16, named volume) alongside `api`; `api` waits for `db`'s healthcheck before its own `entrypoint.sh` applies migrations on every start. The source tree is still bind-mounted so autoreload picks up edits, but the database itself is not — it lives in the `postgres_data` volume, independent of the host.
 
-The container runs as UID 1000 rather than root. Because the database is a bind-mounted host file, **if `id -u` on your machine is not 1000 the mounted `db.sqlite3` is read-only to the container and startup fails on the migrate** — uncomment the `user:` line in `docker-compose.yml`.
+The container runs as UID 1000 rather than root; that no longer has anything to do with the database (which is reached over the network now), just standard non-root hygiene.
 
 Useful once it is up:
 
@@ -144,7 +149,7 @@ docker compose down
 
 ### Environment variables
 
-Read by `zian_tsabit_be/settings.py`; the defaults are what a bare `manage.py runserver` uses.
+Read by `ziantsabit-be/ziantsabit_be/settings.py`; the defaults are what a bare `manage.py runserver` uses.
 
 | Variable | Default | |
 | --- | --- | --- |
@@ -152,6 +157,13 @@ Read by `zian_tsabit_be/settings.py`; the defaults are what a bare `manage.py ru
 | `DJANGO_ALLOWED_HOSTS` | `localhost 127.0.0.1 [::1]` | Space-separated |
 | `DJANGO_SECRET_KEY` | the insecure dev key | Set this for anything deployed |
 | `CORS_ALLOWED_ORIGINS` | `:5173`, `:4173`, `:8080` on localhost and 127.0.0.1 | Space-separated. Must include whichever origin serves the SPA |
+| `POSTGRES_DB` | `zian_tsabit_be` | |
+| `POSTGRES_USER` | `zian_tsabit_be` | |
+| `POSTGRES_PASSWORD` | `postgres` | Dev-only default; set a real one for anything deployed |
+| `POSTGRES_HOST` | `localhost` | `db` inside docker-compose |
+| `POSTGRES_PORT` | `5432` | |
+
+See `ziantsabit-be/.env.example` for a copy-pasteable `.env`.
 
 ---
 
@@ -170,13 +182,13 @@ Read by `zian_tsabit_be/settings.py`; the defaults are what a bare `manage.py ru
 
 ```bash
 # terminal 1
-cd zian_tsabit_be && source .venv/bin/activate && python manage.py runserver
+cd ziantsabit-be && source .venv/bin/activate && python manage.py runserver
 
 # terminal 2
-cd zian-tsabit-com && npm run dev
+cd ziantsabit-fe && npm run dev
 ```
 
-The SPA reads its API location from `VITE_API_BASE_URL`, defaulting to `http://localhost:8000/api` — the default is correct for the setup above, so there is nothing to configure locally. To point it elsewhere, copy `zian-tsabit-com/.env.example` to `.env`. **Vite inlines env vars at build time**, so a change means restarting `npm run dev` or rebuilding.
+The SPA reads its API location from `VITE_API_BASE_URL`, defaulting to `http://localhost:8000/api` — the default is correct for the setup above, so there is nothing to configure locally. To point it elsewhere, copy `ziantsabit-fe/.env.example` to `.env`. **Vite inlines env vars at build time**, so a change means restarting `npm run dev` or rebuilding.
 
 The two are always on different origins, so every request is cross-origin. `CORS_ALLOWED_ORIGINS` on the backend already lists `:5173`, `:4173` and `:8080`; **an origin missing from that list gets its responses discarded by the browser**, which surfaces as the same "Could not reach the API" message as a backend that is simply down.
 

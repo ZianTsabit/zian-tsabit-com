@@ -15,10 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY . .
 
-# UID 1000 matches the first user account on a typical Linux host, so the
-# bind-mounted db.sqlite3 stays writable. Override with `user:` in compose if
-# `id -u` on your machine says otherwise, or migrate will fail on a read-only
-# database.
+# The database is Postgres now, reached over the network rather than a
+# bind-mounted file, so nothing here needs write access to the host's copy of
+# the source tree -- this is just standard non-root hygiene.
 RUN useradd --uid 1000 --create-home --shell /bin/bash app \
     && chown -R app:app /app
 USER app

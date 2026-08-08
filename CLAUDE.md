@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Personal portfolio website (ziantsabit.com). Two independent sub-projects in one repo, each with its own Dockerfile and docker-compose.yml — there is no root-level build, package manager, or orchestration that ties them together.
 
-- `zian-tsabit-com/` — React 19 + TypeScript + Vite SPA (the live site)
-- `zian_tsabit_be/` — Django backend, still scaffolding
+- `ziantsabit-fe/` — React 19 + TypeScript + Vite SPA (the live site)
+- `ziantsabit-be/` — Django backend, still scaffolding
 
 ## Commands
 
-Frontend (run from `zian-tsabit-com/`):
+Frontend (run from `ziantsabit-fe/`):
 
 ```bash
 npm install
@@ -22,7 +22,7 @@ npm run preview    # serve the built dist/
 docker compose up --build   # multi-stage build -> nginx on :8080
 ```
 
-Backend (run from `zian_tsabit_be/`):
+Backend (run from `ziantsabit-be/`):
 
 ```bash
 pip install -r requirements.txt
@@ -132,7 +132,7 @@ Routing is client-side, so `/about`, `/books`, … exist only in `App.tsx` — t
 
 ## Backend status
 
-`myapp` is installed and serves one working resource: a DRF `ModelViewSet` over `Post`. `requirements.txt` is `Django>=4.2` plus `djangorestframework>=3.15`. Database is SQLite (`db.sqlite3`, committed). Postgres and MinIO compose files existed but were removed in `29dd34b`.
+`myapp` is installed and serves one working resource: a DRF `ModelViewSet` over `Post`. `requirements.txt` is `Django>=4.2` plus `djangorestframework>=3.15`. **Database is Postgres, with no sqlite fallback anywhere** — a MinIO compose file existed alongside an earlier Postgres setup and was removed in `29dd34b`, but Postgres itself came back via `psycopg[binary]` and the `db` service in `docker-compose.yml`. `settings.py`'s `DATABASES` reads `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`, defaulting to `zian_tsabit_be`/`zian_tsabit_be`/`postgres`/`localhost`/`5432` — those defaults resolve inside Docker (`POSTGRES_HOST=db` there) but a bare `manage.py runserver` needs its own reachable Postgres server; there is deliberately no zero-setup fallback, so `createdb zian_tsabit_be` (or a matching role) is a prerequisite, not optional. See `ziantsabit-be/.env.example`.
 
 ### The Post model
 
@@ -158,7 +158,7 @@ Routed at `api/` from the project `urls.py` via `myapp/urls.py`'s `DefaultRouter
 
 **Lookup is by `slug`, not `id`** (`lookup_field = "slug"`), matching the URLs the frontend will use.
 
-`permission_classes = [IsAuthenticatedOrReadOnly]`: reads are open, writes need a logged-in user. Auth is session (for the browsable API while logged into `/admin/`) plus basic (`curl -u`). There is no user in the committed `db.sqlite3` — `manage.py createsuperuser` before trying a write by hand.
+`permission_classes = [IsAuthenticatedOrReadOnly]`: reads are open, writes need a logged-in user. Auth is session (for the browsable API while logged into `/admin/`) plus basic (`curl -u`). A fresh database has no user in it — `manage.py createsuperuser` before trying a write by hand.
 
 Two deliberate details in `PostViewSet.get_queryset`:
 
@@ -187,10 +187,9 @@ Swagger UI and ReDoc load their JS from a CDN, so the pages need internet; the `
 
 `SECRET_KEY`, `DEBUG` and `ALLOWED_HOSTS` read the environment (`DJANGO_SECRET_KEY`, `DEBUG`, `DJANGO_ALLOWED_HOSTS`), with defaults that keep a bare `manage.py runserver` behaving as it did. The compose file had been passing `DEBUG` and `DJANGO_ALLOWED_HOSTS` since it was written while `settings.py` hardcoded both, so those variables did nothing; changing one and seeing no effect was the symptom.
 
-The image is `python:3.12-slim` running `runserver`, with `entrypoint.sh` applying migrations before handing off to `CMD` — a fresh container has no other opportunity to create `myapp_post`, and the API 500s on its first request without it. Two constraints:
+The image is `python:3.12-slim` running `runserver`, with `entrypoint.sh` applying migrations before handing off to `CMD` — a fresh container has no other opportunity to create `myapp_post`, and the API 500s on its first request without it. `docker-compose.yml`'s `api` service has `depends_on: db: condition: service_healthy`, so that migrate never races Postgres's own startup — without it, `entrypoint.sh` would sometimes hit a port nothing is listening on yet.
 
-- **It runs as UID 1000 (`app`), not root.** Compose bind-mounts the source tree, so `db.sqlite3` is the host's file; if `id -u` on the host is not 1000 the mounted database is read-only to the container and the migrate on start fails. The commented-out `user:` line in `docker-compose.yml` is the fix.
-- **`.dockerignore` excludes `db.sqlite3`**, so the image never carries a copy of the dev database. Compose runs still use the host one through the mount.
+**It runs as UID 1000 (`app`), not root** — plain non-root hygiene now that the database is Postgres reached over the network rather than a bind-mounted file. The earlier UID-matching requirement (`db.sqlite3` had to be writable by the container's user, which meant it had to be writable by whatever `id -u` the host reported) no longer applies: Postgres's data directory lives in the `postgres_data` named volume, not a bind mount, so no host UID matters for it.
 
 `requirements.txt` pins nothing but lower bounds, and it shows: the container resolves **Django 6.0** while a local venv built earlier may hold 5.2. The suite passes on both, but pin the versions if that drift matters.
 

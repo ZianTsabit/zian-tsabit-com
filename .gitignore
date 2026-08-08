@@ -27,3 +27,7 @@ dist-ssr
 __pycache__
 .env
 minio_data/
+
+# Postgres is now the only backend; a stray local sqlite file would be dead
+# weight, not a fallback.
+ziantsabit-be/db.sqlite3

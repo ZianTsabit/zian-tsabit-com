@@ -1,5 +1,5 @@
 """
-ASGI config for zian_tsabit_be project.
+ASGI config for ziantsabit_be project.
 
 It exposes the ASGI callable as a module-level variable named ``application``.
 
@@ -11,6 +11,6 @@ import os
 
 from django.core.asgi import get_asgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'zian_tsabit_be.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ziantsabit_be.settings')
 
 application = get_asgi_application()

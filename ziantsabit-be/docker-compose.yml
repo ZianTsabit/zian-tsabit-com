@@ -1,0 +1,61 @@
+# `version:` is gone -- Compose v2 ignores it and warns that it is obsolete.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ziantsabit-be_db
+    environment:
+      # Same three names the postgres image itself reads on first boot, and
+      # what settings.py's POSTGRES_* defaults point at.
+      POSTGRES_DB: "zian_tsabit_be"
+      POSTGRES_USER: "zian_tsabit_be"
+      POSTGRES_PASSWORD: "postgres"
+    volumes:
+      # Named volume, not a bind mount: Postgres's data directory is not
+      # something a host user should edit by hand, unlike the old db.sqlite3.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zian_tsabit_be -d zian_tsabit_be"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build: .
+    container_name: ziantsabit-be_api
+    ports:
+      - "8000:8000"
+    environment:
+      # settings.py reads all of these now; before this some were passed and ignored.
+      DEBUG: "1"
+      DJANGO_ALLOWED_HOSTS: "localhost 127.0.0.1 [::1]"
+      DJANGO_SECRET_KEY: "django-insecure-local-compose-only"
+      POSTGRES_DB: "zian_tsabit_be"
+      POSTGRES_USER: "zian_tsabit_be"
+      POSTGRES_PASSWORD: "postgres"
+      POSTGRES_HOST: "db"
+      POSTGRES_PORT: "5432"
+    volumes:
+      # Source mount, so runserver's autoreload picks up edits.
+      - .:/app
+    depends_on:
+      # Waits for pg_isready, not just container start -- entrypoint.sh's
+      # migrate would otherwise race Postgres's own startup and fail.
+      db:
+        condition: service_healthy
+    healthcheck:
+      # No curl in python:3.12-slim, and the image already has Python. /api/
+      # is public, so this needs no credentials.
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/api/').status"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
