@@ -1,16 +1,5 @@
 import { Box, Container, Stack, Typography } from "@mui/material";
 import SectionHeading from "../components/SectionHeading";
-import { TagChipRow } from "../components/TagChip";
-
-const interests = [
-  "Indonesian novels",
-  "Eka Kurniawan",
-  "Films",
-  "Swimming",
-  "The Beatles",
-  "Bob Dylan",
-  "Guitar",
-];
 
 const bodyStyle = {
   fontFamily: "'Ubuntu', sans-serif",
@@ -137,7 +126,7 @@ function About() {
         {/* Outside of work */}
         <Box sx={{ mb: 4 }}>
           <SectionHeading>🎧 Outside of Work</SectionHeading>
-          <Typography component="div" sx={{ ...bodyStyle, mb: 2 }}>
+          <Typography component="div" sx={bodyStyle}>
             I love spending time with books—especially Indonesian novels, with
             Eka Kurniawan as my favorite author—watching movies, and swimming,
             which I usually do about four times a week. Music is also a big part
@@ -145,7 +134,6 @@ function About() {
             learning new things, and recently I’ve started learning to play the
             guitar, inspired by the anime <em>Bocchi the Rock!</em>
           </Typography>
-          <TagChipRow labels={interests} />
         </Box>
       </Container>
     </Box>
