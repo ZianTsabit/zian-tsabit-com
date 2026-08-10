@@ -15,6 +15,11 @@ export interface Post {
   category: PostCategory;
   excerpt: string;
   body: string;
+  /** Lead image, shown on the card and above the body. Empty string, never
+   *  null, when the post has none -- it is a blank CharField on the model. */
+  cover_image_url: string;
+  /** Alt text for the cover. Blank falls back to the title at render time. */
+  cover_image_alt: string;
   status: "draft" | "published";
   /** Null only on drafts, which an unauthenticated caller never receives. */
   published_at: string | null;

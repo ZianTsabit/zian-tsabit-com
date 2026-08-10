@@ -7,3 +7,10 @@ django-cors-headers>=4.4
 # psycopg3's binary wheel bundles libpq, so no system Postgres client headers
 # are needed to install this.
 psycopg[binary]>=3.2
+# Uploaded images go to an S3-compatible bucket (MinIO locally). The `s3` extra
+# pulls boto3; the backend is the same one a real S3/R2 deployment would use, so
+# moving off MinIO is an environment change rather than a code change.
+django-storages[s3]>=1.14
+# Required by DRF's ImageField, which is what actually verifies an upload is an
+# image rather than a renamed archive with an image Content-Type.
+Pillow>=10.0

@@ -40,7 +40,11 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
       component={Link}
       to={to}
       sx={{
-        display: "block",
+        display: "flex",
+        // A cover image leads the card on a wide screen and sits on top of it
+        // on a phone, where 120px of thumbnail would leave the title no room.
+        flexDirection: { xs: "column", sm: "row" },
+        gap: { xs: 1.5, sm: 2 },
         border: "1px solid",
         borderColor: "divider",
         borderRadius: 1,
@@ -54,6 +58,27 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
         },
       }}
     >
+      {post.cover_image_url && (
+        <Box
+          component="img"
+          src={post.cover_image_url}
+          // Empty alt, not the title: the card's own heading already says what
+          // this links to, so announcing it twice is noise. A cover with real
+          // alt text still contributes it.
+          alt={post.cover_image_alt}
+          loading="lazy"
+          sx={{
+            width: { xs: "100%", sm: 120 },
+            height: { xs: 160, sm: 120 },
+            flexShrink: 0,
+            objectFit: "cover",
+            borderRadius: 1,
+            bgcolor: "background.paper",
+          }}
+        />
+      )}
+
+      <Box sx={{ minWidth: 0, flex: 1 }}>
       <Stack
         direction={{ xs: "column", sm: "row" }}
         sx={{
@@ -110,6 +135,7 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
           {text}
         </Typography>
       )}
+      </Box>
     </Box>
   );
 }

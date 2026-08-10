@@ -20,6 +20,47 @@ services:
       retries: 5
     restart: unless-stopped
 
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: ziantsabit-be_minio
+    environment:
+      MINIO_ROOT_USER: "minioadmin"
+      MINIO_ROOT_PASSWORD: "minioadmin"
+    command: server /data --console-address ":9001"
+    ports:
+      # 9000 is the S3 API. It is published because the *browser* loads every
+      # post image straight from it -- see AWS_S3_PUBLIC_ENDPOINT_URL below.
+      - "9000:9000"
+      # 9001 is the web console, for looking at what got uploaded.
+      - "9001:9001"
+    volumes:
+      # Named volume, like postgres_data: the earlier standalone MinIO compose
+      # file bind-mounted ./minio_data, which put a server's storage layout in
+      # the working tree.
+      - minio_data:/data
+    healthcheck:
+      # No curl in the MinIO image; its own binary can make the request.
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  minio-init:
+    # One-shot: create the bucket and make it readable without a signature.
+    # Runs to completion and exits, which is why it has no `restart` policy.
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    container_name: ziantsabit-be_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >-
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/ziantsabit-media &&
+      mc anonymous set download local/ziantsabit-media
+      "
+
   api:
     build: .
     container_name: ziantsabit-be_api
@@ -35,6 +76,15 @@ services:
       POSTGRES_PASSWORD: "postgres"
       POSTGRES_HOST: "db"
       POSTGRES_PORT: "5432"
+      AWS_STORAGE_BUCKET_NAME: "ziantsabit-media"
+      AWS_S3_ACCESS_KEY_ID: "minioadmin"
+      AWS_S3_SECRET_ACCESS_KEY: "minioadmin"
+      # Django -> MinIO, over the compose network.
+      AWS_S3_ENDPOINT_URL: "http://minio:9000"
+      # browser -> MinIO. `minio` is not a name the host can resolve, so image
+      # URLs have to be built from the published port instead. Getting this
+      # wrong is invisible on upload and breaks every <img> on the site.
+      AWS_S3_PUBLIC_ENDPOINT_URL: "http://localhost:9000"
     volumes:
       # Source mount, so runserver's autoreload picks up edits.
       - .:/app
@@ -43,6 +93,10 @@ services:
       # migrate would otherwise race Postgres's own startup and fail.
       db:
         condition: service_healthy
+      # Nothing reads the bucket until someone uploads, so the API only needs
+      # minio-init to have finished, not to have started before it.
+      minio-init:
+        condition: service_completed_successfully
     healthcheck:
       # No curl in python:3.12-slim, and the image already has Python. /api/
       # is public, so this needs no credentials.
@@ -59,3 +113,4 @@ services:
 
 volumes:
   postgres_data:
+  minio_data:

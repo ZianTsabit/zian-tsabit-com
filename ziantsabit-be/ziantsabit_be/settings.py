@@ -207,6 +207,69 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+
+# Uploaded images
+# ---------------
+# Post images live in an S3-compatible bucket -- MinIO in development, via the
+# `minio` service in docker-compose.yml -- rather than on the API container's
+# disk, which is ephemeral and would lose every upload on a rebuild.
+#
+# Two endpoints, and they are genuinely different addresses:
+#
+#   AWS_S3_ENDPOINT_URL         Django -> MinIO. Inside Docker this is
+#                               http://minio:9000, a name only the compose
+#                               network resolves.
+#   AWS_S3_PUBLIC_ENDPOINT_URL  browser -> MinIO. Has to be an address the
+#                               visitor's machine can reach, so it cannot be
+#                               the internal one.
+#
+# Getting this wrong is the classic MinIO-behind-Docker bug: uploads succeed,
+# and every <img> on the site points at a host the browser has never heard of.
+AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME', 'ziantsabit-media')
+AWS_S3_ACCESS_KEY_ID = os.environ.get('AWS_S3_ACCESS_KEY_ID', 'minioadmin')
+AWS_S3_SECRET_ACCESS_KEY = os.environ.get('AWS_S3_SECRET_ACCESS_KEY', 'minioadmin')
+AWS_S3_ENDPOINT_URL = os.environ.get('AWS_S3_ENDPOINT_URL', 'http://localhost:9000')
+AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
+
+# MinIO serves buckets as a path (host/bucket/key), not as a subdomain, unless
+# you own wildcard DNS for it. boto3 defaults to virtual-host style and would
+# address a bucket nobody can resolve.
+AWS_S3_ADDRESSING_STYLE = 'path'
+
+# The bucket is public-read (docker-compose.yml's `minio-init` sets that policy),
+# so object URLs need no signature. Signed URLs expire, which would rot every
+# image on a page a visitor -- or a CDN -- had cached.
+AWS_QUERYSTRING_AUTH = False
+
+# Per-object ACLs are an S3 feature MinIO only partly implements; the bucket
+# policy is what makes objects readable, so don't send an ACL at all.
+AWS_DEFAULT_ACL = None
+
+# Never clobber an existing key. The upload view already appends a random
+# suffix, so this is the second half of the same guarantee.
+AWS_S3_FILE_OVERWRITE = False
+
+_public_endpoint = os.environ.get(
+    'AWS_S3_PUBLIC_ENDPOINT_URL', AWS_S3_ENDPOINT_URL
+).rstrip('/')
+_public_scheme, _, _public_host = _public_endpoint.rpartition('://')
+# django-storages builds a URL as `{AWS_S3_URL_PROTOCOL}//{AWS_S3_CUSTOM_DOMAIN}/{key}`,
+# and with path-style addressing the bucket is part of that host-and-path prefix.
+AWS_S3_URL_PROTOCOL = f'{_public_scheme or "http"}:'
+AWS_S3_CUSTOM_DOMAIN = f'{_public_host}/{AWS_STORAGE_BUCKET_NAME}'
+
+STORAGES = {
+    'default': {'BACKEND': 'storages.backends.s3.S3Storage'},
+    'staticfiles': {
+        'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+    },
+}
+
+# Largest image the upload endpoint accepts, in bytes. Django spools anything
+# over FILE_UPLOAD_MAX_MEMORY_SIZE to a temp file, so this is a policy limit
+# rather than a memory guard.
+MAX_UPLOAD_SIZE = int(os.environ.get('MAX_UPLOAD_SIZE', 10 * 1024 * 1024))
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 

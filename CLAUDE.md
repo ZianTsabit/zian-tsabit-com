@@ -32,6 +32,7 @@ python manage.py test              # whole suite
 python manage.py test myapp.tests.ClassName.test_name   # single test
 python manage.py spectacular --validate --fail-on-warn --file /dev/null   # check OpenAPI schema
 docker compose up --build          # Django dev server on :8000, Swagger at /api/docs/
+                                   # also starts MinIO: S3 API on :9000, console on :9001
 ```
 
 No test runner is configured for the frontend.
@@ -100,6 +101,7 @@ Responsive values use the MUI breakpoint object form (`{ xs: "12px", sm: "14px",
 
 - `Header.tsx` owns everything in `sx` — there is no longer a `Header.css`. A scroll listener flips `isScrolled` past 50px, which swaps `bgcolor` between `transparent` and `palette.headerScrolled` under a `background-color` transition. It had to move out of CSS because a hardcoded `rgba(0,0,0,0.85)` cannot follow the colour scheme.
 - `Footer.tsx` is copyright plus LinkedIn/GitHub/Email. It uses `@mui/icons-material` icons rather than the CDN devicon images the CV header uses, so the glyphs take `currentColor` and follow the theme instead of staying fixed-colour.
+- `CoverImageField.tsx` is the post form's lead-image control: upload button, preview, remove, alt text, **and an editable URL field**. The URL stays visible rather than hidden behind the picker because an image already hosted elsewhere is a perfectly good cover, and there is no reason to force a re-upload to use one. It tracks a `broken` flag off the preview's `onError` so a URL pointing nowhere says so, instead of showing the browser's broken-image glyph unexplained.
 - `SectionHeading.tsx` and `TagChip.tsx` (with its `TagChipRow` export) are shared by the CV and About pages — they were duplicated inline before, so both pages drifting apart was a matter of time. Reuse them rather than restyling a heading or pill locally.
 - `TimelineItem.tsx` renders one LinkedIn-style entry: an absolutely positioned dot plus a `&::before` rail that runs from under the dot to the bottom of the entry, so consecutive items join into one continuous line. Pass `last` on the final entry of a section to suppress the trailing rail. Title and date sit on one row at `sm`+ and stack at `xs`.
 - `Typewriter.tsx` is the one emotion `styled()` component. Width is driven by a `--characters` CSS custom property computed from `text.length`, typed via `interface CustomStyles extends React.CSSProperties`; the animation loops forever, so it reads as a placeholder, not a one-shot reveal.
@@ -116,10 +118,11 @@ Post bodies are Markdown. `src/components/Markdown.tsx` renders them and is the 
 - **Wide blocks scroll in their own box.** `<pre>` and `<table>` carry `overflowX: auto` — see the "nothing may widen the page" rule above.
 - `toPlainText()` (exported from the same file) flattens Markdown for card previews, which fall back to the body when a post has no excerpt. It is regex, not a parse, on purpose: the output is a clamped teaser.
 
-The editor is `src/components/admin/MarkdownEditor.tsx` (Write/Preview tabs, toolbar, shortcuts) over the pure transforms in `markdownCommands.ts`. Two things there are deliberate and easy to break:
+The editor is `src/components/admin/MarkdownEditor.tsx` (Write/Preview tabs, toolbar, shortcuts) over the pure transforms in `markdownCommands.ts`. Three things there are deliberate and easy to break:
 
 - **Every edit goes through `document.execCommand("insertText")`.** It is deprecated and it is still the only way to make a programmatic edit that the browser's native undo stack knows about. Assign to the textarea's value instead and Ctrl+Z after a toolbar click throws away the whole field.
 - **Tab is trapped, and Escape releases it for one keypress.** Without that opt-out a keyboard-only user cannot get from the body to the Save button.
+- **The image button captures the caret *before* opening the file dialog.** The dialog takes focus, and a blurred textarea reports `selectionStart === selectionEnd === 0` in some browsers — without the saved position every upload lands at the top of the body. The upload runs on selection, then `insertImage` (in `markdownCommands.ts`) writes `![](url)` with the caret parked between the brackets, since the URL is known by then and only the alt text is still the author's to write.
 
 ### Content and assets
 
@@ -147,7 +150,7 @@ Routing is client-side, so `/about`, `/books`, … exist only in `App.tsx` — t
 
 ## Backend status
 
-`myapp` is installed and serves one working resource: a DRF `ModelViewSet` over `Post`. `requirements.txt` is `Django>=4.2` plus `djangorestframework>=3.15`. **Database is Postgres, with no sqlite fallback anywhere** — a MinIO compose file existed alongside an earlier Postgres setup and was removed in `29dd34b`, but Postgres itself came back via `psycopg[binary]` and the `db` service in `docker-compose.yml`. `settings.py`'s `DATABASES` reads `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`, defaulting to `zian_tsabit_be`/`zian_tsabit_be`/`postgres`/`localhost`/`5432` — those defaults resolve inside Docker (`POSTGRES_HOST=db` there) but a bare `manage.py runserver` needs its own reachable Postgres server; there is deliberately no zero-setup fallback, so `createdb zian_tsabit_be` (or a matching role) is a prerequisite, not optional. See `ziantsabit-be/.env.example`.
+`myapp` is installed and serves two resources: a DRF `ModelViewSet` over `Post`, and an image upload endpoint. `requirements.txt` is `Django>=4.2` and `djangorestframework>=3.16`, plus `django-storages[s3]` and `Pillow` for uploads. **Database is Postgres, with no sqlite fallback anywhere** — a MinIO compose file existed alongside an earlier Postgres setup and was removed in `29dd34b`; both came back, Postgres via `psycopg[binary]` and the `db` service, MinIO via the `minio` service (see "Object storage" below). `settings.py`'s `DATABASES` reads `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`, defaulting to `zian_tsabit_be`/`zian_tsabit_be`/`postgres`/`localhost`/`5432` — those defaults resolve inside Docker (`POSTGRES_HOST=db` there) but a bare `manage.py runserver` needs its own reachable Postgres server; there is deliberately no zero-setup fallback, so `createdb zian_tsabit_be` (or a matching role) is a prerequisite, not optional. See `ziantsabit-be/.env.example`.
 
 ### The Post model
 
@@ -158,6 +161,8 @@ Two things happen in `Post.save()` rather than in the serializer, so they hold f
 - **`slug` is derived from `title` when left blank**, and deduped with a `-2`, `-3` suffix. It stays writable so a URL can be pinned by hand. A slug of only whitespace passes the model's unique check and then collides inside `save()`, which surfaces as a 500 — `PostSerializer.validate_slug` rejects it as a 400 first.
 - **`status="published"` with no `published_at` stamps it `now()`**. `Meta.ordering` is `["-published_at", "-created_at"]`, so without that a published post with a null date would sort below every draft.
 
+**`cover_image_url` is a `URLField`, not an `ImageField`** (with `cover_image_alt` beside it, blank falling back to the title at render time). The bytes are uploaded separately, through `/api/uploads/images/`, and the post only ever stores the URL that came back. That is what lets the New Post form attach an image before the post exists — an `ImageField` has nothing to hang an upload off until after the first save — and it makes a cover and an inline `![](...)` in the body the same kind of thing, so one endpoint serves both. The cost is that nothing links a bucket object back to the post using it; see "Object storage".
+
 ### API surface
 
 Routed at `api/` from the project `urls.py` via `myapp/urls.py`'s `DefaultRouter`; `DefaultRouter` also serves the index at `/api/` and the browsable HTML API.
@@ -167,6 +172,7 @@ Routed at `api/` from the project `urls.py` via `myapp/urls.py`'s `DefaultRouter
 | `GET /api/posts/` | list, paginated 20 per page (`?category=`, `?status=`) |
 | `POST /api/posts/` | create |
 | `GET|PUT|PATCH|DELETE /api/posts/{slug}/` | detail |
+| `POST /api/uploads/images/` | multipart image upload, authenticated only; returns `{url, name}` |
 | `GET /api/schema/` | OpenAPI 3 document (drf-spectacular) |
 | `GET /api/docs/` | Swagger UI |
 | `GET /api/redoc/` | ReDoc |
@@ -179,6 +185,32 @@ Two deliberate details in `PostViewSet.get_queryset`:
 
 - **Drafts are filtered for anonymous users on every route, not just the list.** Filtering only the list would still hand an unpublished post to anyone who guessed its slug.
 - **An unknown `?category=` or `?status=` is a 400, not an empty result.** Dropping an unrecognised filter silently would answer a typo'd `?category=book` with every post on the site.
+
+### Object storage and image uploads
+
+Post images live in an S3-compatible bucket — MinIO locally, via the `minio` service — not on the API container's disk, which is ephemeral and would drop every upload on a rebuild. `django-storages`' S3 backend is the `default` entry in `STORAGES`, so this is the same code path a real S3/R2 deployment would use: moving off MinIO is an environment change, not a code change.
+
+**The two endpoint settings are different addresses, and confusing them is the classic MinIO-behind-Docker bug** — uploads succeed and every `<img>` on the site points at a host the browser has never heard of:
+
+| | |
+| --- | --- |
+| `AWS_S3_ENDPOINT_URL` | Django → MinIO. `http://minio:9000` in Docker, a name only the compose network resolves. |
+| `AWS_S3_PUBLIC_ENDPOINT_URL` | browser → MinIO. Must be reachable from a visitor's machine. Derived into `AWS_S3_CUSTOM_DOMAIN`, which is what actually appears in stored URLs. |
+
+A deployment needs the public one set to a real host; it defaults to the internal one, which is only correct when they genuinely are the same.
+
+Three more settings are load-bearing:
+
+- **`AWS_S3_ADDRESSING_STYLE = 'path'`.** boto3 defaults to virtual-host style (`bucket.host`), which needs wildcard DNS MinIO does not have.
+- **`AWS_QUERYSTRING_AUTH = False`, and the bucket is public-read.** `minio-init` sets `mc anonymous set download` on it. Presigned URLs were the alternative and are wrong here: they expire, so every image on a page a visitor or CDN had cached would rot.
+- **`AWS_DEFAULT_ACL = None`.** Per-object ACLs are an S3 feature MinIO only partly implements; the bucket policy is what makes objects readable.
+
+`myapp/uploads.py` holds the endpoint. Two details worth keeping:
+
+- **The stored extension comes from Pillow's verdict on the bytes, not the filename.** DRF's `ImageField` is what makes this more than a file drop — a renamed archive with an `image/png` Content-Type is rejected, and a JPEG uploaded as `photo.png` is stored as `.jpg`. SVG is excluded by construction, since Pillow cannot open it.
+- **Keys are `uploads/YYYY/MM/<slug>-<random hex>.<ext>`.** Date-partitioned so the bucket stays browsable, random-suffixed so two `screenshot.png`s cannot collide and a key is not guessable from a filename.
+
+**Deleting a post does not delete its images.** That is deliberate rather than missing: an inline image's only record that it is referenced at all is Markdown text inside `body`, which any edit can silently invalidate, so reference-counting would be unreliable exactly where it mattered. Occasional orphans beat a scheme that quietly deletes a live image.
 
 ### Swagger / OpenAPI
 
@@ -196,13 +228,17 @@ Swagger UI and ReDoc load their JS from a CDN, so the pages need internet; the `
 
 ### Tests
 
-`myapp/tests.py` is a real suite (23 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, filter validation, basic-auth writes, and each CRUD verb for both anonymous and authenticated callers. Run it with `python manage.py test`.
+`myapp/tests.py` is a real suite (50 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, and the upload endpoint. Run it with `python manage.py test`.
+
+**`ImageUploadTests` overrides `STORAGES` to `InMemoryStorage`**, so the suite never needs MinIO running and never leaves test objects in a real bucket. The view only calls `save()`/`url()` on the default storage, so the swap exercises the same code path. Keep any new storage test under that decorator.
 
 ### Settings and the container
 
 `SECRET_KEY`, `DEBUG` and `ALLOWED_HOSTS` read the environment (`DJANGO_SECRET_KEY`, `DEBUG`, `DJANGO_ALLOWED_HOSTS`), with defaults that keep a bare `manage.py runserver` behaving as it did. The compose file had been passing `DEBUG` and `DJANGO_ALLOWED_HOSTS` since it was written while `settings.py` hardcoded both, so those variables did nothing; changing one and seeing no effect was the symptom.
 
 The image is `python:3.12-slim` running `runserver`, with `entrypoint.sh` applying migrations before handing off to `CMD` — a fresh container has no other opportunity to create `myapp_post`, and the API 500s on its first request without it. `docker-compose.yml`'s `api` service has `depends_on: db: condition: service_healthy`, so that migrate never races Postgres's own startup — without it, `entrypoint.sh` would sometimes hit a port nothing is listening on yet.
+
+Compose runs four services, not two: `db`, `minio`, a one-shot `minio-init`, and `api`. **`minio-init` creates the bucket and makes it public-read**, and `api` waits on it with `condition: service_completed_successfully` — the bucket has to exist before the first upload, and nothing else creates it. It exits 0 and stays exited; that is not a crash. Both MinIO images are pinned to a `RELEASE.*` tag, and note that **quay.io deletes old MinIO tags** — the ones in the removed `minio/docker-compose.yml` from `29dd34b` no longer resolve, so a pull failure here usually means the tag was reaped rather than that anything is wrong locally.
 
 **It runs as UID 1000 (`app`), not root** — plain non-root hygiene now that the database is Postgres reached over the network rather than a bind-mounted file. The earlier UID-matching requirement (`db.sqlite3` had to be writable by the container's user, which meant it had to be writable by whatever `id -u` the host reported) no longer applies: Postgres's data directory lives in the `postgres_data` named volume, not a bind mount, so no host UID matters for it.
 
@@ -223,7 +259,8 @@ No HTTP client dependency anywhere — `fetch` plus a handful of hooks:
 - **`src/services/usePost.ts`** — one post by slug, for a `PostDetail` page; adds a `not-found` phase on top of the usual three.
 - **`src/services/useLatestPosts.ts`** — newest `limit` posts across `VISIBLE_CATEGORIES`, no pagination. Backs Home's `LatestUpdates` component.
 - **`src/services/usePaginatedPosts.ts`** — one numbered page, category optional; backs `Posts.tsx`. When no category is given it filters `garage_sale` out client-side, so `count`/`totalPages` can run slightly high if any such post exists — not worth a backend change for a category the site no longer surfaces.
-- **`src/components/PostList.tsx`** — renders the four states for a single-category page; also exports `PostCard` so `LatestUpdates` and `Posts.tsx`'s all-categories view can reuse the same card without a second implementation. **Needs an unbroken `flex: 1` chain from `<main>`**, which is why every page using it makes its `Container` a flex column; without it the loading spinner and the empty placeholder stop being vertically centred. `src/components/Centered.tsx` is that centring wrapper, shared by `PostList`, `PostDetail` and `LatestUpdates`.
+- **`src/services/uploads.ts`** — `uploadImage(file, signal)` against `POST /api/uploads/images/`, plus `ACCEPT_ATTRIBUTE` and `MAX_UPLOAD_BYTES`, which mirror `ALLOWED_FORMATS` and `MAX_UPLOAD_SIZE` on the backend. Those client-side checks are a courtesy that avoids a pointless round trip; **the server re-checks the bytes, and that is the check that counts.** Used by both `CoverImageField` and the editor's image button.
+- **`src/components/PostList.tsx`** — renders the four states for a single-category page; also exports `PostCard` so `LatestUpdates` and `Posts.tsx`'s all-categories view can reuse the same card without a second implementation. **Needs an unbroken `flex: 1` chain from `<main>`**, which is why every page using it makes its `Container` a flex column; without it the loading spinner and the empty placeholder stop being vertically centred. `src/components/Centered.tsx` is that centring wrapper, shared by `PostList`, `PostDetail` and `LatestUpdates`. `PostCard` renders `cover_image_url` when a post has one — a leading 120px square at `sm`+, full-width on top at `xs`, where 120px of thumbnail would leave the title no room — and is unchanged for posts without one. `PostDetail` renders the same image full-width under the category chip. Both pass `cover_image_alt` straight through, so a blank one correctly marks the image decorative rather than repeating the title a screen reader has already read.
 
 `API_BASE_URL` is `import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api"`, typed in `src/vite-env.d.ts` and documented in `.env.example`. Trailing slashes are stripped, because `//posts/` earns an `APPEND_SLASH` redirect instead of a response.
 
@@ -233,3 +270,4 @@ Points worth keeping intact:
 - **`fetch` rejects identically for a dead backend and a CORS failure** — the browser only ever says `Failed to fetch`. `posts.ts` rewrites that into `Could not reach the API at <url>. Is the backend running?` with a Retry button, because the raw message tells nobody anything.
 - **The empty state is the old `Coming soon...` typewriter.** A section with no posts looks exactly as the page did before it was wired, so publishing the first post is what changes the page.
 - **`CORS_ALLOWED_ORIGINS` must list whatever origin serves the SPA.** Defaults cover `:5173` (dev), `:4173` (preview) and `:8080` (nginx container); a deployed site needs its real origin added or every response is discarded by the browser.
+- **`api.ts` sends `FormData` untouched and must not name its `Content-Type`.** The header carries the multipart boundary, which only the browser knows; setting it by hand — even to the apparently correct `multipart/form-data` — produces a boundary-less header that Django parses as an empty request, so the upload arrives with no file and fails validation. Everything that is not `FormData` is still JSON-serialised as before, which is why a post write stays a plain JSON request even though its cover came from an upload.
