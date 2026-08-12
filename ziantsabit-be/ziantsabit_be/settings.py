@@ -210,39 +210,42 @@ STATIC_URL = 'static/'
 
 # Uploaded images
 # ---------------
-# Post images live in an S3-compatible bucket -- MinIO in development, via the
-# `minio` service in docker-compose.yml -- rather than on the API container's
-# disk, which is ephemeral and would lose every upload on a rebuild.
+# Post images live in an S3-compatible bucket -- RustFS in development, via the
+# `rustfs` service in docker-compose.yml -- rather than on the API container's
+# disk, which is ephemeral and would lose every upload on a rebuild. Nothing
+# below names the server: this is django-storages' generic S3 backend, which is
+# why replacing MinIO with RustFS was a compose change and not a code change.
 #
 # Two endpoints, and they are genuinely different addresses:
 #
-#   AWS_S3_ENDPOINT_URL         Django -> MinIO. Inside Docker this is
-#                               http://minio:9000, a name only the compose
+#   AWS_S3_ENDPOINT_URL         Django -> RustFS. Inside Docker this is
+#                               http://rustfs:9000, a name only the compose
 #                               network resolves.
-#   AWS_S3_PUBLIC_ENDPOINT_URL  browser -> MinIO. Has to be an address the
+#   AWS_S3_PUBLIC_ENDPOINT_URL  browser -> RustFS. Has to be an address the
 #                               visitor's machine can reach, so it cannot be
 #                               the internal one.
 #
-# Getting this wrong is the classic MinIO-behind-Docker bug: uploads succeed,
-# and every <img> on the site points at a host the browser has never heard of.
+# Getting this wrong is the classic object-storage-behind-Docker bug: uploads
+# succeed, and every <img> points at a host the browser has never heard of.
 AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME', 'ziantsabit-media')
-AWS_S3_ACCESS_KEY_ID = os.environ.get('AWS_S3_ACCESS_KEY_ID', 'minioadmin')
-AWS_S3_SECRET_ACCESS_KEY = os.environ.get('AWS_S3_SECRET_ACCESS_KEY', 'minioadmin')
+AWS_S3_ACCESS_KEY_ID = os.environ.get('AWS_S3_ACCESS_KEY_ID', 'rustfsadmin')
+AWS_S3_SECRET_ACCESS_KEY = os.environ.get('AWS_S3_SECRET_ACCESS_KEY', 'rustfsadmin')
 AWS_S3_ENDPOINT_URL = os.environ.get('AWS_S3_ENDPOINT_URL', 'http://localhost:9000')
 AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
 
-# MinIO serves buckets as a path (host/bucket/key), not as a subdomain, unless
-# you own wildcard DNS for it. boto3 defaults to virtual-host style and would
-# address a bucket nobody can resolve.
+# A self-hosted bucket is served as a path (host/bucket/key), not as a
+# subdomain, unless you own wildcard DNS for it. boto3 defaults to virtual-host
+# style and would address a bucket nobody can resolve.
 AWS_S3_ADDRESSING_STYLE = 'path'
 
-# The bucket is public-read (docker-compose.yml's `minio-init` sets that policy),
-# so object URLs need no signature. Signed URLs expire, which would rot every
-# image on a page a visitor -- or a CDN -- had cached.
+# The bucket is public-read (docker-compose.yml's `storage-init` puts that
+# policy on it), so object URLs need no signature. Signed URLs expire, which
+# would rot every image on a page a visitor -- or a CDN -- had cached.
 AWS_QUERYSTRING_AUTH = False
 
-# Per-object ACLs are an S3 feature MinIO only partly implements; the bucket
-# policy is what makes objects readable, so don't send an ACL at all.
+# Per-object ACLs are unsupported by RustFS by design (and were only partly
+# implemented by MinIO); the bucket policy is what makes objects readable, so
+# don't send an ACL at all.
 AWS_DEFAULT_ACL = None
 
 # Never clobber an existing key. The upload view already appends a random
