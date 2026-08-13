@@ -28,6 +28,16 @@ class Post(models.Model):
     category = models.CharField(max_length=20, choices=Category.choices)
     excerpt = models.TextField(blank=True)
     body = models.TextField(blank=True)
+    # The post's lead image, shown on its card and above the body. A URL rather
+    # than an ImageField because the bytes are uploaded separately, through
+    # /api/uploads/images/: the New Post form has to be able to attach an image
+    # before the post it belongs to exists, and an ImageField has nothing to
+    # hang that upload off until after the first save. It also means a cover and
+    # an inline `![](...)` in the body are the same kind of thing -- a URL.
+    cover_image_url = models.URLField(max_length=500, blank=True)
+    # Falls back to the title at render time; a decorative cover is better
+    # described by nothing than by its filename.
+    cover_image_alt = models.CharField(max_length=200, blank=True)
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.DRAFT
     )

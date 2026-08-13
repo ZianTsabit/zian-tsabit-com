@@ -117,7 +117,8 @@ function describe(
 
 interface RequestOptions {
   method?: string;
-  /** Serialised as JSON. Omit for GET and DELETE. */
+  /** Serialised as JSON, unless it is `FormData` -- which is sent as-is, for
+   *  the one endpoint that takes a file. Omit for GET and DELETE. */
   body?: unknown;
   signal?: AbortSignal;
 }
@@ -127,8 +128,14 @@ async function send(
   { method = "GET", body, signal }: RequestOptions,
   token: string | null,
 ): Promise<Response> {
+  // FormData sets its own Content-Type, and it has to: the header carries the
+  // multipart boundary, which only the browser knows. Naming it here at all --
+  // even as "multipart/form-data" -- produces a boundary-less header that
+  // Django parses as an empty request.
+  const isFormData = body instanceof FormData;
+
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (body !== undefined && !isFormData) headers["Content-Type"] = "application/json";
   if (token) headers["X-CSRFToken"] = token;
 
   try {
@@ -138,7 +145,8 @@ async function send(
       signal,
       // The session cookie lives on the API's origin, which is not this one.
       credentials: "include",
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body:
+        body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
     });
   } catch (error) {
     if (isAbort(error)) throw error;

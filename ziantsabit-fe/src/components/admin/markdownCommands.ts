@@ -166,6 +166,35 @@ export function insertLink(value: string, start: number, end: number): Edit {
   return { start, end, text, selectStart: urlAt, selectEnd: urlAt + 3 };
 }
 
+/**
+ * Insert `![alt](url)` for an image that has already been uploaded.
+ *
+ * Unlike `insertLink` this takes the URL rather than leaving a placeholder --
+ * the editor calls it after the upload has come back, so the destination is
+ * known and only the alt text is still up to the author. Any selected text
+ * becomes that alt text.
+ */
+export function insertImage(
+  value: string,
+  start: number,
+  end: number,
+  url: string,
+  alt = "",
+): Edit {
+  const label = alt || value.slice(start, end);
+  const text = `![${label}](${url})`;
+
+  if (label) {
+    // Alt text already supplied, so put the caret after the whole image.
+    const after = start + text.length;
+    return { start, end, text, selectStart: after, selectEnd: after };
+  }
+
+  // Empty brackets, caret inside them: alt text is worth prompting for, and an
+  // author who tabs away leaves a decorative image correctly marked as one.
+  return { start, end, text, selectStart: start + 2, selectEnd: start + 2 };
+}
+
 /** Inline code for a selection on one line, a fenced block for one spanning several. */
 export function toggleCode(value: string, start: number, end: number): Edit {
   const selected = value.slice(start, end);

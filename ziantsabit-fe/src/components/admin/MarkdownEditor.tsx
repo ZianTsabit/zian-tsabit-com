@@ -1,6 +1,14 @@
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import {
+  Alert,
   Box,
+  CircularProgress,
   FormHelperText,
   IconButton,
   Stack,
@@ -11,6 +19,7 @@ import {
   Typography,
 } from "@mui/material";
 import CodeIcon from "@mui/icons-material/Code";
+import ImageIcon from "@mui/icons-material/Image";
 import FormatBoldIcon from "@mui/icons-material/FormatBold";
 import FormatItalicIcon from "@mui/icons-material/FormatItalic";
 import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
@@ -20,11 +29,14 @@ import LinkIcon from "@mui/icons-material/Link";
 import TitleIcon from "@mui/icons-material/Title";
 
 import Markdown from "../Markdown";
+import { ApiError } from "../../services/api";
+import { ACCEPT_ATTRIBUTE, uploadImage } from "../../services/uploads";
 import {
   BULLET,
   continueList,
   HEADING,
   indent,
+  insertImage,
   insertLink,
   ORDERED,
   QUOTE,
@@ -65,6 +77,15 @@ function MarkdownEditor({
   // Set by Escape, cleared by anything else. See the Tab handling below.
   const tabReleased = useRef(false);
 
+  const fileRef = useRef<HTMLInputElement>(null);
+  // Where the image will be inserted. Captured before the file dialog opens:
+  // the dialog takes focus, and a textarea that has lost focus reports
+  // selectionStart === selectionEnd === 0 in some browsers, which would drop
+  // every upload at the very top of the body.
+  const insertAt = useRef<{ start: number; end: number } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const apply = (edit: Edit) => {
     const el = inputRef.current;
     if (!el) return;
@@ -104,6 +125,45 @@ function MarkdownEditor({
     if (!el) return;
     const edit = command(el.value, el.selectionStart, el.selectionEnd);
     if (edit) apply(edit);
+  };
+
+  /** Toolbar button: remember the caret, then open the file dialog. */
+  const pickImage = () => {
+    const el = inputRef.current;
+    insertAt.current = el
+      ? { start: el.selectionStart, end: el.selectionEnd }
+      : null;
+    setUploadError(null);
+    fileRef.current?.click();
+  };
+
+  const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // Clearing it here rather than after the upload means picking the same file
+    // twice in a row still fires a change event the second time.
+    event.target.value = "";
+    if (!file) return;
+
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const { url } = await uploadImage(file);
+      const el = inputRef.current;
+      const at = insertAt.current ??
+        (el ? { start: el.value.length, end: el.value.length } : { start: 0, end: 0 });
+      // The alt text is left to the author; insertImage parks the caret between
+      // the brackets so it is the next thing they type.
+      apply(insertImage(el?.value ?? value, at.start, at.end, url));
+    } catch (failure: unknown) {
+      setUploadError(
+        failure instanceof ApiError || failure instanceof Error
+          ? failure.message
+          : "Could not upload that image.",
+      );
+    } finally {
+      setUploading(false);
+      insertAt.current = null;
+    }
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -189,6 +249,16 @@ function MarkdownEditor({
       run: () => run(insertLink),
     },
     {
+      key: "image",
+      title: "Insert image",
+      icon: uploading ? (
+        <CircularProgress size={18} aria-label="Uploading image" />
+      ) : (
+        <ImageIcon fontSize="small" />
+      ),
+      run: pickImage,
+    },
+    {
       key: "bullet",
       title: "Bulleted list",
       icon: <FormatListBulletedIcon fontSize="small" />,
@@ -259,19 +329,46 @@ function MarkdownEditor({
           >
             {tools.map((tool) => (
               <Tooltip key={tool.key} title={tool.title}>
-                <IconButton
-                  size="small"
-                  aria-label={tool.title}
-                  // The button must not steal focus, or the selection the
-                  // command is about to act on is gone by the time it runs.
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={tool.run}
-                >
-                  {tool.icon}
-                </IconButton>
+                {/* A disabled IconButton fires no events, so Tooltip needs a
+                    wrapper it can listen on to keep explaining the button. */}
+                <Box component="span" sx={{ display: "inline-flex" }}>
+                  <IconButton
+                    size="small"
+                    aria-label={tool.title}
+                    disabled={tool.key === "image" && uploading}
+                    // The button must not steal focus, or the selection the
+                    // command is about to act on is gone by the time it runs.
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={tool.run}
+                  >
+                    {tool.icon}
+                  </IconButton>
+                </Box>
               </Tooltip>
             ))}
           </Stack>
+
+          {/* Outside the toolbar so its layout never shifts. Kept mounted
+              rather than rendered on demand, since the click that opens it
+              comes from the toolbar button above. */}
+          <Box
+            component="input"
+            type="file"
+            accept={ACCEPT_ATTRIBUTE}
+            ref={fileRef}
+            onChange={handleFile}
+            sx={{ display: "none" }}
+          />
+
+          {uploadError && (
+            <Alert
+              severity="error"
+              onClose={() => setUploadError(null)}
+              sx={{ mb: 1 }}
+            >
+              {uploadError}
+            </Alert>
+          )}
 
           <TextField
             value={value}

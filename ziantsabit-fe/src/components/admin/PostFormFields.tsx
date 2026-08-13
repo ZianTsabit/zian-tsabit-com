@@ -1,5 +1,6 @@
 import { MenuItem, Stack, TextField } from "@mui/material";
 
+import CoverImageField from "./CoverImageField";
 import MarkdownEditor from "./MarkdownEditor";
 import type { FieldErrors } from "../../services/api";
 import { CATEGORIES, STATUSES, type PostDraft } from "../../services/adminPosts";
@@ -118,6 +119,16 @@ function PostFormFields({ draft, fieldErrors, onChange, slugHelperText }: Props)
         }
         slotProps={{ inputLabel: { shrink: true } }}
         fullWidth
+      />
+
+      <CoverImageField
+        url={draft.cover_image_url}
+        alt={draft.cover_image_alt}
+        fieldErrors={fieldErrors}
+        onChange={(next) => {
+          if (next.url !== undefined) onChange("cover_image_url", next.url);
+          if (next.alt !== undefined) onChange("cover_image_alt", next.alt);
+        }}
       />
 
       <TextField

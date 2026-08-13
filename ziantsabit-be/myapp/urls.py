@@ -7,6 +7,7 @@ from drf_spectacular.views import (
 from rest_framework.routers import DefaultRouter
 
 from .auth import LoginView, LogoutView, SessionView
+from .uploads import ImageUploadView
 from .views import PostViewSet
 
 router = DefaultRouter()
@@ -26,5 +27,8 @@ urlpatterns = [
     path("auth/session/", SessionView.as_view(), name="auth-session"),
     path("auth/login/", LoginView.as_view(), name="auth-login"),
     path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
+    # Image uploads for the admin editor: returns a URL for a cover image or a
+    # Markdown `![](...)` in a body.
+    path("uploads/images/", ImageUploadView.as_view(), name="upload-image"),
     path("", include(router.urls)),
 ]

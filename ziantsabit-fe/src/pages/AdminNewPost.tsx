@@ -73,7 +73,17 @@ function AdminNewPost() {
             slugHelperText="Leave blank to generate it from the title."
           />
 
-          <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
+          {/* The page has no bottom padding of its own, so without this the Save
+              button sits flush against the footer's top border. */}
+          <Stack
+            direction="row"
+            sx={{
+              gap: 1,
+              justifyContent: "flex-end",
+              pt: 1,
+              pb: { xs: 3, sm: 4 },
+            }}
+          >
             <Button color="inherit" disabled={saving} onClick={() => navigate("/admin")}>
               Cancel
             </Button>
