@@ -22,8 +22,14 @@ body {
   margin: 0;
   width: 100%;
   min-height: 100%;
-  /* A single wide child should never make the whole page pan sideways. */
-  overflow-x: hidden;
+  /* A single wide child should never make the whole page pan sideways.
+
+     `clip` rather than `hidden`, and the difference is load-bearing: `hidden`
+     makes the element a scroll container, which silently disables
+     `position: sticky` anywhere inside the page (Home's "Latest Updates"
+     heading was the first casualty). `clip` cuts the overflow off without
+     creating one. */
+  overflow-x: clip;
 }
 
 /* Colours are owned by the MUI theme (see src/theme.ts) and applied by

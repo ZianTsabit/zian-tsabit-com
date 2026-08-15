@@ -4,6 +4,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import LatestUpdates from "../components/LatestUpdates";
+import { HEADER_HEIGHT } from "../constants/layout";
 
 function Home() {
   return (
@@ -22,51 +23,8 @@ function Home() {
         maxWidth="md"
         sx={{ flex: 1, display: "flex", flexDirection: "column" }}
       >
-        {/* Profile Section */}
-        <Stack
-          direction="column"
-          sx={{
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 1,
-            mb: "18px",
-            mt: "18px",
-            px: { xs: 1, sm: 0 },
-            textAlign: { xs: "center", sm: "left" },
-          }}
-        >
-          <Typography
-            variant="h5"
-            component="div"
-            color="text.primary"
-            sx={{ fontFamily: "'Ubuntu', sans-serif" }}
-          >
-            Hello, I'm Ghazian Tsabit Alkamil 👋
-          </Typography>
-          <Typography
-            variant="body1"
-            component="div"
-            color="text.primary"
-            sx={{
-              fontFamily: "'Ubuntu', sans-serif",
-              // Justifying a ~35-character line opens up rivers of whitespace.
-              textAlign: { xs: "left", sm: "justify" },
-              mx: { xs: 0, sm: "4px" },
-            }}
-          >
-            I'm a Software Engineer based in Indonesia, currently working at{" "}
-            <Box
-              component="a"
-              href="https://cermati.group/"
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={{ color: "primary.main", textDecoration: "underline" }}
-            >
-              Cermati Fintech Group
-            </Box>{" "}
-            as a Software Engineer - Data Platform. Here I want to put myself on the internet, share my projects, and write about things that I find interesting.
-          </Typography>
-        </Stack>
+        {/* The introduction that used to sit here lives on /about now; the page
+            opens straight onto the feed. */}
 
         {/* Divider */}
         <Divider
@@ -76,45 +34,65 @@ function Home() {
           }}
         />
 
-        {/* Latest Updates */}
-        <Box sx={{ mt: "18px" }}>
-          <Typography
-            variant="body1"
-            component="div"
-            color="text.primary"
+        {/* Latest Updates: the heading sits above the feed on a phone and
+            beside it from md, where it pins to the left and stays put while
+            the cards scroll past. */}
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          sx={{ width: "100%", flex: 1, mt: "18px", gap: { xs: 0, md: 3 } }}
+        >
+          <Box
             sx={{
-              fontFamily: "'Ubuntu', sans-serif",
-              textAlign: "left",
-              mb: "12px",
-              ml: "4px",
-              fontWeight: "bold",
-              // Same scale as SectionHeading, so section titles are one size
-              // across Home, CV and About.
-              fontSize: { xs: "16px", sm: "18px", md: "20px" },
+              flexShrink: 0,
+              width: { md: "150px" },
+              // A flex item is stretched to the row's full height by default,
+              // which leaves `sticky` nothing to slide within: it would be
+              // pinned to a box exactly as tall as the list it should outlive.
+              alignSelf: "flex-start",
+              position: { md: "sticky" },
+              // Clear of the fixed header, or the heading pins underneath it.
+              top: { md: `calc(${HEADER_HEIGHT.sm} + 16px)` },
             }}
           >
-            Latest Updates
-          </Typography>
-        </Box>
+            <Typography
+              variant="body1"
+              component="div"
+              color="text.primary"
+              sx={{
+                fontFamily: "'Ubuntu', sans-serif",
+                textAlign: "left",
+                mb: { xs: "12px", md: 0 },
+                ml: "4px",
+                fontWeight: "bold",
+                // Same scale as SectionHeading, so section titles are one size
+                // across Home, CV and About.
+                fontSize: { xs: "16px", sm: "18px", md: "20px" },
+              }}
+            >
+              Latest Updates
+            </Typography>
+          </Box>
 
-        {/* Latest Updates feed */}
-        <Box
-          sx={{
-            width: "100%",
-            // Absorbs the leftover space instead of adding a fixed 30vh, which
-            // pushed the page just past the viewport on a phone. LatestUpdates
-            // centres its own loading/error/empty states via Centered, so this
-            // wrapper doesn't need alignItems/justifyContent itself -- doing
-            // both would also centre the populated card list, which should
-            // stay left-aligned and full width.
-            flex: 1,
-            minHeight: { xs: "20vh", sm: "30vh" },
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <LatestUpdates limit={5} />
-        </Box>
+          <Box
+            sx={{
+              // Absorbs the leftover space instead of adding a fixed 30vh, which
+              // pushed the page just past the viewport on a phone. LatestUpdates
+              // centres its own loading/error/empty states via Centered, so this
+              // wrapper doesn't need alignItems/justifyContent itself -- doing
+              // both would also centre the populated card list, which should
+              // stay left-aligned and full width.
+              flex: 1,
+              // Without this a long unbroken title in a card can push the
+              // column wider than its share of the row.
+              minWidth: 0,
+              minHeight: { xs: "20vh", sm: "30vh" },
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <LatestUpdates limit={5} />
+          </Box>
+        </Stack>
       </Container>
     </Box>
   );

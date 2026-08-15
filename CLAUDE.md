@@ -83,6 +83,8 @@ Those background hex values are duplicated from `palette.background.default`; if
 
 A child that should soak up leftover vertical space needs an unbroken `flex: 1` chain down from `<main>` — this is why `Home`'s `Container` is itself a flex column, so the typewriter block can grow instead of pinning a fixed `30vh` that pushed the page just past the viewport on a phone.
 
+Home's "Latest Updates" block is a two-column row from `md`: the heading in a 150px column that is `position: sticky` under the header, the feed beside it. Two things keep it working — the heading column needs `alignSelf: "flex-start"`, since a stretched flex item is exactly as tall as the row and has nothing to slide within, and nothing above it in the tree may be a scroll container (see `overflow-x: clip` below). It collapses back to heading-above-feed at `xs`/`sm`, where there is no side room to give it.
+
 Pages are built from `Box`/`Container`/`Stack` with inline `sx` — no CSS modules, no styled-components except `Typewriter`. Existing pages follow one of two shapes; copy the closer one:
 
 - **Content page** (`Home`, `CV`, `About`, `Books`): `Box` with `flex: 1`, `bgcolor: "transparent"`, `pt: { xs: 2, sm: 3 }`, wrapping a `Container maxWidth="md"`. Don't add bottom padding for breathing room — the footer's top border now terminates the page.
@@ -95,7 +97,7 @@ Use `Container` (or explicit `px`) rather than a bare `maxWidth` on a `Box` — 
 Responsive values use the MUI breakpoint object form (`{ xs: "12px", sm: "14px", md: "16px", lg: "22px" }`, `direction={{ xs: "column", sm: "row" }}`) rather than media queries. Two rules the existing code now follows:
 
 - **Justified text is `sm`-and-up only** — `textAlign: { xs: "left", sm: "justify" }`. A justified ~35-character phone line opens visible rivers of whitespace.
-- **Nothing may widen the page.** `html, body` carry `overflow-x: hidden` as a backstop, but that only hides the symptom. If a block genuinely needs a fixed minimum width, give it its own `overflowX: "auto"` container so it pans inside its box while `document.scrollWidth` stays equal to the viewport.
+- **Nothing may widen the page.** `html, body` carry `overflow-x: clip` as a backstop, but that only hides the symptom. **`clip`, not `hidden`, and the difference matters:** `hidden` makes the element a scroll container, which silently disables `position: sticky` anywhere on the page — Home's sticky "Latest Updates" heading rendered but never stuck until this was changed. If a block genuinely needs a fixed minimum width, give it its own `overflowX: "auto"` container so it pans inside its box while `document.scrollWidth` stays equal to the viewport.
 
 ### Component notes
 

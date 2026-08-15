@@ -112,7 +112,9 @@ function About() {
             </Box>
             , Bandung Institute of Technology. I have a strong passion for data,
             software, and infrastructure engineering, and I enjoy exploring how
-            these areas connect and support each other.
+            these areas connect and support each other. This site is where I put
+            myself on the internet: I share my projects here, and write about
+            the things that I find interesting.
           </Typography>
         </Box>
 
