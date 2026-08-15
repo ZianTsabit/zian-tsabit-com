@@ -130,18 +130,34 @@ export async function fetchLatestPosts(signal?: AbortSignal): Promise<PostPage> 
   return fetchPostPage(`${API_BASE_URL}/posts/`, signal);
 }
 
-/** Fetch one numbered page of posts, optionally filtered by category -- for
- *  the Posts page's category filter + Prev/Next pagination. `page` omitted or
- *  1 asks for the first page: DRF's PageNumberPagination treats a `page` param
- *  of "1" the same as no param, so leaving it out for that case avoids a
+/** A YYYY-MM-DD day, or "" for "no bound". Both ends are inclusive, and a post
+ *  is dated by its `published_at` -- or `created_at` when it has none. */
+export interface DateRange {
+  after?: string;
+  before?: string;
+}
+
+/** Fetch one numbered page of posts, optionally filtered by category and by
+ *  date -- for the Posts page's filters + Prev/Next pagination. `page` omitted
+ *  or 1 asks for the first page: DRF's PageNumberPagination treats a `page`
+ *  param of "1" the same as no param, so leaving it out for that case avoids a
  *  meaningless `?page=1` in the URL. */
 export async function fetchPostsPage(
-  { category, page }: { category?: PostCategory; page?: number },
+  {
+    category,
+    page,
+    after,
+    before,
+  }: { category?: PostCategory; page?: number } & DateRange,
   signal?: AbortSignal,
 ): Promise<PostPage> {
   const params = new URLSearchParams();
   if (category) params.set("category", category);
   if (page && page > 1) params.set("page", String(page));
+  // An empty string would be sent as `?published_after=` and, unlike a bad
+  // date, is simply ignored by the API -- but there is no reason to send it.
+  if (after) params.set("published_after", after);
+  if (before) params.set("published_before", before);
   const query = params.toString();
   return fetchPostPage(`${API_BASE_URL}/posts/${query ? `?${query}` : ""}`, signal);
 }

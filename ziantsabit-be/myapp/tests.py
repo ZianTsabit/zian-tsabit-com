@@ -1,10 +1,12 @@
 import base64
+import datetime
 import io
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
+from django.utils import timezone
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
@@ -655,3 +657,99 @@ class ViewCountTests(APITestCase):
         response = self.client.get(self.list_url, {"ordering": "most-read"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("ordering", response.data)
+
+
+class DateFilterTests(APITestCase):
+    """?published_after= / ?published_before=, both inclusive."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("post-list")
+        cls.old = cls._post("Old", "2026-01-10")
+        cls.middle = cls._post("Middle", "2026-05-20")
+        cls.recent = cls._post("Recent", "2026-08-01")
+        # No published_at at all: it is filtered by created_at instead, which
+        # is what the admin list shows for a draft.
+        cls.draft = Post.objects.create(title="Draft", category=Post.Category.POSTS)
+
+    @staticmethod
+    def _post(title, day):
+        post = Post.objects.create(
+            title=title,
+            category=Post.Category.POSTS,
+            status=Post.Status.PUBLISHED,
+        )
+        # save() stamped published_at with now(); pin it to the day under test.
+        stamp = datetime.datetime.fromisoformat(f"{day}T12:00:00+00:00")
+        Post.objects.filter(pk=post.pk).update(published_at=stamp)
+        post.refresh_from_db()
+        return post
+
+    def slugs(self, response):
+        return {row["slug"] for row in response.data["results"]}
+
+    def test_after_is_inclusive_of_its_own_day(self):
+        response = self.client.get(self.list_url, {"published_after": "2026-05-20"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.slugs(response), {self.middle.slug, self.recent.slug})
+
+    def test_before_is_inclusive_of_its_own_day(self):
+        response = self.client.get(self.list_url, {"published_before": "2026-05-20"})
+        self.assertEqual(self.slugs(response), {self.old.slug, self.middle.slug})
+
+    def test_both_ends_together_are_a_range(self):
+        response = self.client.get(
+            self.list_url,
+            {"published_after": "2026-02-01", "published_before": "2026-07-01"},
+        )
+        self.assertEqual(self.slugs(response), {self.middle.slug})
+
+    def test_range_with_nothing_in_it_is_empty_not_an_error(self):
+        response = self.client.get(
+            self.list_url,
+            {"published_after": "2026-09-01", "published_before": "2026-09-30"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["results"], [])
+
+    def test_no_date_params_returns_everything_published(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(len(response.data["results"]), 3)
+
+    def test_draft_is_filtered_by_created_at(self):
+        self.client.force_authenticate(self.user)
+        today = timezone.localdate().isoformat()
+        response = self.client.get(self.list_url, {"published_after": today})
+        self.assertIn(self.draft.slug, self.slugs(response))
+
+    def test_draft_outside_the_range_drops_out(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(
+            self.list_url, {"published_before": "2026-01-01"}
+        )
+        self.assertNotIn(self.draft.slug, self.slugs(response))
+
+    def test_date_filter_combines_with_category(self):
+        book = self._post("A Book", "2026-05-21")
+        book.category = Post.Category.BOOKS
+        book.save()
+        response = self.client.get(
+            self.list_url, {"category": "books", "published_after": "2026-05-01"}
+        )
+        self.assertEqual(self.slugs(response), {book.slug})
+
+    def test_malformed_date_is_rejected(self):
+        response = self.client.get(self.list_url, {"published_after": "10-05-2026"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("published_after", response.data)
+
+    def test_impossible_date_is_rejected(self):
+        response = self.client.get(self.list_url, {"published_before": "2026-02-31"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("published_before", response.data)
+
+    def test_empty_date_param_is_ignored(self):
+        response = self.client.get(self.list_url, {"published_after": ""})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 3)

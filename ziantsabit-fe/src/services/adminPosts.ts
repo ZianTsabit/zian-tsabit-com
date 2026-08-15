@@ -89,6 +89,10 @@ export interface AdminFilters {
   status?: string;
   /** "" or omitted means the API's default ordering. */
   ordering?: string;
+  /** Inclusive YYYY-MM-DD bounds; "" or omitted leaves that end open. A draft
+   *  is dated by its created_at, which is the date the list shows for it. */
+  after?: string;
+  before?: string;
 }
 
 function query(filters: AdminFilters): string {
@@ -98,6 +102,8 @@ function query(filters: AdminFilters): string {
   if (filters.category) params.set("category", filters.category);
   if (filters.status) params.set("status", filters.status);
   if (filters.ordering) params.set("ordering", filters.ordering);
+  if (filters.after) params.set("published_after", filters.after);
+  if (filters.before) params.set("published_before", filters.before);
   const search = params.toString();
   return search ? `?${search}` : "";
 }
