@@ -1,5 +1,14 @@
 FROM node:24 AS build
 
+# Vite resolves import.meta.env.VITE_* when the bundle is *built*, not when it
+# is served, so the API address has to be known here -- there is no runtime
+# setting that can change it afterwards. The default keeps a bare
+# `docker build .` producing the same image it always did; a deployment passes
+# its real API origin, which docker-compose.prod.yml does through `build.args`
+# (note `docker compose up --build` has no --build-arg flag of its own).
+ARG VITE_API_BASE_URL=http://localhost:8000/api
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
 WORKDIR /app
 
 COPY package*.json ./

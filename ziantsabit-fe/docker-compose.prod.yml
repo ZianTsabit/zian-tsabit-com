@@ -1,0 +1,21 @@
+# Production overrides. Layered on top of docker-compose.yml, never used alone:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# See DEPLOY.md in the repository root for the whole picture.
+services:
+  frontend:
+    build:
+      context: .
+      args:
+        # Baked into the bundle at build time -- see the ARG in Dockerfile.
+        # Compose reads a `.env` beside this file, so the value lives there
+        # rather than in version control.
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:?set VITE_API_BASE_URL in .env, e.g. https://api.example.com/api}"
+    # `!override` replaces the base list instead of appending to it. Without it
+    # Compose keeps docker-compose.yml's "8080:80" *as well*, and the second
+    # binding fails with "port is already allocated".
+    ports: !override
+      # Loopback only. cloudflared runs on the same host and connects over
+      # localhost, so nothing here should be reachable from the LAN.
+      - "127.0.0.1:8080:80"

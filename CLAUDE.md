@@ -150,7 +150,7 @@ Routing is client-side, so `/about`, `/books`, … exist only in `App.tsx` — t
 
 ## Backend status
 
-`myapp` is installed and serves two resources: a DRF `ModelViewSet` over `Post`, and an image upload endpoint. `requirements.txt` is `Django>=4.2` and `djangorestframework>=3.16`, plus `django-storages[s3]` and `Pillow` for uploads. **Database is Postgres, with no sqlite fallback anywhere** — an object-storage compose file existed alongside an earlier Postgres setup and was removed in `29dd34b`; both came back, Postgres via `psycopg[binary]` and the `db` service, object storage via the `rustfs` service (see "Object storage" below — this was MinIO until `10cb53a` swapped it for RustFS, which touched only compose and settings, no Python). `settings.py`'s `DATABASES` reads `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`, defaulting to `zian_tsabit_be`/`zian_tsabit_be`/`postgres`/`localhost`/`5432` — those defaults resolve inside Docker (`POSTGRES_HOST=db` there) but a bare `manage.py runserver` needs its own reachable Postgres server; there is deliberately no zero-setup fallback, so `createdb zian_tsabit_be` (or a matching role) is a prerequisite, not optional. See `ziantsabit-be/.env.example`.
+`myapp` is installed and serves two resources: a DRF `ModelViewSet` over `Post`, and an image upload endpoint. `requirements.txt` is `Django>=4.2` and `djangorestframework>=3.16`, plus `django-storages[s3]` and `Pillow` for uploads, and `gunicorn` + `whitenoise` for the production container (see "Deployment" below). **Database is Postgres, with no sqlite fallback anywhere** — an object-storage compose file existed alongside an earlier Postgres setup and was removed in `29dd34b`; both came back, Postgres via `psycopg[binary]` and the `db` service, object storage via the `rustfs` service (see "Object storage" below — this was MinIO until `10cb53a` swapped it for RustFS, which touched only compose and settings, no Python). `settings.py`'s `DATABASES` reads `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`, defaulting to `zian_tsabit_be`/`zian_tsabit_be`/`postgres`/`localhost`/`5432` — those defaults resolve inside Docker (`POSTGRES_HOST=db` there) but a bare `manage.py runserver` needs its own reachable Postgres server; there is deliberately no zero-setup fallback, so `createdb zian_tsabit_be` (or a matching role) is a prerequisite, not optional. See `ziantsabit-be/.env.example`.
 
 ### The Post model
 
@@ -231,13 +231,15 @@ Swagger UI and ReDoc load their JS from a CDN, so the pages need internet; the `
 
 `myapp/tests.py` is a real suite (50 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, and the upload endpoint. Run it with `python manage.py test`.
 
+**Tests must not depend on a setting a deployment overrides.** The three CORS tests pin `CORS_ALLOWED_ORIGINS` with `@override_settings` for exactly this reason: they previously hardcoded `http://localhost:5173` and relied on the default, so they failed inside any production-configured container — the one place running the suite is most worth doing.
+
 **`ImageUploadTests` overrides `STORAGES` to `InMemoryStorage`**, so the suite never needs RustFS running and never leaves test objects in a real bucket. The view only calls `save()`/`url()` on the default storage, so the swap exercises the same code path. Keep any new storage test under that decorator.
 
 ### Settings and the container
 
 `SECRET_KEY`, `DEBUG` and `ALLOWED_HOSTS` read the environment (`DJANGO_SECRET_KEY`, `DEBUG`, `DJANGO_ALLOWED_HOSTS`), with defaults that keep a bare `manage.py runserver` behaving as it did. The compose file had been passing `DEBUG` and `DJANGO_ALLOWED_HOSTS` since it was written while `settings.py` hardcoded both, so those variables did nothing; changing one and seeing no effect was the symptom.
 
-The image is `python:3.12-slim` running `runserver`, with `entrypoint.sh` applying migrations before handing off to `CMD` — a fresh container has no other opportunity to create `myapp_post`, and the API 500s on its first request without it. `docker-compose.yml`'s `api` service has `depends_on: db: condition: service_healthy`, so that migrate never races Postgres's own startup — without it, `entrypoint.sh` would sometimes hit a port nothing is listening on yet.
+The image is `python:3.12-slim` running `runserver`, with `entrypoint.sh` applying migrations **and `collectstatic`** before handing off to `CMD` — a fresh container has no other opportunity to create `myapp_post`, and the API 500s on its first request without it. `collectstatic` writes to `/srv/static` (`DJANGO_STATIC_ROOT`, set in the Dockerfile), which is outside `/app` on purpose: the compose file bind-mounts the source tree over `/app` for autoreload and would shadow anything collected into it. `docker-compose.yml`'s `api` service has `depends_on: db: condition: service_healthy`, so that migrate never races Postgres's own startup — without it, `entrypoint.sh` would sometimes hit a port nothing is listening on yet.
 
 Compose runs four services, not two: `db`, `rustfs`, a one-shot `storage-init`, and `api`. **`storage-init` creates the bucket and makes it public-read**, and `api` waits on it with `condition: service_completed_successfully` — the bucket has to exist before the first upload, and nothing else creates it. It exits 0 and stays exited; that is not a crash.
 
@@ -281,3 +283,21 @@ Points worth keeping intact:
 - **The empty state is the old `Coming soon...` typewriter.** A section with no posts looks exactly as the page did before it was wired, so publishing the first post is what changes the page.
 - **`CORS_ALLOWED_ORIGINS` must list whatever origin serves the SPA.** Defaults cover `:5173` (dev), `:4173` (preview) and `:8080` (nginx container); a deployed site needs its real origin added or every response is discarded by the browser.
 - **`api.ts` sends `FormData` untouched and must not name its `Content-Type`.** The header carries the multipart boundary, which only the browser knows; setting it by hand — even to the apparently correct `multipart/form-data` — produces a boundary-less header that Django parses as an empty request, so the upload arrives with no file and fails validation. Everything that is not `FormData` is still JSON-serialised as before, which is why a post write stays a plain JSON request even though its cover came from an upload.
+
+## Deployment
+
+`DEPLOY.md` in the repository root is the plan: a Proxmox VM, both compose stacks, and a Cloudflare Zero Trust tunnel as the only way in. Three things there constrain how this code may change.
+
+**Each half has a `docker-compose.prod.yml`, layered over its base file and never used alone:**
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+They carry no secrets — every value is `${VAR:?message}`, interpolated from a gitignored `.env` beside them, so a missing one stops the deploy instead of shipping a development default. Compose **appends** list-valued keys when merging, so overriding a port needs `ports: !override` (otherwise both bindings survive and the second fails with "port is already allocated"), and dropping the `api` service's `.:/app` source mount needs `volumes: !reset []`.
+
+**`VITE_API_BASE_URL` is a build argument, not a runtime setting.** Vite resolves `import.meta.env` when the bundle is built, so the frontend Dockerfile takes it as an `ARG` (defaulting to the localhost value, which keeps a plain `docker build .` unchanged) and the prod compose file passes it through `build.args`. Changing the API address is a rebuild. Note `docker compose up --build` has no `--build-arg` flag — only `docker compose build` does — which is why it lives in the file rather than in a command.
+
+**A third override, `docker-compose.external-db.yml`, swaps the bundled `db` service for a Postgres elsewhere on the network.** A service cannot be deleted by an override file, so `db` is hidden behind a `local-db` profile and `api`'s `depends_on` is rewritten with `!override` — the base file waits on `db: service_healthy`, and Compose refuses to run with that reference dangling. Nothing replaces the wait, so `restart: unless-stopped` is what recovers when `migrate` reaches a database that is still booting. `DATABASES['default']['OPTIONS']` picks up `POSTGRES_SSLMODE` / `POSTGRES_SSLROOTCERT`, each added only when non-empty so the bundled setups connect exactly as before; that override defaults the mode to `require` rather than libpq's `prefer`, which falls back to plaintext without complaint and so cannot fail.
+
+**Static files are WhiteNoise's, and only under `DEBUG=0`.** There is no nginx in front of the API — the tunnel goes straight to gunicorn — so nothing else can serve Django admin's and DRF's CSS. `STORAGES['staticfiles']` is `CompressedManifestStaticFilesStorage` when `DEBUG` is off and the plain backend when it is on, because manifest storage cannot resolve a `{% static %}` tag until `collectstatic` has run and a bare `manage.py runserver` / `manage.py test` outside Docker never runs it. `SECURE_PROXY_SSL_HEADER` is likewise gated behind `USE_X_FORWARDED_PROTO`: trusting a header the client can send is only safe when nothing reaches the process except through the proxy.
