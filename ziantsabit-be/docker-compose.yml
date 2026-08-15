@@ -82,7 +82,10 @@ services:
     # This was `mc`, MinIO's own client. RustFS has no drop-in equivalent for
     # `mc anonymous set download`, so the policy is written as raw S3 -- which
     # is the honest version of what that command was doing anyway.
-    image: amazon/aws-cli:2
+    # Pinned to a full version: amazon/aws-cli publishes `latest` and concrete
+    # `2.x.y` tags only -- there is no floating `2`, and asking for one fails
+    # the pull with "docker.io/amazon/aws-cli:2: not found".
+    image: amazon/aws-cli:2.36.24
     container_name: ziantsabit-be_storage_init
     depends_on:
       rustfs:
