@@ -171,6 +171,22 @@ WSGI_APPLICATION = 'ziantsabit_be.wsgi.application'
 # match the `db` service docker-compose.yml starts alongside `api`; anything
 # outside Docker needs at least POSTGRES_HOST (and POSTGRES_PASSWORD, if the
 # server does not use the same throwaway dev credentials) set for real.
+# Connection options, only for a Postgres that is not the `db` service beside
+# this one. Over the compose network there is nothing between the two containers
+# to encrypt against; a database on another host is a different matter.
+#
+# libpq's default sslmode is 'prefer', which negotiates TLS when the server
+# offers it and **silently falls back to plaintext when it does not** -- so it
+# is not a setting that can fail, and therefore not one that protects anything.
+# 'require' is the meaningful floor. It encrypts but does not authenticate the
+# server; 'verify-full' does both and needs POSTGRES_SSLROOTCERT pointing at the
+# CA that signed the server's certificate (mount it into the container).
+_db_options = {}
+if os.environ.get('POSTGRES_SSLMODE'):
+    _db_options['sslmode'] = os.environ['POSTGRES_SSLMODE']
+if os.environ.get('POSTGRES_SSLROOTCERT'):
+    _db_options['sslrootcert'] = os.environ['POSTGRES_SSLROOTCERT']
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -179,6 +195,9 @@ DATABASES = {
         'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
         'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
         'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        # Left empty unless asked for, so the local and Docker setups connect
+        # exactly as they always have.
+        'OPTIONS': _db_options,
     }
 }
 

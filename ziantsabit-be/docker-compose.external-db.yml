@@ -1,0 +1,60 @@
+# Use a Postgres server that is not part of this stack -- a separate Proxmox
+# LXC or VM, a managed instance, anything reachable over the network. Layered on
+# top of the others, last:
+#
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.prod.yml \
+#                  -f docker-compose.external-db.yml up -d --build
+#
+# It works over the development base file too; drop the prod one from the list.
+#
+# See "An external Postgres" in DEPLOY.md.
+services:
+  db:
+    # A service cannot be deleted by an override file, only hidden. Behind a
+    # profile it is never started unless you explicitly ask for it with
+    # `--profile local-db`, which is a useful escape hatch for comparing against
+    # the bundled database without editing anything.
+    profiles: ["local-db"]
+
+  api:
+    environment:
+      # The base file hardcodes `db`, the compose-network name of the service
+      # above. Point this at the real server instead.
+      POSTGRES_HOST: "${POSTGRES_HOST:?set POSTGRES_HOST to your Postgres server's address}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_DB: "${POSTGRES_DB:-zian_tsabit_be}"
+      POSTGRES_USER: "${POSTGRES_USER:-zian_tsabit_be}"
+      # Encrypt the connection: it now crosses a network rather than staying
+      # inside the compose bridge. `require` encrypts; `verify-full` also
+      # authenticates the server and needs POSTGRES_SSLROOTCERT below.
+      #
+      # Deliberately not defaulted to `prefer` (libpq's own default), which
+      # falls back to plaintext without complaint when the server has no TLS --
+      # a setting that cannot fail is not a setting that protects anything.
+      POSTGRES_SSLMODE: "${POSTGRES_SSLMODE:-require}"
+      # Only for verify-ca / verify-full: a path *inside the container*, which
+      # means the CA file has to be mounted in -- see the commented volume below.
+      POSTGRES_SSLROOTCERT: "${POSTGRES_SSLROOTCERT:-}"
+
+    # Uncomment together with POSTGRES_SSLROOTCERT=/etc/ssl/postgres-ca.crt in
+    # .env to use verify-ca or verify-full. `volumes:` is merged by appending,
+    # so this adds to whatever the layer below defined rather than replacing it
+    # -- which is what you want here, unlike `ports`.
+    # volumes:
+    #   - ./postgres-ca.crt:/etc/ssl/postgres-ca.crt:ro
+
+    # `!override`, not a merge: the base file waits on `db: service_healthy`,
+    # and that service no longer starts, so the reference would dangle and
+    # Compose would refuse to run.
+    #
+    # Nothing replaces that wait. Across separate machines there is no health
+    # check to depend on, so entrypoint.sh's migrate can reach a Postgres that
+    # is still booting -- after a host reboot, say. `restart: unless-stopped` on
+    # the api service is what recovers from it: the container exits, comes back,
+    # and eventually connects. Expect a few restarts in the log rather than a
+    # clean first boot, and set the guests' start order in Proxmox (database
+    # first) if you would rather not see them.
+    depends_on: !override
+      storage-init:
+        condition: service_completed_successfully
