@@ -15,3 +15,11 @@ django-storages[s3]>=1.14
 # Required by DRF's ImageField, which is what actually verifies an upload is an
 # image rather than a renamed archive with an image Content-Type.
 Pillow>=10.0
+# Production WSGI server. `manage.py runserver` is single-threaded and refuses
+# to serve static files with DEBUG=0; docker-compose.prod.yml overrides CMD to
+# run this instead.
+gunicorn>=23.0
+# Serves Django admin's and DRF's own static files from the app process. With
+# DEBUG=0 nothing else does -- there is no nginx in front of the API, only
+# cloudflared -- so without this /admin/ renders unstyled.
+whitenoise>=6.6

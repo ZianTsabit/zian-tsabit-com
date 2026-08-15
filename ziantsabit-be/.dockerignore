@@ -6,6 +6,10 @@ __pycache__/
 .venv/
 venv/
 .env
+# Build artefact of a local `manage.py collectstatic`. The image collects its
+# own into /srv/static at container start.
+staticfiles/
 
 Dockerfile
 docker-compose.yml
+docker-compose.prod.yml
