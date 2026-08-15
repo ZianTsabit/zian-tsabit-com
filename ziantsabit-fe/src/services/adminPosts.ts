@@ -54,7 +54,7 @@ export function draftFrom(post: Post): PostDraft {
   };
 }
 
-export function emptyDraft(category: PostCategory = "books"): PostDraft {
+export function emptyDraft(category: PostCategory = "posts"): PostDraft {
   return {
     title: "",
     slug: "",
