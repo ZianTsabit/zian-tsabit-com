@@ -31,3 +31,8 @@ minio_data/
 # Postgres is now the only backend; a stray local sqlite file would be dead
 # weight, not a fallback.
 ziantsabit-be/db.sqlite3
+
+# collectstatic's output. Inside the container it goes to /srv/static
+# (DJANGO_STATIC_ROOT); a bare `manage.py collectstatic` outside Docker lands
+# here instead. Build artefact either way -- never committed.
+ziantsabit-be/staticfiles/
