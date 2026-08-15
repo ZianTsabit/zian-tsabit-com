@@ -94,7 +94,7 @@ function Home() {
         />
 
         {/* Latest Updates */}
-        <Box sx={{ mt: "18px", mb: "36px" }}>
+        <Box sx={{ mt: "18px" }}>
           <Typography
             variant="body1"
             component="div"
