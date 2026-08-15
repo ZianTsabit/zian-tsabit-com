@@ -32,7 +32,7 @@ python manage.py test              # whole suite
 python manage.py test myapp.tests.ClassName.test_name   # single test
 python manage.py spectacular --validate --fail-on-warn --file /dev/null   # check OpenAPI schema
 docker compose up --build          # Django dev server on :8000, Swagger at /api/docs/
-                                   # also starts MinIO: S3 API on :9000, console on :9001
+                                   # also starts RustFS: S3 API on :9000, console on :9001
 ```
 
 No test runner is configured for the frontend.
@@ -116,7 +116,7 @@ Post bodies are Markdown. `src/components/Markdown.tsx` renders them and is the 
 - **Headings are demoted one level** — a `#` becomes an `<h2>`, because the page already spends its `<h1>` on the post title. Visual size still follows what was typed.
 - **`remark-breaks` is load-bearing.** Bodies written before Markdown existed were rendered with `whiteSpace: "pre-line"`; without this plugin every one of them silently reflows into a single paragraph.
 - **Wide blocks scroll in their own box.** `<pre>` and `<table>` carry `overflowX: auto` — see the "nothing may widen the page" rule above.
-- `toPlainText()` (exported from the same file) flattens Markdown for card previews, which fall back to the body when a post has no excerpt. It is regex, not a parse, on purpose: the output is a clamped teaser.
+- `toPlainText()` (in `src/components/markdownText.ts`) flattens Markdown for card previews, which fall back to the body when a post has no excerpt. It is regex, not a parse, on purpose: the output is a clamped teaser. It sits in its own module rather than in `Markdown.tsx` because a file exporting both a component and a plain function breaks Fast Refresh, and `react-refresh/only-export-components` fails `npm run lint` on it.
 
 The editor is `src/components/admin/MarkdownEditor.tsx` (Write/Preview tabs, toolbar, shortcuts) over the pure transforms in `markdownCommands.ts`. Three things there are deliberate and easy to break:
 
@@ -150,7 +150,7 @@ Routing is client-side, so `/about`, `/books`, … exist only in `App.tsx` — t
 
 ## Backend status
 
-`myapp` is installed and serves two resources: a DRF `ModelViewSet` over `Post`, and an image upload endpoint. `requirements.txt` is `Django>=4.2` and `djangorestframework>=3.16`, plus `django-storages[s3]` and `Pillow` for uploads. **Database is Postgres, with no sqlite fallback anywhere** — a MinIO compose file existed alongside an earlier Postgres setup and was removed in `29dd34b`; both came back, Postgres via `psycopg[binary]` and the `db` service, MinIO via the `minio` service (see "Object storage" below). `settings.py`'s `DATABASES` reads `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`, defaulting to `zian_tsabit_be`/`zian_tsabit_be`/`postgres`/`localhost`/`5432` — those defaults resolve inside Docker (`POSTGRES_HOST=db` there) but a bare `manage.py runserver` needs its own reachable Postgres server; there is deliberately no zero-setup fallback, so `createdb zian_tsabit_be` (or a matching role) is a prerequisite, not optional. See `ziantsabit-be/.env.example`.
+`myapp` is installed and serves two resources: a DRF `ModelViewSet` over `Post`, and an image upload endpoint. `requirements.txt` is `Django>=4.2` and `djangorestframework>=3.16`, plus `django-storages[s3]` and `Pillow` for uploads. **Database is Postgres, with no sqlite fallback anywhere** — an object-storage compose file existed alongside an earlier Postgres setup and was removed in `29dd34b`; both came back, Postgres via `psycopg[binary]` and the `db` service, object storage via the `rustfs` service (see "Object storage" below — this was MinIO until `10cb53a` swapped it for RustFS, which touched only compose and settings, no Python). `settings.py`'s `DATABASES` reads `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`, defaulting to `zian_tsabit_be`/`zian_tsabit_be`/`postgres`/`localhost`/`5432` — those defaults resolve inside Docker (`POSTGRES_HOST=db` there) but a bare `manage.py runserver` needs its own reachable Postgres server; there is deliberately no zero-setup fallback, so `createdb zian_tsabit_be` (or a matching role) is a prerequisite, not optional. See `ziantsabit-be/.env.example`.
 
 ### The Post model
 
@@ -188,22 +188,23 @@ Two deliberate details in `PostViewSet.get_queryset`:
 
 ### Object storage and image uploads
 
-Post images live in an S3-compatible bucket — MinIO locally, via the `minio` service — not on the API container's disk, which is ephemeral and would drop every upload on a rebuild. `django-storages`' S3 backend is the `default` entry in `STORAGES`, so this is the same code path a real S3/R2 deployment would use: moving off MinIO is an environment change, not a code change.
+Post images live in an S3-compatible bucket — RustFS locally, via the `rustfs` service — not on the API container's disk, which is ephemeral and would drop every upload on a rebuild. `django-storages`' S3 backend is the `default` entry in `STORAGES`, and nothing in `settings.py` names the server, so this is the same code path a real S3/R2 deployment would use. That is not a claim, it is a demonstrated fact: `10cb53a` replaced MinIO with RustFS and changed no Python at all.
 
-**The two endpoint settings are different addresses, and confusing them is the classic MinIO-behind-Docker bug** — uploads succeed and every `<img>` on the site points at a host the browser has never heard of:
+**The two endpoint settings are different addresses, and confusing them is the classic object-storage-behind-Docker bug** — uploads succeed and every `<img>` on the site points at a host the browser has never heard of:
 
 | | |
 | --- | --- |
-| `AWS_S3_ENDPOINT_URL` | Django → MinIO. `http://minio:9000` in Docker, a name only the compose network resolves. |
-| `AWS_S3_PUBLIC_ENDPOINT_URL` | browser → MinIO. Must be reachable from a visitor's machine. Derived into `AWS_S3_CUSTOM_DOMAIN`, which is what actually appears in stored URLs. |
+| `AWS_S3_ENDPOINT_URL` | Django → RustFS. `http://rustfs:9000` in Docker, a name only the compose network resolves. |
+| `AWS_S3_PUBLIC_ENDPOINT_URL` | browser → RustFS. Must be reachable from a visitor's machine. Derived into `AWS_S3_CUSTOM_DOMAIN`, which is what actually appears in stored URLs. |
 
 A deployment needs the public one set to a real host; it defaults to the internal one, which is only correct when they genuinely are the same.
 
 Three more settings are load-bearing:
 
-- **`AWS_S3_ADDRESSING_STYLE = 'path'`.** boto3 defaults to virtual-host style (`bucket.host`), which needs wildcard DNS MinIO does not have.
-- **`AWS_QUERYSTRING_AUTH = False`, and the bucket is public-read.** `minio-init` sets `mc anonymous set download` on it. Presigned URLs were the alternative and are wrong here: they expire, so every image on a page a visitor or CDN had cached would rot.
-- **`AWS_DEFAULT_ACL = None`.** Per-object ACLs are an S3 feature MinIO only partly implements; the bucket policy is what makes objects readable.
+- **`AWS_S3_ADDRESSING_STYLE = 'path'`.** boto3 defaults to virtual-host style (`bucket.host`), which needs wildcard DNS a self-hosted bucket does not have.
+- **`AWS_QUERYSTRING_AUTH = False`, and the bucket is public-read.** `storage-init` puts a `PublicReadGetObject` policy on it with the AWS CLI — this was `mc anonymous set download` under MinIO, and RustFS has no drop-in `mc`, so the policy is now written as raw S3. It grants `s3:GetObject` only, deliberately not `s3:ListBucket`, so finding one image URL does not let anyone enumerate the bucket. Presigned URLs were the alternative and are wrong here: they expire, so every image on a page a visitor or CDN had cached would rot.
+- **`AWS_DEFAULT_ACL = None`.** Per-object ACLs are unsupported by RustFS by design (and were only partly implemented by MinIO); the bucket policy is what makes objects readable, so don't send an ACL at all.
+- **The policy's `"Principal": {"AWS": ["*"]}` is not interchangeable with the more common `"Principal": "*"`.** RustFS rejects both the bare string and an unwrapped `{"AWS": "*"}` with a 400 `InvalidArgument` (rustfs/rustfs#1336); the single-element array is the only form it accepts.
 
 `myapp/uploads.py` holds the endpoint. Two details worth keeping:
 
@@ -230,7 +231,7 @@ Swagger UI and ReDoc load their JS from a CDN, so the pages need internet; the `
 
 `myapp/tests.py` is a real suite (50 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, and the upload endpoint. Run it with `python manage.py test`.
 
-**`ImageUploadTests` overrides `STORAGES` to `InMemoryStorage`**, so the suite never needs MinIO running and never leaves test objects in a real bucket. The view only calls `save()`/`url()` on the default storage, so the swap exercises the same code path. Keep any new storage test under that decorator.
+**`ImageUploadTests` overrides `STORAGES` to `InMemoryStorage`**, so the suite never needs RustFS running and never leaves test objects in a real bucket. The view only calls `save()`/`url()` on the default storage, so the swap exercises the same code path. Keep any new storage test under that decorator.
 
 ### Settings and the container
 
@@ -238,7 +239,16 @@ Swagger UI and ReDoc load their JS from a CDN, so the pages need internet; the `
 
 The image is `python:3.12-slim` running `runserver`, with `entrypoint.sh` applying migrations before handing off to `CMD` — a fresh container has no other opportunity to create `myapp_post`, and the API 500s on its first request without it. `docker-compose.yml`'s `api` service has `depends_on: db: condition: service_healthy`, so that migrate never races Postgres's own startup — without it, `entrypoint.sh` would sometimes hit a port nothing is listening on yet.
 
-Compose runs four services, not two: `db`, `minio`, a one-shot `minio-init`, and `api`. **`minio-init` creates the bucket and makes it public-read**, and `api` waits on it with `condition: service_completed_successfully` — the bucket has to exist before the first upload, and nothing else creates it. It exits 0 and stays exited; that is not a crash. Both MinIO images are pinned to a `RELEASE.*` tag, and note that **quay.io deletes old MinIO tags** — the ones in the removed `minio/docker-compose.yml` from `29dd34b` no longer resolve, so a pull failure here usually means the tag was reaped rather than that anything is wrong locally.
+Compose runs four services, not two: `db`, `rustfs`, a one-shot `storage-init`, and `api`. **`storage-init` creates the bucket and makes it public-read**, and `api` waits on it with `condition: service_completed_successfully` — the bucket has to exist before the first upload, and nothing else creates it. It exits 0 and stays exited; that is not a crash.
+
+Two things about the storage services are worth knowing before you debug them:
+
+- **`rustfs/rustfs` is pinned to `latest`, which is a known liability.** RustFS ships no dated `RELEASE.*` tags the way MinIO did, so there is nothing better to pin to by name; pin a digest once a build is known good, because the project is young enough that `latest` moves under you. (The MinIO tags in the removed `minio/docker-compose.yml` from `29dd34b` are dead for the opposite reason — quay.io reaps old MinIO tags.)
+- **`rustfs_data` is a different volume from the old `minio_data`.** Nothing migrates objects across, so uploads made under MinIO are still sitting in `minio_data` and their stored URLs 404 until you copy them over. Orphaned `ziantsabit-be_minio` / `_minio_init` containers from the old stack may also still be on the machine; `docker compose down --remove-orphans` clears them.
+
+**`db` publishes `127.0.0.1:5432:5432`, and the loopback prefix is the point.** The `api` service reaches Postgres over the compose network and needs nothing published; the mapping exists for the host, so that `.env.example`'s `POSTGRES_HOST=localhost` and every `manage.py test` / `runserver` run outside Docker have something to connect to. `db` published nothing until this was added, which made that documented workflow impossible.
+
+The short form `"5432:5432"` would bind all interfaces and hand the throwaway `zian_tsabit_be` / `postgres` credentials to anything that can route to the machine — a laptop on a café network included. Keep the explicit `127.0.0.1:`. If a local Postgres already owns 5432, change the *host* side only (`"127.0.0.1:5433:5432"`, plus `POSTGRES_PORT=5433` outside Docker); the container side has to stay 5432, since that is where the `api` service and the healthcheck look.
 
 **It runs as UID 1000 (`app`), not root** — plain non-root hygiene now that the database is Postgres reached over the network rather than a bind-mounted file. The earlier UID-matching requirement (`db.sqlite3` had to be writable by the container's user, which meant it had to be writable by whatever `id -u` the host reported) no longer applies: Postgres's data directory lives in the `postgres_data` named volume, not a bind mount, so no host UID matters for it.
 
