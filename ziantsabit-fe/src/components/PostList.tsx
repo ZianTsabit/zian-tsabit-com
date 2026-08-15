@@ -11,7 +11,7 @@ import {
 import type { Post, PostCategory } from "../services/posts";
 import { usePosts } from "../services/usePosts";
 import Centered from "./Centered";
-import { toPlainText } from "./Markdown";
+import { toPlainText } from "./markdownText";
 import Typewriter from "./Typewriter";
 
 function formatDate(post: Post): string {

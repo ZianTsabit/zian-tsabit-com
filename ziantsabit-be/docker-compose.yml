@@ -9,6 +9,17 @@ services:
       POSTGRES_DB: "zian_tsabit_be"
       POSTGRES_USER: "zian_tsabit_be"
       POSTGRES_PASSWORD: "postgres"
+    ports:
+      # The `api` service reaches this over the compose network and needs no
+      # published port. This is for the host: .env.example's POSTGRES_HOST=
+      # localhost, and every `manage.py test` / `runserver` run outside Docker,
+      # have nothing to connect to without it.
+      #
+      # Bound to 127.0.0.1 rather than published on all interfaces, because the
+      # credentials above are throwaway dev values and the short form
+      # ("5432:5432") would expose them to anything that can route to this
+      # machine. Change the host port if a local Postgres already holds 5432.
+      - "127.0.0.1:5432:5432"
     volumes:
       # Named volume, not a bind mount: Postgres's data directory is not
       # something a host user should edit by hand, unlike the old db.sqlite3.

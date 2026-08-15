@@ -249,40 +249,6 @@ const components: Components = {
 };
 
 /**
- * Flatten Markdown to bare text, for the card previews that fall back to the
- * body when a post has no excerpt.
- *
- * Deliberately regex rather than a real parse: the output is a one-or-two-line
- * teaser that gets clamped anyway, so "close enough, and cheap" beats pulling
- * the whole AST just to throw it away. It only has to stop `## Heading` and
- * `[text](url)` from showing up as literal syntax on a card.
- */
-export function toPlainText(markdown: string): string {
-  return markdown
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`([^`]*)`/g, "$1")
-    // Images before links: image syntax is link syntax with a leading "!".
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
-    .replace(/^\s{0,3}>\s?/gm, "")
-    .replace(/^\s{0,3}(?:[-*+]|\d+\.)\s+/gm, "")
-    .replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, " ")
-    // Tables: drop the `| --- | --- |` separator row outright, then unwrap the
-    // remaining rows so their cells read as words instead of `| one | two |`.
-    // Runs after the horizontal-rule rule above, which only matches a line of
-    // bare dashes and so never eats a separator row.
-    .replace(/^\s*\|[-:\s|]*\|\s*$/gm, " ")
-    .replace(/^\s*\|(.*)\|\s*$/gm, "$1")
-    .replace(/\s*\|\s*/g, " ")
-    .replace(/(\*\*|__)(.*?)\1/g, "$2")
-    .replace(/(\*|_)(.*?)\1/g, "$2")
-    .replace(/~~(.*?)~~/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/**
  * Renders a post body written in Markdown.
  *
  * `react-markdown` does not render raw HTML unless `rehype-raw` is added, so
