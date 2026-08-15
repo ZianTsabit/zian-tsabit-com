@@ -1,4 +1,5 @@
 import { Box, Container, Stack, Typography } from "@mui/material";
+import FlipPhoto from "../components/FlipPhoto";
 import SectionHeading from "../components/SectionHeading";
 
 const bodyStyle = {
@@ -36,19 +37,11 @@ function About() {
             mb: { xs: 3, sm: 4 },
           }}
         >
-          <Box
-            component="img"
-            src="/professional-photo.jpeg"
+          <FlipPhoto
             alt="Ghazian Tsabit Alkamil"
-            sx={{
-              width: { xs: 140, sm: 170 },
-              height: { xs: 140, sm: 170 },
-              borderRadius: "50%",
-              objectFit: "cover",
-              border: "1px solid",
-              borderColor: "divider",
-              flexShrink: 0,
-            }}
+            frontSrc="/pp-github.png"
+            backSrc="/professional-photo.jpeg"
+            size={{ xs: 140, sm: 170 }}
           />
           <Stack
             spacing={0.5}

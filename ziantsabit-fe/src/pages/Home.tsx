@@ -3,7 +3,6 @@ import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
-import FlipPhoto from "../components/FlipPhoto";
 import LatestUpdates from "../components/LatestUpdates";
 
 function Home() {
@@ -25,64 +24,48 @@ function Home() {
       >
         {/* Profile Section */}
         <Stack
-          direction={{ xs: "column", sm: "row" }}
-          sx={{ 
-            justifyContent: "center", 
+          direction="column"
+          sx={{
+            justifyContent: "center",
             alignItems: "center",
-            gap: 2,
+            gap: 1,
             mb: "18px",
             mt: "18px",
-            textAlign: { xs: "center", sm: "left" }
+            px: { xs: 1, sm: 0 },
+            textAlign: { xs: "center", sm: "left" },
           }}
         >
-          <FlipPhoto
-            alt="Zian Tsabit"
-            frontSrc="/pp-github.png"
-            backSrc="/professional-photo.jpeg"
-            size={{ xs: 100, sm: 120 }}
-            sx={{ mx: { xs: "auto", sm: "8px" } }}
-          />
-          <Stack
-            direction="column"
-            sx={{ 
-              justifyContent: "flex-start", 
-              alignItems: { xs: "center", sm: "center" },
-              gap: 1,
-              px: { xs: 1, sm: 0 },
+          <Typography
+            variant="h5"
+            component="div"
+            color="text.primary"
+            sx={{ fontFamily: "'Ubuntu', sans-serif" }}
+          >
+            Hello, I'm Ghazian Tsabit Alkamil 👋
+          </Typography>
+          <Typography
+            variant="body1"
+            component="div"
+            color="text.primary"
+            sx={{
+              fontFamily: "'Ubuntu', sans-serif",
+              // Justifying a ~35-character line opens up rivers of whitespace.
+              textAlign: { xs: "left", sm: "justify" },
+              mx: { xs: 0, sm: "4px" },
             }}
           >
-            <Typography 
-              variant="h5"
-              component="div" 
-              color="text.primary"
-              sx={{ fontFamily: "'Ubuntu', sans-serif" }}
+            I'm a Software Engineer based in Indonesia, currently working at{" "}
+            <Box
+              component="a"
+              href="https://cermati.group/"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ color: "primary.main", textDecoration: "underline" }}
             >
-              Hello, I'm Ghazian Tsabit Alkamil 👋
-            </Typography>
-            <Typography 
-              variant="body1" 
-              component="div" 
-              color="text.primary"
-              sx={{
-                fontFamily: "'Ubuntu', sans-serif",
-                // Justifying a ~35-character line opens up rivers of whitespace.
-                textAlign: { xs: "left", sm: "justify" },
-                mx: { xs: 0, sm: "4px" },
-              }}
-            >
-              I'm a Software Engineer based in Indonesia, currently working at{" "}
-              <Box
-                component="a"
-                href="https://cermati.group/"
-                target="_blank"
-                rel="noopener noreferrer"
-                sx={{ color: "primary.main", textDecoration: "underline" }}
-              >
-                Cermati Fintech Group
-              </Box>{" "}
-              as a Software Engineer - Data Platform. Here I want to put myself on the internet, share my projects, and write about things that I find interesting.
-            </Typography>
-          </Stack>
+              Cermati Fintech Group
+            </Box>{" "}
+            as a Software Engineer - Data Platform. Here I want to put myself on the internet, share my projects, and write about things that I find interesting.
+          </Typography>
         </Stack>
 
         {/* Divider */}
