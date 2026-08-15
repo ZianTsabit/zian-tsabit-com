@@ -54,6 +54,7 @@ const projects = [
     duration: "Oct 2025 - Present",
     points: [
       "Constructed self-hosted Kubernetes cluster on Proxmox virtualization, configured a multi-node architecture (1 control plane, 2 worker nodes) to master service orchestration and infrastructure management, also implemented observability across multi-node and across the homelab using Grafana and Prometheus, providing real-time monitoring and health metrics for the entire cluster lifecycle.",
+      "Hosts this website: the site you are reading runs on that homelab rather than on a managed platform, with its frontend, Django API, PostgreSQL and object storage deployed as Docker Compose stacks on a Proxmox VM and reached only through a Cloudflare Zero Trust tunnel — no port forwarding, no reverse proxy, no certificate to renew.",
     ],
   },
 ];
