@@ -1,0 +1,80 @@
+# Production overrides. Layered on top of docker-compose.yml, never used alone:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Everything secret comes from a `.env` beside this file (gitignored) -- see
+# .env.example for the list. `${VAR:?message}` makes Compose refuse to start
+# with a clear error rather than silently deploying a development default.
+#
+# See DEPLOY.md in the repository root for the whole picture.
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+
+  rustfs:
+    environment:
+      RUSTFS_ACCESS_KEY: "${RUSTFS_ACCESS_KEY:?set RUSTFS_ACCESS_KEY in .env}"
+      RUSTFS_SECRET_KEY: "${RUSTFS_SECRET_KEY:?set RUSTFS_SECRET_KEY in .env}"
+    # `!override` replaces the base list rather than appending to it. Without it
+    # Compose keeps docker-compose.yml's "9000:9000" as well and the second
+    # binding fails with "port is already allocated".
+    ports: !override
+      # The S3 API, published to loopback for cloudflared to reach. The tunnel
+      # maps the media hostname here, because the browser loads every post image
+      # straight from this port.
+      - "127.0.0.1:9000:9000"
+      # The console. Not routed through the tunnel -- reach it over an SSH
+      # port-forward when you want to look at the bucket.
+      - "127.0.0.1:9001:9001"
+
+  storage-init:
+    # Same credentials as the server it is configuring.
+    environment:
+      AWS_ACCESS_KEY_ID: "${RUSTFS_ACCESS_KEY:?set RUSTFS_ACCESS_KEY in .env}"
+      AWS_SECRET_ACCESS_KEY: "${RUSTFS_SECRET_KEY:?set RUSTFS_SECRET_KEY in .env}"
+
+  api:
+    environment:
+      DEBUG: "0"
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env}"
+      # The API's own hostname, space-separated. Not the site's.
+      DJANGO_ALLOWED_HOSTS: "${DJANGO_ALLOWED_HOSTS:?e.g. api.example.com}"
+      # The origin(s) serving the SPA, scheme included. Anything not listed here
+      # has every response discarded by the browser.
+      CORS_ALLOWED_ORIGINS: "${SITE_ORIGINS:?e.g. https://example.com https://www.example.com}"
+      CSRF_TRUSTED_ORIGINS: "${SITE_ORIGINS:?e.g. https://example.com https://www.example.com}"
+      # The tunnel serves the site over HTTPS, so the session and CSRF cookies
+      # can carry Secure. SameSite stays Lax: the SPA and the API share a
+      # registrable domain, so their requests are cross-origin but not
+      # cross-site, and the admin's session cookie survives.
+      SESSION_COOKIE_SECURE: "1"
+      CSRF_COOKIE_SECURE: "1"
+      # cloudflared terminates TLS and forwards plain HTTP. Safe here because
+      # nothing can reach this process except through the tunnel.
+      USE_X_FORWARDED_PROTO: "1"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+      AWS_S3_ACCESS_KEY_ID: "${RUSTFS_ACCESS_KEY:?set RUSTFS_ACCESS_KEY in .env}"
+      AWS_S3_SECRET_ACCESS_KEY: "${RUSTFS_SECRET_KEY:?set RUSTFS_SECRET_KEY in .env}"
+      # Django -> RustFS is unchanged: a compose-network name.
+      # browser -> RustFS is the public media host, and it is written into the
+      # stored URL of every upload. Settle on it before the first upload; a
+      # later change 404s every image already published.
+      AWS_S3_PUBLIC_ENDPOINT_URL: "${MEDIA_ORIGIN:?e.g. https://media.example.com}"
+    # runserver is single-threaded and will not serve static files with DEBUG=0.
+    # entrypoint.sh still runs migrate and collectstatic ahead of this.
+    command:
+      - gunicorn
+      - ziantsabit_be.wsgi:application
+      - --bind
+      - 0.0.0.0:8000
+      - --workers
+      - "3"
+      - --access-logfile
+      - "-"
+    # The base file bind-mounts the source over /app so runserver can autoreload.
+    # In production that shadows the code baked into the image with whatever is
+    # checked out on the host.
+    volumes: !reset []
+    ports: !override
+      - "127.0.0.1:8000:8000"

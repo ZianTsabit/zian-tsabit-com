@@ -13,6 +13,8 @@ class PostSerializer(serializers.ModelSerializer):
             "category",
             "excerpt",
             "body",
+            "cover_image_url",
+            "cover_image_alt",
             "status",
             "published_at",
             "created_at",

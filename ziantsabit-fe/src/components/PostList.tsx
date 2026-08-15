@@ -11,6 +11,7 @@ import {
 import type { Post, PostCategory } from "../services/posts";
 import { usePosts } from "../services/usePosts";
 import Centered from "./Centered";
+import { toPlainText } from "./markdownText";
 import Typewriter from "./Typewriter";
 
 function formatDate(post: Post): string {
@@ -30,15 +31,20 @@ function formatDate(post: Post): string {
  *  every category and so needs to build each card's `to` itself. */
 export function PostCard({ post, to }: { post: Post; to: string }) {
   // Excerpt is the summary when there is one; otherwise the body stands in, so
-  // a post written without an excerpt is not a bare title.
-  const text = post.excerpt || post.body;
+  // a post written without an excerpt is not a bare title. The body is
+  // Markdown, so it is flattened first -- a card is no place for `## Heading`.
+  const text = post.excerpt || toPlainText(post.body);
 
   return (
     <Box
       component={Link}
       to={to}
       sx={{
-        display: "block",
+        display: "flex",
+        // A cover image leads the card on a wide screen and sits on top of it
+        // on a phone, where 120px of thumbnail would leave the title no room.
+        flexDirection: { xs: "column", sm: "row" },
+        gap: { xs: 1.5, sm: 2 },
         border: "1px solid",
         borderColor: "divider",
         borderRadius: 1,
@@ -52,6 +58,27 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
         },
       }}
     >
+      {post.cover_image_url && (
+        <Box
+          component="img"
+          src={post.cover_image_url}
+          // Empty alt, not the title: the card's own heading already says what
+          // this links to, so announcing it twice is noise. A cover with real
+          // alt text still contributes it.
+          alt={post.cover_image_alt}
+          loading="lazy"
+          sx={{
+            width: { xs: "100%", sm: 120 },
+            height: { xs: 160, sm: 120 },
+            flexShrink: 0,
+            objectFit: "cover",
+            borderRadius: 1,
+            bgcolor: "background.paper",
+          }}
+        />
+      )}
+
+      <Box sx={{ minWidth: 0, flex: 1 }}>
       <Stack
         direction={{ xs: "column", sm: "row" }}
         sx={{
@@ -96,11 +123,19 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
             // of ~35 characters opens rivers of whitespace, hence sm and up only.
             whiteSpace: "pre-line",
             textAlign: { xs: "left", sm: "justify" },
+            // A card is a teaser. Bodies are Markdown documents now, so an
+            // unclamped fallback preview can run to the length of the whole
+            // post; three lines keeps every card the same rough size.
+            display: "-webkit-box",
+            WebkitBoxOrient: "vertical",
+            WebkitLineClamp: 3,
+            overflow: "hidden",
           }}
         >
           {text}
         </Typography>
       )}
+      </Box>
     </Box>
   );
 }

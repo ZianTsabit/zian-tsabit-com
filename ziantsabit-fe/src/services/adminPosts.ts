@@ -32,6 +32,11 @@ export interface PostDraft {
   status: PostStatus;
   excerpt: string;
   body: string;
+  /** Already-uploaded URL, not a File: the picker uploads on selection, so by
+   *  the time this is set the bytes are in the bucket and saving the post is
+   *  still a plain JSON write. Empty string means "no cover". */
+  cover_image_url: string;
+  cover_image_alt: string;
   published_at: string | null;
 }
 
@@ -43,6 +48,8 @@ export function draftFrom(post: Post): PostDraft {
     status: post.status,
     excerpt: post.excerpt,
     body: post.body,
+    cover_image_url: post.cover_image_url,
+    cover_image_alt: post.cover_image_alt,
     published_at: post.published_at,
   };
 }
@@ -55,6 +62,8 @@ export function emptyDraft(category: PostCategory = "books"): PostDraft {
     status: "draft",
     excerpt: "",
     body: "",
+    cover_image_url: "",
+    cover_image_alt: "",
     published_at: null,
   };
 }
@@ -92,6 +101,14 @@ export function fetchAdminPostPage(
   signal?: AbortSignal,
 ): Promise<PostPage> {
   return apiRequest<PostPage>(url, { signal });
+}
+
+/** One post by slug, drafts included -- for the edit page when it's reached
+ *  without the post already in hand (a direct link, or a page reload). The
+ *  common path (clicking "Edit" from the list) skips this and passes the post
+ *  through router state instead, since the list already has it in memory. */
+export function fetchAdminPost(slug: string, signal?: AbortSignal): Promise<Post> {
+  return apiRequest<Post>(`/posts/${encodeURIComponent(slug)}/`, { signal });
 }
 
 export function createPost(draft: PostDraft): Promise<Post> {

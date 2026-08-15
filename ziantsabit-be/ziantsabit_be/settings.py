@@ -77,6 +77,14 @@ CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
 SESSION_COOKIE_SECURE = _env_flag('SESSION_COOKIE_SECURE')
 CSRF_COOKIE_SECURE = _env_flag('CSRF_COOKIE_SECURE')
 
+# Behind cloudflared (or any TLS-terminating proxy) Django receives plain HTTP
+# and would otherwise report every request as insecure. Off by default and
+# switched on only by the deployment, because trusting a header the client can
+# also send is only safe when nothing can reach this process directly -- which
+# is true behind the tunnel and false for a local `runserver` on :8000.
+if _env_flag('USE_X_FORWARDED_PROTO'):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 
 # Application definition
 
@@ -120,6 +128,10 @@ SPECTACULAR_SETTINGS = {
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Directly below SecurityMiddleware and above everything else, as WhiteNoise
+    # documents: a static file should be answered without running sessions,
+    # auth or CSRF over it.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     # Has to sit above CommonMiddleware: preflight OPTIONS requests need a
     # response before anything else gets a chance to redirect or reject them.
@@ -206,6 +218,91 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Where `collectstatic` gathers Django admin's, DRF's and drf-spectacular's own
+# assets for WhiteNoise to serve. Deliberately *outside* /app: docker-compose.yml
+# bind-mounts the source tree over /app for autoreload, which would shadow a
+# collected directory built into the image (and drop a build artefact into the
+# working copy on the host).
+STATIC_ROOT = os.environ.get('DJANGO_STATIC_ROOT', BASE_DIR / 'staticfiles')
+
+
+# Uploaded images
+# ---------------
+# Post images live in an S3-compatible bucket -- RustFS in development, via the
+# `rustfs` service in docker-compose.yml -- rather than on the API container's
+# disk, which is ephemeral and would lose every upload on a rebuild. Nothing
+# below names the server: this is django-storages' generic S3 backend, which is
+# why replacing MinIO with RustFS was a compose change and not a code change.
+#
+# Two endpoints, and they are genuinely different addresses:
+#
+#   AWS_S3_ENDPOINT_URL         Django -> RustFS. Inside Docker this is
+#                               http://rustfs:9000, a name only the compose
+#                               network resolves.
+#   AWS_S3_PUBLIC_ENDPOINT_URL  browser -> RustFS. Has to be an address the
+#                               visitor's machine can reach, so it cannot be
+#                               the internal one.
+#
+# Getting this wrong is the classic object-storage-behind-Docker bug: uploads
+# succeed, and every <img> points at a host the browser has never heard of.
+AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME', 'ziantsabit-media')
+AWS_S3_ACCESS_KEY_ID = os.environ.get('AWS_S3_ACCESS_KEY_ID', 'rustfsadmin')
+AWS_S3_SECRET_ACCESS_KEY = os.environ.get('AWS_S3_SECRET_ACCESS_KEY', 'rustfsadmin')
+AWS_S3_ENDPOINT_URL = os.environ.get('AWS_S3_ENDPOINT_URL', 'http://localhost:9000')
+AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
+
+# A self-hosted bucket is served as a path (host/bucket/key), not as a
+# subdomain, unless you own wildcard DNS for it. boto3 defaults to virtual-host
+# style and would address a bucket nobody can resolve.
+AWS_S3_ADDRESSING_STYLE = 'path'
+
+# The bucket is public-read (docker-compose.yml's `storage-init` puts that
+# policy on it), so object URLs need no signature. Signed URLs expire, which
+# would rot every image on a page a visitor -- or a CDN -- had cached.
+AWS_QUERYSTRING_AUTH = False
+
+# Per-object ACLs are unsupported by RustFS by design (and were only partly
+# implemented by MinIO); the bucket policy is what makes objects readable, so
+# don't send an ACL at all.
+AWS_DEFAULT_ACL = None
+
+# Never clobber an existing key. The upload view already appends a random
+# suffix, so this is the second half of the same guarantee.
+AWS_S3_FILE_OVERWRITE = False
+
+_public_endpoint = os.environ.get(
+    'AWS_S3_PUBLIC_ENDPOINT_URL', AWS_S3_ENDPOINT_URL
+).rstrip('/')
+_public_scheme, _, _public_host = _public_endpoint.rpartition('://')
+# django-storages builds a URL as `{AWS_S3_URL_PROTOCOL}//{AWS_S3_CUSTOM_DOMAIN}/{key}`,
+# and with path-style addressing the bucket is part of that host-and-path prefix.
+AWS_S3_URL_PROTOCOL = f'{_public_scheme or "http"}:'
+AWS_S3_CUSTOM_DOMAIN = f'{_public_host}/{AWS_STORAGE_BUCKET_NAME}'
+
+STORAGES = {
+    'default': {'BACKEND': 'storages.backends.s3.S3Storage'},
+    # Compressed: WhiteNoise pre-builds .gz/.br beside each file at collect time
+    # and serves those. Manifest: filenames get a content hash, which is what
+    # makes the immutable far-future caching it applies to them safe.
+    #
+    # Manifest storage only when DEBUG is off, because it cannot resolve a
+    # {% static %} tag at all until `collectstatic` has run -- and a bare
+    # `manage.py runserver` or `manage.py test` outside Docker never runs it.
+    # In the container entrypoint.sh does, before anything serves a request.
+    'staticfiles': {
+        'BACKEND': (
+            'django.contrib.staticfiles.storage.StaticFilesStorage'
+            if DEBUG
+            else 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+        ),
+    },
+}
+
+# Largest image the upload endpoint accepts, in bytes. Django spools anything
+# over FILE_UPLOAD_MAX_MEMORY_SIZE to a temp file, so this is a policy limit
+# rather than a memory guard.
+MAX_UPLOAD_SIZE = int(os.environ.get('MAX_UPLOAD_SIZE', 10 * 1024 * 1024))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

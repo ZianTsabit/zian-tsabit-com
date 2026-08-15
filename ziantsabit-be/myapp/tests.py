@@ -1,11 +1,21 @@
 import base64
+import io
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.urls import reverse
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
 from .models import Post
+
+# The CORS tests below pin this rather than relying on settings.py's default,
+# so they assert the behaviour and not the environment: a deployment sets
+# CORS_ALLOWED_ORIGINS to its real site origin, and without the override the
+# suite fails inside exactly the container it is supposed to be validating.
+SPA_ORIGIN = "http://spa.test"
 
 
 class PostModelTests(APITestCase):
@@ -203,24 +213,27 @@ class PostAPITests(APITestCase):
         self.published.refresh_from_db()
         self.assertEqual(self.published.title, "Renamed")
 
+    @override_settings(CORS_ALLOWED_ORIGINS=[SPA_ORIGIN])
     def test_allowed_origin_gets_cors_header(self):
         # Without this header the browser discards the response and the SPA sees
         # an opaque network error, so it is worth asserting rather than assuming.
-        response = self.client.get(self.list_url, HTTP_ORIGIN="http://localhost:5173")
+        response = self.client.get(self.list_url, HTTP_ORIGIN=SPA_ORIGIN)
         self.assertEqual(
             response.headers.get("Access-Control-Allow-Origin"),
-            "http://localhost:5173",
+            SPA_ORIGIN,
         )
 
+    @override_settings(CORS_ALLOWED_ORIGINS=[SPA_ORIGIN])
     def test_preflight_is_answered(self):
         response = self.client.options(
             self.list_url,
-            HTTP_ORIGIN="http://localhost:5173",
+            HTTP_ORIGIN=SPA_ORIGIN,
             HTTP_ACCESS_CONTROL_REQUEST_METHOD="GET",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("Access-Control-Allow-Headers", response.headers)
 
+    @override_settings(CORS_ALLOWED_ORIGINS=[SPA_ORIGIN])
     def test_unknown_origin_gets_no_cors_header(self):
         response = self.client.get(self.list_url, HTTP_ORIGIN="http://evil.example")
         self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
@@ -380,3 +393,155 @@ class SessionAuthTests(APITestCase):
             self.logout_url, format="json", HTTP_X_CSRFTOKEN=self.start_session()
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+def png_bytes(size=(4, 4), image_format="PNG"):
+    """A real image, encoded in memory -- the upload endpoint hands the bytes to
+    Pillow, so a fixture of `b"not an image"` would be rejected before it ever
+    reached the logic under test."""
+    buffer = io.BytesIO()
+    Image.new("RGB", size, "blue").save(buffer, format=image_format)
+    return buffer.getvalue()
+
+
+# InMemoryStorage, so the suite never needs MinIO running -- and never leaves
+# test uploads sitting in a real bucket. The view only ever calls save()/url()
+# on the default storage, so swapping the backend exercises the same code path.
+@override_settings(
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+        },
+    }
+)
+class ImageUploadTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.url = reverse("upload-image")
+
+    def upload(self, file, **kwargs):
+        return self.client.post(self.url, {"file": file}, format="multipart", **kwargs)
+
+    def png_upload(self, name="Screen Shot.png", **kwargs):
+        return SimpleUploadedFile(name, png_bytes(**kwargs), content_type="image/png")
+
+    def test_anonymous_cannot_upload(self):
+        response = self.upload(self.png_upload())
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_upload_returns_a_url(self):
+        self.client.force_authenticate(self.user)
+        response = self.upload(self.png_upload())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["url"])
+        self.assertTrue(response.data["name"].startswith("uploads/"))
+
+    def test_stored_name_is_slugified_and_suffixed(self):
+        # The uploaded filename has a space and mixed case; the key must not,
+        # and two uploads of the same name must not collide.
+        self.client.force_authenticate(self.user)
+        first = self.upload(self.png_upload()).data["name"]
+        second = self.upload(self.png_upload()).data["name"]
+        self.assertRegex(first, r"^uploads/\d{4}/\d{2}/screen-shot-[0-9a-f]{8}\.png$")
+        self.assertNotEqual(first, second)
+
+    def test_extension_follows_the_real_format_not_the_filename(self):
+        # A JPEG uploaded as "photo.png" is stored as .jpg: the extension comes
+        # from Pillow's verdict on the bytes, never from the name.
+        self.client.force_authenticate(self.user)
+        jpeg = SimpleUploadedFile(
+            "photo.png", png_bytes(image_format="JPEG"), content_type="image/png"
+        )
+        self.assertTrue(self.upload(jpeg).data["name"].endswith(".jpg"))
+
+    def test_non_image_is_rejected(self):
+        # Correct extension, correct Content-Type, contents that are neither.
+        self.client.force_authenticate(self.user)
+        response = self.upload(
+            SimpleUploadedFile("payload.png", b"MZ\x00not an image", "image/png")
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("file", response.data)
+
+    @override_settings(MAX_UPLOAD_SIZE=100)
+    def test_oversized_image_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.upload(self.png_upload(size=(400, 400)))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("file", response.data)
+
+    def test_missing_file_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(self.url, {}, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class CoverImageTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("post-list")
+
+    def test_cover_fields_default_to_blank(self):
+        post = Post.objects.create(title="No Cover", category=Post.Category.BOOKS)
+        self.assertEqual(post.cover_image_url, "")
+        self.assertEqual(post.cover_image_alt, "")
+
+    def test_create_with_a_cover_url(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            {
+                "title": "With Cover",
+                "category": "books",
+                "cover_image_url": "http://localhost:9000/ziantsabit-media/a.png",
+                "cover_image_alt": "A blue square",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            response.data["cover_image_url"],
+            "http://localhost:9000/ziantsabit-media/a.png",
+        )
+        self.assertEqual(response.data["cover_image_alt"], "A blue square")
+
+    def test_cover_url_must_be_a_url(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            {"title": "Bad", "category": "books", "cover_image_url": "not a url"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("cover_image_url", response.data)
+
+    def test_cover_is_exposed_to_anonymous_readers(self):
+        Post.objects.create(
+            title="Public",
+            category=Post.Category.BOOKS,
+            status=Post.Status.PUBLISHED,
+            cover_image_url="http://localhost:9000/ziantsabit-media/b.png",
+        )
+        response = self.client.get(self.list_url)
+        self.assertEqual(
+            response.data["results"][0]["cover_image_url"],
+            "http://localhost:9000/ziantsabit-media/b.png",
+        )
+
+    def test_cover_can_be_cleared(self):
+        post = Post.objects.create(
+            title="Clear Me",
+            category=Post.Category.BOOKS,
+            cover_image_url="http://localhost:9000/ziantsabit-media/c.png",
+        )
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            reverse("post-detail", args=[post.slug]),
+            {"cover_image_url": ""},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["cover_image_url"], "")

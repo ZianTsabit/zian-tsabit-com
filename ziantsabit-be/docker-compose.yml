@@ -9,6 +9,17 @@ services:
       POSTGRES_DB: "zian_tsabit_be"
       POSTGRES_USER: "zian_tsabit_be"
       POSTGRES_PASSWORD: "postgres"
+    ports:
+      # The `api` service reaches this over the compose network and needs no
+      # published port. This is for the host: .env.example's POSTGRES_HOST=
+      # localhost, and every `manage.py test` / `runserver` run outside Docker,
+      # have nothing to connect to without it.
+      #
+      # Bound to 127.0.0.1 rather than published on all interfaces, because the
+      # credentials above are throwaway dev values and the short form
+      # ("5432:5432") would expose them to anything that can route to this
+      # machine. Change the host port if a local Postgres already holds 5432.
+      - "127.0.0.1:5432:5432"
     volumes:
       # Named volume, not a bind mount: Postgres's data directory is not
       # something a host user should edit by hand, unlike the old db.sqlite3.
@@ -19,6 +30,105 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
+  # S3-compatible object storage for post images. Django talks to this through
+  # django-storages' generic S3 backend, so the server behind the endpoint is an
+  # environment choice -- this was MinIO, and swapping it needed no Python
+  # changes at all.
+  rustfs:
+    # RustFS ships no dated RELEASE tags the way MinIO did. `latest` is what
+    # their own compose file uses; pin it to a digest once a build is known
+    # good, because this project is young enough that `latest` moves under you.
+    image: rustfs/rustfs:latest
+    container_name: ziantsabit-be_rustfs
+    environment:
+      # Single drive, matching the old `server /data`. RustFS's multi-drive
+      # erasure form is `/data/rustfs{0..3}`, which a dev box does not need.
+      RUSTFS_VOLUMES: "/data"
+      RUSTFS_ADDRESS: "0.0.0.0:9000"
+      RUSTFS_CONSOLE_ADDRESS: "0.0.0.0:9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      # Same shape as MINIO_ROOT_USER / MINIO_ROOT_PASSWORD were. `rustfsadmin`
+      # is RustFS's documented default and is fine only because nothing here is
+      # published beyond localhost.
+      RUSTFS_ACCESS_KEY: "rustfsadmin"
+      RUSTFS_SECRET_KEY: "rustfsadmin"
+    ports:
+      # 9000 is the S3 API. It is published because the *browser* loads every
+      # post image straight from it -- see AWS_S3_PUBLIC_ENDPOINT_URL below.
+      - "9000:9000"
+      # 9001 is the web console, for looking at what got uploaded.
+      - "9001:9001"
+    volumes:
+      # Named volume, like postgres_data. Note this is a *different* volume from
+      # the old minio_data: nothing migrates the objects across, so uploads made
+      # under MinIO stay in minio_data and their URLs 404 until you copy them.
+      - rustfs_data:/data
+    healthcheck:
+      # RustFS serves a plain /health on the S3 port, unlike MinIO where the
+      # check had to go through `mc`. If the image turns out to ship no curl,
+      # swap this for a wget -q -O- form.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  storage-init:
+    # One-shot: create the bucket and make it readable without a signature.
+    # Runs to completion and exits, which is why it has no `restart` policy.
+    #
+    # This was `mc`, MinIO's own client. RustFS has no drop-in equivalent for
+    # `mc anonymous set download`, so the policy is written as raw S3 -- which
+    # is the honest version of what that command was doing anyway.
+    # Pinned to a full version: amazon/aws-cli publishes `latest` and concrete
+    # `2.x.y` tags only -- there is no floating `2`, and asking for one fails
+    # the pull with "docker.io/amazon/aws-cli:2: not found".
+    image: amazon/aws-cli:2.36.24
+    container_name: ziantsabit-be_storage_init
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: "rustfsadmin"
+      AWS_SECRET_ACCESS_KEY: "rustfsadmin"
+      AWS_DEFAULT_REGION: "us-east-1"
+      # Without this the CLI spends its first seconds probing an EC2 metadata
+      # endpoint that does not exist here before falling back to the keys above.
+      AWS_EC2_METADATA_DISABLED: "true"
+    # The image's entrypoint is `aws` itself; this needs a shell to chain two
+    # calls and to swallow the "bucket already exists" case on a re-run.
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -eu
+        endpoint=http://rustfs:9000
+        bucket=ziantsabit-media
+        aws --endpoint-url "$$endpoint" s3api create-bucket --bucket "$$bucket" \
+          || echo "bucket already exists, continuing"
+        # Public read on objects only -- no s3:ListBucket, so the bucket's
+        # contents cannot be enumerated by anyone who finds one image URL.
+        #
+        # `"Principal": {"AWS": ["*"]}` is deliberate and is NOT interchangeable
+        # with the more common `"Principal": "*"`: RustFS rejects both the bare
+        # string and the unwrapped {"AWS": "*"} with a 400 InvalidArgument
+        # (rustfs/rustfs#1336). The single-element array is the form it accepts.
+        aws --endpoint-url "$$endpoint" s3api put-bucket-policy \
+          --bucket "$$bucket" \
+          --policy '{
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "PublicReadGetObject",
+                "Effect": "Allow",
+                "Principal": {"AWS": ["*"]},
+                "Action": ["s3:GetObject"],
+                "Resource": ["arn:aws:s3:::ziantsabit-media/*"]
+              }
+            ]
+          }'
 
   api:
     build: .
@@ -35,6 +145,15 @@ services:
       POSTGRES_PASSWORD: "postgres"
       POSTGRES_HOST: "db"
       POSTGRES_PORT: "5432"
+      AWS_STORAGE_BUCKET_NAME: "ziantsabit-media"
+      AWS_S3_ACCESS_KEY_ID: "rustfsadmin"
+      AWS_S3_SECRET_ACCESS_KEY: "rustfsadmin"
+      # Django -> RustFS, over the compose network.
+      AWS_S3_ENDPOINT_URL: "http://rustfs:9000"
+      # browser -> RustFS. `rustfs` is not a name the host can resolve, so image
+      # URLs have to be built from the published port instead. Getting this
+      # wrong is invisible on upload and breaks every <img> on the site.
+      AWS_S3_PUBLIC_ENDPOINT_URL: "http://localhost:9000"
     volumes:
       # Source mount, so runserver's autoreload picks up edits.
       - .:/app
@@ -43,6 +162,10 @@ services:
       # migrate would otherwise race Postgres's own startup and fail.
       db:
         condition: service_healthy
+      # Nothing reads the bucket until someone uploads, so the API only needs
+      # storage-init to have finished, not to have started before it.
+      storage-init:
+        condition: service_completed_successfully
     healthcheck:
       # No curl in python:3.12-slim, and the image already has Python. /api/
       # is public, so this needs no credentials.
@@ -59,3 +182,4 @@ services:
 
 volumes:
   postgres_data:
+  rustfs_data:

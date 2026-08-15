@@ -10,6 +10,7 @@ import {
 } from "@mui/material";
 
 import Centered from "../components/Centered";
+import Markdown from "../components/Markdown";
 import TagChip from "../components/TagChip";
 import Typewriter from "../components/Typewriter";
 import { usePost } from "../services/usePost";
@@ -133,17 +134,27 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
               <TagChip label={CATEGORY_LABELS[post.category]} />
             </Box>
 
-            <Typography
-              sx={{
-                fontFamily: "'Ubuntu', sans-serif",
-                fontSize: { xs: "15px", sm: "17px" },
-                color: "text.primary",
-                whiteSpace: "pre-line",
-                textAlign: { xs: "left", sm: "justify" },
-              }}
-            >
-              {post.body}
-            </Typography>
+            {post.cover_image_url && (
+              <Box
+                component="img"
+                src={post.cover_image_url}
+                // Blank alt marks it decorative, which is the honest default:
+                // the title above already carries the meaning. An author who
+                // filled the alt field in gets what they wrote.
+                alt={post.cover_image_alt}
+                sx={{
+                  width: "100%",
+                  maxHeight: { xs: 240, sm: 380 },
+                  objectFit: "cover",
+                  borderRadius: 1,
+                  bgcolor: "background.paper",
+                }}
+              />
+            )}
+
+            {/* The body is Markdown; `Markdown` owns its own typography, so
+                there is no wrapping Typography to fight with it. */}
+            <Markdown>{post.body}</Markdown>
           </Stack>
         )}
       </Container>

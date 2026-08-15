@@ -20,6 +20,13 @@ COPY . .
 # the source tree -- this is just standard non-root hygiene.
 RUN useradd --uid 1000 --create-home --shell /bin/bash app \
     && chown -R app:app /app
+
+# collectstatic's destination, matching DJANGO_STATIC_ROOT below. It lives
+# outside /app because docker-compose.yml bind-mounts the source tree there for
+# autoreload, and that mount would shadow anything collected into it.
+ENV DJANGO_STATIC_ROOT=/srv/static
+RUN mkdir -p /srv/static && chown app:app /srv/static
+
 USER app
 
 EXPOSE 8000
