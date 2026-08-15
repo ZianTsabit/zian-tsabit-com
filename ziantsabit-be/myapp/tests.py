@@ -11,6 +11,12 @@ from rest_framework.test import APIClient, APITestCase
 
 from .models import Post
 
+# The CORS tests below pin this rather than relying on settings.py's default,
+# so they assert the behaviour and not the environment: a deployment sets
+# CORS_ALLOWED_ORIGINS to its real site origin, and without the override the
+# suite fails inside exactly the container it is supposed to be validating.
+SPA_ORIGIN = "http://spa.test"
+
 
 class PostModelTests(APITestCase):
     def test_slug_is_derived_from_title(self):
@@ -207,24 +213,27 @@ class PostAPITests(APITestCase):
         self.published.refresh_from_db()
         self.assertEqual(self.published.title, "Renamed")
 
+    @override_settings(CORS_ALLOWED_ORIGINS=[SPA_ORIGIN])
     def test_allowed_origin_gets_cors_header(self):
         # Without this header the browser discards the response and the SPA sees
         # an opaque network error, so it is worth asserting rather than assuming.
-        response = self.client.get(self.list_url, HTTP_ORIGIN="http://localhost:5173")
+        response = self.client.get(self.list_url, HTTP_ORIGIN=SPA_ORIGIN)
         self.assertEqual(
             response.headers.get("Access-Control-Allow-Origin"),
-            "http://localhost:5173",
+            SPA_ORIGIN,
         )
 
+    @override_settings(CORS_ALLOWED_ORIGINS=[SPA_ORIGIN])
     def test_preflight_is_answered(self):
         response = self.client.options(
             self.list_url,
-            HTTP_ORIGIN="http://localhost:5173",
+            HTTP_ORIGIN=SPA_ORIGIN,
             HTTP_ACCESS_CONTROL_REQUEST_METHOD="GET",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("Access-Control-Allow-Headers", response.headers)
 
+    @override_settings(CORS_ALLOWED_ORIGINS=[SPA_ORIGIN])
     def test_unknown_origin_gets_no_cors_header(self):
         response = self.client.get(self.list_url, HTTP_ORIGIN="http://evil.example")
         self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))

@@ -77,6 +77,14 @@ CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
 SESSION_COOKIE_SECURE = _env_flag('SESSION_COOKIE_SECURE')
 CSRF_COOKIE_SECURE = _env_flag('CSRF_COOKIE_SECURE')
 
+# Behind cloudflared (or any TLS-terminating proxy) Django receives plain HTTP
+# and would otherwise report every request as insecure. Off by default and
+# switched on only by the deployment, because trusting a header the client can
+# also send is only safe when nothing can reach this process directly -- which
+# is true behind the tunnel and false for a local `runserver` on :8000.
+if _env_flag('USE_X_FORWARDED_PROTO'):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 
 # Application definition
 
@@ -120,6 +128,10 @@ SPECTACULAR_SETTINGS = {
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Directly below SecurityMiddleware and above everything else, as WhiteNoise
+    # documents: a static file should be answered without running sessions,
+    # auth or CSRF over it.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     # Has to sit above CommonMiddleware: preflight OPTIONS requests need a
     # response before anything else gets a chance to redirect or reject them.
@@ -207,6 +219,13 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Where `collectstatic` gathers Django admin's, DRF's and drf-spectacular's own
+# assets for WhiteNoise to serve. Deliberately *outside* /app: docker-compose.yml
+# bind-mounts the source tree over /app for autoreload, which would shadow a
+# collected directory built into the image (and drop a build artefact into the
+# working copy on the host).
+STATIC_ROOT = os.environ.get('DJANGO_STATIC_ROOT', BASE_DIR / 'staticfiles')
+
 
 # Uploaded images
 # ---------------
@@ -263,8 +282,20 @@ AWS_S3_CUSTOM_DOMAIN = f'{_public_host}/{AWS_STORAGE_BUCKET_NAME}'
 
 STORAGES = {
     'default': {'BACKEND': 'storages.backends.s3.S3Storage'},
+    # Compressed: WhiteNoise pre-builds .gz/.br beside each file at collect time
+    # and serves those. Manifest: filenames get a content hash, which is what
+    # makes the immutable far-future caching it applies to them safe.
+    #
+    # Manifest storage only when DEBUG is off, because it cannot resolve a
+    # {% static %} tag at all until `collectstatic` has run -- and a bare
+    # `manage.py runserver` or `manage.py test` outside Docker never runs it.
+    # In the container entrypoint.sh does, before anything serves a request.
     'staticfiles': {
-        'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        'BACKEND': (
+            'django.contrib.staticfiles.storage.StaticFilesStorage'
+            if DEBUG
+            else 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+        ),
     },
 }
 
