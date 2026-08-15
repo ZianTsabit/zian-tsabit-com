@@ -545,3 +545,113 @@ class CoverImageTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["cover_image_url"], "")
+
+
+class ViewCountTests(APITestCase):
+    """The read counter: POST /api/posts/{slug}/view/ and ?ordering=views."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("post-list")
+        cls.popular = Post.objects.create(
+            title="Popular",
+            category=Post.Category.POSTS,
+            status=Post.Status.PUBLISHED,
+        )
+        cls.quiet = Post.objects.create(
+            title="Quiet",
+            category=Post.Category.POSTS,
+            status=Post.Status.PUBLISHED,
+        )
+        cls.draft = Post.objects.create(title="Hidden", category=Post.Category.POSTS)
+
+    def view_url(self, post):
+        return reverse("post-record-view", kwargs={"slug": post.slug})
+
+    def test_new_post_starts_at_zero(self):
+        self.assertEqual(self.quiet.view_count, 0)
+
+    def test_anonymous_can_record_a_view(self):
+        response = self.client.post(self.view_url(self.popular))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {"slug": self.popular.slug, "view_count": 1})
+
+    def test_views_accumulate(self):
+        for _ in range(3):
+            self.client.post(self.view_url(self.popular))
+        self.popular.refresh_from_db()
+        self.assertEqual(self.popular.view_count, 3)
+
+    def test_recording_a_view_does_not_touch_updated_at(self):
+        before = Post.objects.get(pk=self.popular.pk).updated_at
+        self.client.post(self.view_url(self.popular))
+        self.assertEqual(Post.objects.get(pk=self.popular.pk).updated_at, before)
+
+    def test_anonymous_cannot_record_a_view_on_a_draft(self):
+        response = self.client.post(self.view_url(self.draft))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.draft.refresh_from_db()
+        self.assertEqual(self.draft.view_count, 0)
+
+    def test_unknown_slug_is_404(self):
+        response = self.client.post(
+            reverse("post-record-view", kwargs={"slug": "nothing-here"})
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_view_count_is_serialised(self):
+        Post.objects.filter(pk=self.popular.pk).update(view_count=7)
+        response = self.client.get(
+            reverse("post-detail", kwargs={"slug": self.popular.slug})
+        )
+        self.assertEqual(response.data["view_count"], 7)
+
+    def test_view_count_is_read_only_on_a_write(self):
+        Post.objects.filter(pk=self.popular.pk).update(view_count=7)
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            reverse("post-detail", kwargs={"slug": self.popular.slug}),
+            {"view_count": 0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.popular.refresh_from_db()
+        self.assertEqual(self.popular.view_count, 7)
+
+    def test_ordering_by_views(self):
+        Post.objects.filter(pk=self.quiet.pk).update(view_count=1)
+        Post.objects.filter(pk=self.popular.pk).update(view_count=9)
+        response = self.client.get(self.list_url, {"ordering": "views"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [row["slug"] for row in response.data["results"]],
+            [self.popular.slug, self.quiet.slug],
+        )
+
+    def test_default_ordering_is_still_newest_first(self):
+        Post.objects.filter(pk=self.popular.pk).update(view_count=9)
+        response = self.client.get(self.list_url)
+        self.assertEqual(
+            [row["slug"] for row in response.data["results"]],
+            [self.quiet.slug, self.popular.slug],
+        )
+
+    def test_ordering_combines_with_a_category_filter(self):
+        book = Post.objects.create(
+            title="A Book",
+            category=Post.Category.BOOKS,
+            status=Post.Status.PUBLISHED,
+        )
+        Post.objects.filter(pk=self.popular.pk).update(view_count=9)
+        response = self.client.get(
+            self.list_url, {"ordering": "views", "category": "books"}
+        )
+        self.assertEqual(
+            [row["slug"] for row in response.data["results"]], [book.slug]
+        )
+
+    def test_unknown_ordering_is_rejected(self):
+        response = self.client.get(self.list_url, {"ordering": "most-read"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("ordering", response.data)

@@ -161,6 +161,8 @@ Two things happen in `Post.save()` rather than in the serializer, so they hold f
 - **`slug` is derived from `title` when left blank**, and deduped with a `-2`, `-3` suffix. It stays writable so a URL can be pinned by hand. A slug of only whitespace passes the model's unique check and then collides inside `save()`, which surfaces as a 500 — `PostSerializer.validate_slug` rejects it as a 400 first.
 - **`status="published"` with no `published_at` stamps it `now()`**. `Meta.ordering` is `["-published_at", "-created_at"]`, so without that a published post with a null date would sort below every draft.
 
+**`view_count` is never written by a post save.** It is a `PositiveIntegerField(editable=False)` raised only by `POST /api/posts/{slug}/view/`, which issues a bare `UPDATE ... view_count = view_count + 1` through an `F()` expression. Two reasons it is not `post.view_count += 1; post.save()`: `save()` would drag `auto_now` along and make every read look like an edit, and two concurrent readers would each write back the number they loaded. It is also `read_only` on the serializer, so an ordinary post edit cannot carry a stale count back over it.
+
 **`cover_image_url` is a `URLField`, not an `ImageField`** (with `cover_image_alt` beside it, blank falling back to the title at render time). The bytes are uploaded separately, through `/api/uploads/images/`, and the post only ever stores the URL that came back. That is what lets the New Post form attach an image before the post exists — an `ImageField` has nothing to hang an upload off until after the first save — and it makes a cover and an inline `![](...)` in the body the same kind of thing, so one endpoint serves both. The cost is that nothing links a bucket object back to the post using it; see "Object storage".
 
 ### API surface
@@ -169,9 +171,10 @@ Routed at `api/` from the project `urls.py` via `myapp/urls.py`'s `DefaultRouter
 
 | | |
 | --- | --- |
-| `GET /api/posts/` | list, paginated 20 per page (`?category=`, `?status=`) |
+| `GET /api/posts/` | list, paginated 20 per page (`?category=`, `?status=`, `?ordering=`) |
 | `POST /api/posts/` | create |
 | `GET|PUT|PATCH|DELETE /api/posts/{slug}/` | detail |
+| `POST /api/posts/{slug}/view/` | record one read; open to anonymous callers, returns `{slug, view_count}` |
 | `POST /api/uploads/images/` | multipart image upload, authenticated only; returns `{url, name}` |
 | `GET /api/schema/` | OpenAPI 3 document (drf-spectacular) |
 | `GET /api/docs/` | Swagger UI |
@@ -184,7 +187,9 @@ Routed at `api/` from the project `urls.py` via `myapp/urls.py`'s `DefaultRouter
 Two deliberate details in `PostViewSet.get_queryset`:
 
 - **Drafts are filtered for anonymous users on every route, not just the list.** Filtering only the list would still hand an unpublished post to anyone who guessed its slug.
-- **An unknown `?category=` or `?status=` is a 400, not an empty result.** Dropping an unrecognised filter silently would answer a typo'd `?category=book` with every post on the site.
+- **An unknown `?category=`, `?status=` or `?ordering=` is a 400, not an empty result.** Dropping an unrecognised filter silently would answer a typo'd `?category=book` with every post on the site.
+
+`?ordering=` is `recent` (the default, `Meta.ordering`) or `views`; `ORDERINGS` at the top of `views.py` maps each to an `order_by()`. `views` keeps the date ordering as its tie-breaker, so a page of all-zero counts still reads newest-first instead of in whatever order the database returns rows. An absent param applies no `order_by()` at all rather than restating the default, so `Meta.ordering` stays the single place it lives.
 
 ### Object storage and image uploads
 
@@ -229,7 +234,7 @@ Swagger UI and ReDoc load their JS from a CDN, so the pages need internet; the `
 
 ### Tests
 
-`myapp/tests.py` is a real suite (50 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, and the upload endpoint. Run it with `python manage.py test`.
+`myapp/tests.py` is a real suite (62 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, the upload endpoint, and the view counter. Run it with `python manage.py test`.
 
 **Tests must not depend on a setting a deployment overrides.** The three CORS tests pin `CORS_ALLOWED_ORIGINS` with `@override_settings` for exactly this reason: they previously hardcoded `http://localhost:5173` and relied on the default, so they failed inside any production-configured container — the one place running the suite is most worth doing.
 
@@ -266,9 +271,10 @@ The short form `"5432:5432"` would bind all interfaces and hand the throwaway `z
 
 No HTTP client dependency anywhere — `fetch` plus a handful of hooks:
 
-- **`src/services/posts.ts`** — types mirroring `PostSerializer`, plus every fetch function: `fetchPosts(category, signal)` (one category), `fetchPost(slug, signal)` (one post, for a detail page — throws `PostNotFoundError` on a 404 so a "not found" state is distinguishable from a real error), `fetchLatestPosts(signal)` (newest posts across all categories, unfiltered — the API's default ordering is already newest-first), `fetchPostsPage({category, page}, signal)` (one numbered page, category optional), and the shared `fetchPostPage(url, signal)` they all funnel through. Also `CATEGORY_LABELS`, `CATEGORY_BASE_PATHS` (category → route, needed only where a caller doesn't already know its own category statically) and `VISIBLE_CATEGORIES`.
+- **`src/services/posts.ts`** — types mirroring `PostSerializer`, plus every fetch function: `fetchPosts(category, signal)` (one category), `fetchPost(slug, signal)` (one post, for a detail page — throws `PostNotFoundError` on a 404 so a "not found" state is distinguishable from a real error), `fetchLatestPosts(signal)` (newest posts across all categories, unfiltered — the API's default ordering is already newest-first), `fetchPostsPage({category, page}, signal)` (one numbered page, category optional), `recordPostView(slug, signal)` (POSTs the read counter, returns the new total), and the shared `fetchPostPage(url, signal)` they all funnel through. Also `CATEGORY_LABELS`, `CATEGORY_BASE_PATHS` (category → route, needed only where a caller doesn't already know its own category statically) and `VISIBLE_CATEGORIES`.
 - **`src/services/usePosts.ts`** — one category, loading/error/empty/populated, appends pages via `loadMore`. Used by `Books`/`Projects`.
 - **`src/services/usePost.ts`** — one post by slug, for a `PostDetail` page; adds a `not-found` phase on top of the usual three.
+- **`src/services/useRecordView.ts`** — counts one read of the loaded post and returns the total for `PostDetail` to render (the post's own `view_count` until the endpoint answers, since the GET happened before the increment). **Deliberately the one request in the app that is not aborted on unmount** — the read already happened, so only the state update is skipped. Repeat reads are suppressed by a `viewed:<slug>` key in `sessionStorage`, written *before* the request so React's double-invoked development effect cannot count twice; every touch of `sessionStorage` is try/caught because it throws outright in some privacy modes. A failed record is swallowed: a counter is not worth an error banner over.
 - **`src/services/useLatestPosts.ts`** — newest `limit` posts across `VISIBLE_CATEGORIES`, no pagination. Backs Home's `LatestUpdates` component.
 - **`src/services/usePaginatedPosts.ts`** — one numbered page, category optional; backs `Posts.tsx`. When no category is given it filters `garage_sale` out client-side, so `count`/`totalPages` can run slightly high if any such post exists — not worth a backend change for a category the site no longer surfaces.
 - **`src/services/uploads.ts`** — `uploadImage(file, signal)` against `POST /api/uploads/images/`, plus `ACCEPT_ATTRIBUTE` and `MAX_UPLOAD_BYTES`, which mirror `ALLOWED_FORMATS` and `MAX_UPLOAD_SIZE` on the backend. Those client-side checks are a courtesy that avoids a pointless round trip; **the server re-checks the bytes, and that is the check that counts.** Used by both `CoverImageField` and the editor's image button.

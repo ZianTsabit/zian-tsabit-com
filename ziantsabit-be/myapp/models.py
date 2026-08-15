@@ -42,6 +42,10 @@ class Post(models.Model):
         max_length=20, choices=Status.choices, default=Status.DRAFT
     )
     published_at = models.DateTimeField(null=True, blank=True)
+    # Bumped by POST /api/posts/{slug}/view/ with an F() expression, never by
+    # save() -- a read must not touch updated_at, and two readers arriving at
+    # once must not each write back the same stale number.
+    view_count = models.PositiveIntegerField(default=0, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

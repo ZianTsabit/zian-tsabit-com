@@ -23,6 +23,9 @@ export interface Post {
   status: "draft" | "published";
   /** Null only on drafts, which an unauthenticated caller never receives. */
   published_at: string | null;
+  /** Reads recorded so far. Server-owned: a write to the post never sets it,
+   *  only `recordPostView` does. */
+  view_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -89,9 +92,17 @@ export class PostNotFoundError extends Error {
 }
 
 /** Shared by every call below: turns a dead backend/CORS failure into one message. */
-async function request(url: string, signal?: AbortSignal): Promise<Response> {
+async function request(
+  url: string,
+  signal?: AbortSignal,
+  init: RequestInit = {},
+): Promise<Response> {
   try {
-    return await fetch(url, { signal, headers: { Accept: "application/json" } });
+    return await fetch(url, {
+      ...init,
+      signal,
+      headers: { Accept: "application/json" },
+    });
   } catch (error) {
     // A cancelled request is not a failure, so it has to stay distinguishable
     // from the backend being unreachable -- which is the other reason fetch
@@ -169,6 +180,32 @@ export async function fetchPost(slug: string, signal?: AbortSignal): Promise<Pos
   }
 
   return (await response.json()) as Post;
+}
+
+/**
+ * Record one read of a post and return its new total.
+ *
+ * Deliberately credential-free like every other call in this file: the endpoint
+ * is open to anonymous callers, and DRF only enforces CSRF on a request it
+ * authenticated by session -- so sending no cookie is what keeps this a plain
+ * POST with no token to fetch first.
+ */
+export async function recordPostView(
+  slug: string,
+  signal?: AbortSignal,
+): Promise<number> {
+  const url = `${API_BASE_URL}/posts/${encodeURIComponent(slug)}/view/`;
+  const response = await request(url, signal, { method: "POST" });
+
+  if (response.status === 404) throw new PostNotFoundError(slug);
+  if (!response.ok) {
+    throw new Error(
+      `The API returned ${response.status} ${response.statusText}.`,
+    );
+  }
+
+  const body = (await response.json()) as { view_count: number };
+  return body.view_count;
 }
 
 export { isAbort };

@@ -20,6 +20,7 @@ import AdminPostList from "./AdminPostList";
 import { ApiError } from "../../services/api";
 import {
   CATEGORIES,
+  SORTS,
   STATUSES,
   deletePost,
   setPostStatus,
@@ -44,7 +45,9 @@ function AdminConsole() {
 
   const [category, setCategory] = useState<string>(ALL);
   const [status, setStatus] = useState<string>(ALL);
-  const list = useAdminPosts(category, status);
+  // "" is the API's default ordering, newest first; "views" is most-read first.
+  const [ordering, setOrdering] = useState<string>("");
+  const list = useAdminPosts(category, status, ordering);
   // Stable across renders, unlike `list` itself, so the callbacks below are too.
   const { reload } = list;
 
@@ -166,6 +169,21 @@ function AdminConsole() {
         >
           <MenuItem value={ALL}>All statuses</MenuItem>
           {STATUSES.map((option) => (
+            <MenuItem key={option.value} value={option.value}>
+              {option.label}
+            </MenuItem>
+          ))}
+        </TextField>
+
+        <TextField
+          select
+          size="small"
+          label="Sort"
+          value={ordering}
+          onChange={(event) => setOrdering(event.target.value)}
+          sx={{ minWidth: 160 }}
+        >
+          {SORTS.map((option) => (
             <MenuItem key={option.value} value={option.value}>
               {option.label}
             </MenuItem>

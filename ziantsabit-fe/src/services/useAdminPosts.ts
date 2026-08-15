@@ -21,16 +21,17 @@ function message(error: unknown): string {
 /**
  * The admin page's post list: every category by default, drafts included.
  *
- * Filters are passed as two strings rather than an object so that a caller can
- * build them inline -- a fresh object literal every render would re-trigger the
- * effect forever. An empty string means "no filter".
+ * Filters are passed as separate strings rather than an object so that a caller
+ * can build them inline -- a fresh object literal every render would re-trigger
+ * the effect forever. An empty string means "no filter", and an empty
+ * `ordering` means the API's default (newest first).
  *
  * `reload` re-fetches from the first page, and every mutation calls it: a create
  * or a status change moves rows around under `-published_at` ordering, so
  * patching one row in place would leave the list in an order the API disagrees
  * with.
  */
-export function useAdminPosts(category: string, status: string) {
+export function useAdminPosts(category: string, status: string, ordering: string) {
   const [state, setState] = useState<State>(INITIAL);
   const [loadingMore, setLoadingMore] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -44,7 +45,7 @@ export function useAdminPosts(category: string, status: string) {
     setLoadingMore(false);
     setState(INITIAL);
 
-    fetchAdminPosts({ category, status }, controller.signal)
+    fetchAdminPosts({ category, status, ordering }, controller.signal)
       .then((page) =>
         setState({
           posts: page.results,
@@ -59,7 +60,7 @@ export function useAdminPosts(category: string, status: string) {
       });
 
     return () => controller.abort();
-  }, [category, status, attempt]);
+  }, [category, status, ordering, attempt]);
 
   useEffect(() => () => moreController.current?.abort(), []);
 
