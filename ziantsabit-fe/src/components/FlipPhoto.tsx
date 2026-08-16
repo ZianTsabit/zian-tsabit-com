@@ -25,7 +25,7 @@ const faceStyle: SxProps<Theme> = {
 
 /**
  * Circular photo that flips in place on click, front and back like a playing
- * card -- Home's avatar flips to reveal the portrait used on the About page.
+ * card -- the About portrait flips between the avatar and the formal photo.
  */
 function FlipPhoto({ frontSrc, backSrc, alt, size, sx }: FlipPhotoProps) {
   const [flipped, setFlipped] = useState(false);

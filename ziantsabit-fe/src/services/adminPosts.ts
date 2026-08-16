@@ -23,6 +23,13 @@ export const STATUSES: { value: PostStatus; label: string }[] = [
   { value: "published", label: "Published" },
 ];
 
+/** What `?ordering=` accepts, mirroring ORDERINGS in myapp/views.py. "recent"
+ *  is the API's default, so it is sent as an empty value and left off the URL. */
+export const SORTS: { value: string; label: string }[] = [
+  { value: "", label: "Newest first" },
+  { value: "views", label: "Most read" },
+];
+
 /** The editable half of a post: what the form collects and the API accepts. */
 export interface PostDraft {
   title: string;
@@ -54,7 +61,7 @@ export function draftFrom(post: Post): PostDraft {
   };
 }
 
-export function emptyDraft(category: PostCategory = "books"): PostDraft {
+export function emptyDraft(category: PostCategory = "posts"): PostDraft {
   return {
     title: "",
     slug: "",
@@ -77,19 +84,33 @@ function payload(draft: PostDraft) {
   return trimmed ? { ...rest, slug: trimmed } : rest;
 }
 
-function query(filters: { category?: string; status?: string }): string {
+export interface AdminFilters {
+  category?: string;
+  status?: string;
+  /** "" or omitted means the API's default ordering. */
+  ordering?: string;
+  /** Inclusive YYYY-MM-DD bounds; "" or omitted leaves that end open. A draft
+   *  is dated by its created_at, which is the date the list shows for it. */
+  after?: string;
+  before?: string;
+}
+
+function query(filters: AdminFilters): string {
   const params = new URLSearchParams();
   // An empty value would be sent as `?category=` and rejected as an unknown
   // category, so "no filter" has to mean "no parameter".
   if (filters.category) params.set("category", filters.category);
   if (filters.status) params.set("status", filters.status);
+  if (filters.ordering) params.set("ordering", filters.ordering);
+  if (filters.after) params.set("published_after", filters.after);
+  if (filters.before) params.set("published_before", filters.before);
   const search = params.toString();
   return search ? `?${search}` : "";
 }
 
 /** First page of posts, drafts included. */
 export function fetchAdminPosts(
-  filters: { category?: string; status?: string },
+  filters: AdminFilters,
   signal?: AbortSignal,
 ): Promise<PostPage> {
   return apiRequest<PostPage>(`/posts/${query(filters)}`, { signal });

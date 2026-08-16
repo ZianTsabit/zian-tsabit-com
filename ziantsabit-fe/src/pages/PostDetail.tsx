@@ -14,6 +14,7 @@ import Markdown from "../components/Markdown";
 import TagChip from "../components/TagChip";
 import Typewriter from "../components/Typewriter";
 import { usePost } from "../services/usePost";
+import { useRecordView } from "../services/useRecordView";
 import { CATEGORY_LABELS } from "../services/posts";
 
 function formatDate(stamp: string): string {
@@ -26,6 +27,10 @@ function formatDate(stamp: string): string {
   });
 }
 
+function formatViews(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "view" : "views"}`;
+}
+
 /**
  * One post's full content, reached by clicking its card in a section's list.
  * `backTo`/`backLabel` point back at that section, since a slug alone doesn't
@@ -34,6 +39,9 @@ function formatDate(stamp: string): string {
 function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }) {
   const { slug = "" } = useParams<{ slug: string }>();
   const { post, phase, error, retry } = usePost(slug);
+  // Counts this read once per session, and hands back the total to show --
+  // including the one just recorded, which the post itself is one behind on.
+  const views = useRecordView(post);
 
   return (
     <Box
@@ -130,9 +138,23 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
               </Typography>
             </Stack>
 
-            <Box sx={{ alignSelf: "flex-start" }}>
+            <Stack
+              direction="row"
+              sx={{ alignSelf: "flex-start", gap: 1.5, alignItems: "center" }}
+            >
               <TagChip label={CATEGORY_LABELS[post.category]} />
-            </Box>
+              {views !== null && (
+                <Typography
+                  sx={{
+                    fontFamily: "'Ubuntu', sans-serif",
+                    fontSize: { xs: "12px", sm: "13px" },
+                    color: "text.secondary",
+                  }}
+                >
+                  {formatViews(views)}
+                </Typography>
+              )}
+            </Stack>
 
             {post.cover_image_url && (
               <Box

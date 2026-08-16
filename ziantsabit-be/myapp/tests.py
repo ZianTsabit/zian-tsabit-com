@@ -1,10 +1,12 @@
 import base64
+import datetime
 import io
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
+from django.utils import timezone
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
@@ -545,3 +547,209 @@ class CoverImageTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["cover_image_url"], "")
+
+
+class ViewCountTests(APITestCase):
+    """The read counter: POST /api/posts/{slug}/view/ and ?ordering=views."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("post-list")
+        cls.popular = Post.objects.create(
+            title="Popular",
+            category=Post.Category.POSTS,
+            status=Post.Status.PUBLISHED,
+        )
+        cls.quiet = Post.objects.create(
+            title="Quiet",
+            category=Post.Category.POSTS,
+            status=Post.Status.PUBLISHED,
+        )
+        cls.draft = Post.objects.create(title="Hidden", category=Post.Category.POSTS)
+
+    def view_url(self, post):
+        return reverse("post-record-view", kwargs={"slug": post.slug})
+
+    def test_new_post_starts_at_zero(self):
+        self.assertEqual(self.quiet.view_count, 0)
+
+    def test_anonymous_can_record_a_view(self):
+        response = self.client.post(self.view_url(self.popular))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {"slug": self.popular.slug, "view_count": 1})
+
+    def test_views_accumulate(self):
+        for _ in range(3):
+            self.client.post(self.view_url(self.popular))
+        self.popular.refresh_from_db()
+        self.assertEqual(self.popular.view_count, 3)
+
+    def test_recording_a_view_does_not_touch_updated_at(self):
+        before = Post.objects.get(pk=self.popular.pk).updated_at
+        self.client.post(self.view_url(self.popular))
+        self.assertEqual(Post.objects.get(pk=self.popular.pk).updated_at, before)
+
+    def test_anonymous_cannot_record_a_view_on_a_draft(self):
+        response = self.client.post(self.view_url(self.draft))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.draft.refresh_from_db()
+        self.assertEqual(self.draft.view_count, 0)
+
+    def test_unknown_slug_is_404(self):
+        response = self.client.post(
+            reverse("post-record-view", kwargs={"slug": "nothing-here"})
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_view_count_is_serialised(self):
+        Post.objects.filter(pk=self.popular.pk).update(view_count=7)
+        response = self.client.get(
+            reverse("post-detail", kwargs={"slug": self.popular.slug})
+        )
+        self.assertEqual(response.data["view_count"], 7)
+
+    def test_view_count_is_read_only_on_a_write(self):
+        Post.objects.filter(pk=self.popular.pk).update(view_count=7)
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            reverse("post-detail", kwargs={"slug": self.popular.slug}),
+            {"view_count": 0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.popular.refresh_from_db()
+        self.assertEqual(self.popular.view_count, 7)
+
+    def test_ordering_by_views(self):
+        Post.objects.filter(pk=self.quiet.pk).update(view_count=1)
+        Post.objects.filter(pk=self.popular.pk).update(view_count=9)
+        response = self.client.get(self.list_url, {"ordering": "views"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [row["slug"] for row in response.data["results"]],
+            [self.popular.slug, self.quiet.slug],
+        )
+
+    def test_default_ordering_is_still_newest_first(self):
+        Post.objects.filter(pk=self.popular.pk).update(view_count=9)
+        response = self.client.get(self.list_url)
+        self.assertEqual(
+            [row["slug"] for row in response.data["results"]],
+            [self.quiet.slug, self.popular.slug],
+        )
+
+    def test_ordering_combines_with_a_category_filter(self):
+        book = Post.objects.create(
+            title="A Book",
+            category=Post.Category.BOOKS,
+            status=Post.Status.PUBLISHED,
+        )
+        Post.objects.filter(pk=self.popular.pk).update(view_count=9)
+        response = self.client.get(
+            self.list_url, {"ordering": "views", "category": "books"}
+        )
+        self.assertEqual(
+            [row["slug"] for row in response.data["results"]], [book.slug]
+        )
+
+    def test_unknown_ordering_is_rejected(self):
+        response = self.client.get(self.list_url, {"ordering": "most-read"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("ordering", response.data)
+
+
+class DateFilterTests(APITestCase):
+    """?published_after= / ?published_before=, both inclusive."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("post-list")
+        cls.old = cls._post("Old", "2026-01-10")
+        cls.middle = cls._post("Middle", "2026-05-20")
+        cls.recent = cls._post("Recent", "2026-08-01")
+        # No published_at at all: it is filtered by created_at instead, which
+        # is what the admin list shows for a draft.
+        cls.draft = Post.objects.create(title="Draft", category=Post.Category.POSTS)
+
+    @staticmethod
+    def _post(title, day):
+        post = Post.objects.create(
+            title=title,
+            category=Post.Category.POSTS,
+            status=Post.Status.PUBLISHED,
+        )
+        # save() stamped published_at with now(); pin it to the day under test.
+        stamp = datetime.datetime.fromisoformat(f"{day}T12:00:00+00:00")
+        Post.objects.filter(pk=post.pk).update(published_at=stamp)
+        post.refresh_from_db()
+        return post
+
+    def slugs(self, response):
+        return {row["slug"] for row in response.data["results"]}
+
+    def test_after_is_inclusive_of_its_own_day(self):
+        response = self.client.get(self.list_url, {"published_after": "2026-05-20"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.slugs(response), {self.middle.slug, self.recent.slug})
+
+    def test_before_is_inclusive_of_its_own_day(self):
+        response = self.client.get(self.list_url, {"published_before": "2026-05-20"})
+        self.assertEqual(self.slugs(response), {self.old.slug, self.middle.slug})
+
+    def test_both_ends_together_are_a_range(self):
+        response = self.client.get(
+            self.list_url,
+            {"published_after": "2026-02-01", "published_before": "2026-07-01"},
+        )
+        self.assertEqual(self.slugs(response), {self.middle.slug})
+
+    def test_range_with_nothing_in_it_is_empty_not_an_error(self):
+        response = self.client.get(
+            self.list_url,
+            {"published_after": "2026-09-01", "published_before": "2026-09-30"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["results"], [])
+
+    def test_no_date_params_returns_everything_published(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(len(response.data["results"]), 3)
+
+    def test_draft_is_filtered_by_created_at(self):
+        self.client.force_authenticate(self.user)
+        today = timezone.localdate().isoformat()
+        response = self.client.get(self.list_url, {"published_after": today})
+        self.assertIn(self.draft.slug, self.slugs(response))
+
+    def test_draft_outside_the_range_drops_out(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(
+            self.list_url, {"published_before": "2026-01-01"}
+        )
+        self.assertNotIn(self.draft.slug, self.slugs(response))
+
+    def test_date_filter_combines_with_category(self):
+        book = self._post("A Book", "2026-05-21")
+        book.category = Post.Category.BOOKS
+        book.save()
+        response = self.client.get(
+            self.list_url, {"category": "books", "published_after": "2026-05-01"}
+        )
+        self.assertEqual(self.slugs(response), {book.slug})
+
+    def test_malformed_date_is_rejected(self):
+        response = self.client.get(self.list_url, {"published_after": "10-05-2026"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("published_after", response.data)
+
+    def test_impossible_date_is_rejected(self):
+        response = self.client.get(self.list_url, {"published_before": "2026-02-31"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("published_before", response.data)
+
+    def test_empty_date_param_is_ignored(self):
+        response = self.client.get(self.list_url, {"published_after": ""})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 3)

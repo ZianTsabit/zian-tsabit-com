@@ -1,9 +1,7 @@
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
-import FlipPhoto from "../components/FlipPhoto";
 import LatestUpdates from "../components/LatestUpdates";
 
 function Home() {
@@ -23,98 +21,33 @@ function Home() {
         maxWidth="md"
         sx={{ flex: 1, display: "flex", flexDirection: "column" }}
       >
-        {/* Profile Section */}
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          sx={{ 
-            justifyContent: "center", 
-            alignItems: "center",
-            gap: 2,
-            mb: "18px",
+        {/* The introduction that used to sit here lives on /about now; the page
+            opens straight onto the feed. */}
+
+        {/* Latest Updates: the heading sits on top of the rule, which then runs
+            under it as its underline -- the same shape as `SectionHeading` on
+            the CV and About pages. */}
+        <Typography
+          variant="body1"
+          component="div"
+          color="text.primary"
+          sx={{
+            fontFamily: "'Ubuntu', sans-serif",
+            textAlign: "left",
             mt: "18px",
-            textAlign: { xs: "center", sm: "left" }
+            mb: "8px",
+            ml: "4px",
+            fontWeight: "bold",
+            // Same scale as SectionHeading, so section titles are one size
+            // across Home, CV and About.
+            fontSize: { xs: "16px", sm: "18px", md: "20px" },
           }}
         >
-          <FlipPhoto
-            alt="Zian Tsabit"
-            frontSrc="/pp-github.png"
-            backSrc="/professional-photo.jpeg"
-            size={{ xs: 100, sm: 120 }}
-            sx={{ mx: { xs: "auto", sm: "8px" } }}
-          />
-          <Stack
-            direction="column"
-            sx={{ 
-              justifyContent: "flex-start", 
-              alignItems: { xs: "center", sm: "center" },
-              gap: 1,
-              px: { xs: 1, sm: 0 },
-            }}
-          >
-            <Typography 
-              variant="h5"
-              component="div" 
-              color="text.primary"
-              sx={{ fontFamily: "'Ubuntu', sans-serif" }}
-            >
-              Hello, I'm Ghazian Tsabit Alkamil 👋
-            </Typography>
-            <Typography 
-              variant="body1" 
-              component="div" 
-              color="text.primary"
-              sx={{
-                fontFamily: "'Ubuntu', sans-serif",
-                // Justifying a ~35-character line opens up rivers of whitespace.
-                textAlign: { xs: "left", sm: "justify" },
-                mx: { xs: 0, sm: "4px" },
-              }}
-            >
-              I'm a Software Engineer based in Indonesia, currently working at{" "}
-              <Box
-                component="a"
-                href="https://cermati.group/"
-                target="_blank"
-                rel="noopener noreferrer"
-                sx={{ color: "primary.main", textDecoration: "underline" }}
-              >
-                Cermati Fintech Group
-              </Box>{" "}
-              as a Software Engineer - Data Platform. Here I want to put myself on the internet, share my projects, and write about things that I find interesting.
-            </Typography>
-          </Stack>
-        </Stack>
+          Latest Updates
+        </Typography>
 
-        {/* Divider */}
-        <Divider
-          sx={{
-            bgcolor: "divider",
-            my: "8px",
-          }}
-        />
+        <Divider sx={{ bgcolor: "divider", mb: "18px" }} />
 
-        {/* Latest Updates */}
-        <Box sx={{ mt: "18px", mb: "36px" }}>
-          <Typography
-            variant="body1"
-            component="div"
-            color="text.primary"
-            sx={{
-              fontFamily: "'Ubuntu', sans-serif",
-              textAlign: "left",
-              mb: "12px",
-              ml: "4px",
-              fontWeight: "bold",
-              // Same scale as SectionHeading, so section titles are one size
-              // across Home, CV and About.
-              fontSize: { xs: "16px", sm: "18px", md: "20px" },
-            }}
-          >
-            Latest Updates
-          </Typography>
-        </Box>
-
-        {/* Latest Updates feed */}
         <Box
           sx={{
             width: "100%",

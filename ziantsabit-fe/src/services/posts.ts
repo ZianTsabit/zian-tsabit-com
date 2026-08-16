@@ -23,6 +23,9 @@ export interface Post {
   status: "draft" | "published";
   /** Null only on drafts, which an unauthenticated caller never receives. */
   published_at: string | null;
+  /** Reads recorded so far. Server-owned: a write to the post never sets it,
+   *  only `recordPostView` does. */
+  view_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -89,9 +92,17 @@ export class PostNotFoundError extends Error {
 }
 
 /** Shared by every call below: turns a dead backend/CORS failure into one message. */
-async function request(url: string, signal?: AbortSignal): Promise<Response> {
+async function request(
+  url: string,
+  signal?: AbortSignal,
+  init: RequestInit = {},
+): Promise<Response> {
   try {
-    return await fetch(url, { signal, headers: { Accept: "application/json" } });
+    return await fetch(url, {
+      ...init,
+      signal,
+      headers: { Accept: "application/json" },
+    });
   } catch (error) {
     // A cancelled request is not a failure, so it has to stay distinguishable
     // from the backend being unreachable -- which is the other reason fetch
@@ -119,18 +130,34 @@ export async function fetchLatestPosts(signal?: AbortSignal): Promise<PostPage> 
   return fetchPostPage(`${API_BASE_URL}/posts/`, signal);
 }
 
-/** Fetch one numbered page of posts, optionally filtered by category -- for
- *  the Posts page's category filter + Prev/Next pagination. `page` omitted or
- *  1 asks for the first page: DRF's PageNumberPagination treats a `page` param
- *  of "1" the same as no param, so leaving it out for that case avoids a
+/** A YYYY-MM-DD day, or "" for "no bound". Both ends are inclusive, and a post
+ *  is dated by its `published_at` -- or `created_at` when it has none. */
+export interface DateRange {
+  after?: string;
+  before?: string;
+}
+
+/** Fetch one numbered page of posts, optionally filtered by category and by
+ *  date -- for the Posts page's filters + Prev/Next pagination. `page` omitted
+ *  or 1 asks for the first page: DRF's PageNumberPagination treats a `page`
+ *  param of "1" the same as no param, so leaving it out for that case avoids a
  *  meaningless `?page=1` in the URL. */
 export async function fetchPostsPage(
-  { category, page }: { category?: PostCategory; page?: number },
+  {
+    category,
+    page,
+    after,
+    before,
+  }: { category?: PostCategory; page?: number } & DateRange,
   signal?: AbortSignal,
 ): Promise<PostPage> {
   const params = new URLSearchParams();
   if (category) params.set("category", category);
   if (page && page > 1) params.set("page", String(page));
+  // An empty string would be sent as `?published_after=` and, unlike a bad
+  // date, is simply ignored by the API -- but there is no reason to send it.
+  if (after) params.set("published_after", after);
+  if (before) params.set("published_before", before);
   const query = params.toString();
   return fetchPostPage(`${API_BASE_URL}/posts/${query ? `?${query}` : ""}`, signal);
 }
@@ -169,6 +196,32 @@ export async function fetchPost(slug: string, signal?: AbortSignal): Promise<Pos
   }
 
   return (await response.json()) as Post;
+}
+
+/**
+ * Record one read of a post and return its new total.
+ *
+ * Deliberately credential-free like every other call in this file: the endpoint
+ * is open to anonymous callers, and DRF only enforces CSRF on a request it
+ * authenticated by session -- so sending no cookie is what keeps this a plain
+ * POST with no token to fetch first.
+ */
+export async function recordPostView(
+  slug: string,
+  signal?: AbortSignal,
+): Promise<number> {
+  const url = `${API_BASE_URL}/posts/${encodeURIComponent(slug)}/view/`;
+  const response = await request(url, signal, { method: "POST" });
+
+  if (response.status === 404) throw new PostNotFoundError(slug);
+  if (!response.ok) {
+    throw new Error(
+      `The API returned ${response.status} ${response.statusText}.`,
+    );
+  }
+
+  const body = (await response.json()) as { view_count: number };
+  return body.view_count;
 }
 
 export { isAbort };
