@@ -13,6 +13,7 @@ import {
   updatePost,
   type PostDraft,
   type PostStatus,
+  type WriteOptions,
 } from "../services/adminPosts";
 import { useAutosave } from "../services/useAutosave";
 import { useWriteQueue } from "../services/useWriteQueue";
@@ -82,10 +83,11 @@ function AdminNewPost() {
     target: string,
     source: PostDraft,
     status: PostStatus,
+    options: WriteOptions,
   ): Promise<Post> => {
     const wanted = slugToSend(source, target);
     try {
-      return await updatePost(target, { ...source, slug: wanted, status });
+      return await updatePost(target, { ...source, slug: wanted, status }, options);
     } catch (failure: unknown) {
       // A slug we derived ourselves can collide with another post's, and the
       // serializer refuses it outright -- Post.save()'s -2 dedupe never gets a
@@ -98,7 +100,7 @@ function AdminNewPost() {
         failure instanceof ApiError &&
         Boolean(failure.fieldErrors.slug)
       ) {
-        return await updatePost(target, { ...source, slug: "", status });
+        return await updatePost(target, { ...source, slug: "", status }, options);
       }
       throw failure;
     }
@@ -111,11 +113,18 @@ function AdminNewPost() {
    * pressed, so "save" here is not a synonym for "create" any more -- without
    * this, pressing Publish after an autosave would create a second copy.
    */
-  const persist = async (source: PostDraft, status: PostStatus): Promise<Post> => {
+  const persist = async (
+    source: PostDraft,
+    status: PostStatus,
+    // Autosave's, when it has any: on the way out of the page it asks for a
+    // write that outlives the document. A button never passes one -- it is
+    // followed by a navigation this page controls.
+    options: WriteOptions = {},
+  ): Promise<Post> => {
     const target = savedSlug.current;
     const post = target
-      ? await update(target, source, status)
-      : await createPost({ ...source, status });
+      ? await update(target, source, status, options)
+      : await createPost({ ...source, status }, options);
 
     savedSlug.current = post.slug;
     setCreatedSlug(post.slug);
@@ -153,7 +162,7 @@ function AdminNewPost() {
   const autosave = useAutosave({
     value: draft,
     enabled: saving === null && draft.title.trim() !== "",
-    save: (snapshot) => enqueue(() => persist(snapshot, "draft")),
+    save: (snapshot, options) => enqueue(() => persist(snapshot, "draft", options)),
     onError: (failure) => {
       if (failure instanceof ApiError && failure.status === 403) onSessionSuspect();
     },

@@ -12,6 +12,7 @@ import {
   updatePost,
   type PostDraft,
   type PostStatus,
+  type WriteOptions,
 } from "../services/adminPosts";
 import { useAutosave } from "../services/useAutosave";
 import { useWriteQueue } from "../services/useWriteQueue";
@@ -81,17 +82,25 @@ function AdminEditPost() {
     source: PostDraft,
     status: PostStatus,
     keepSlug: boolean,
+    // Autosave's, when it has any: on the way out of the page it asks for a
+    // write that outlives the document. A button never passes one -- it is
+    // followed by a navigation this page controls.
+    options: WriteOptions = {},
   ): Promise<Post> => {
-    const post = await updatePost(address.current, {
-      ...source,
-      // Autosave never renames. A slug half-typed into the field would
-      // otherwise be written three seconds later, breaking every link to the
-      // post -- and then again on the next keystroke. A blank one is omitted
-      // from the request, which the API reads as "keep the current URL", so
-      // renaming stays something a button does.
-      slug: keepSlug ? "" : source.slug,
-      status,
-    });
+    const post = await updatePost(
+      address.current,
+      {
+        ...source,
+        // Autosave never renames. A slug half-typed into the field would
+        // otherwise be written three seconds later, breaking every link to the
+        // post -- and then again on the next keystroke. A blank one is omitted
+        // from the request, which the API reads as "keep the current URL", so
+        // renaming stays something a button does.
+        slug: keepSlug ? "" : source.slug,
+        status,
+      },
+      options,
+    );
     address.current = post.slug;
     return post;
   };
@@ -172,9 +181,9 @@ function AdminEditPost() {
       confirmed &&
       saving === null &&
       Boolean(draft?.title.trim()),
-    save: (snapshot) =>
+    save: (snapshot, options) =>
       snapshot
-        ? enqueue(() => persist(snapshot, snapshot.status, true))
+        ? enqueue(() => persist(snapshot, snapshot.status, true, options))
         : Promise.resolve(),
     onError: (failure) => {
       if (failure instanceof ApiError && failure.status === 403) onSessionSuspect();

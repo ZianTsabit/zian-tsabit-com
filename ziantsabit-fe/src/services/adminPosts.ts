@@ -175,18 +175,42 @@ export function fetchAdminPost(slug: string, signal?: AbortSignal): Promise<Post
   return apiRequest<Post>(`/posts/${encodeURIComponent(slug)}/`, { signal });
 }
 
-export function createPost(draft: PostDraft): Promise<Post> {
-  return apiRequest<Post>("/posts/", { method: "POST", body: payload(draft) });
+/**
+ * How to send one write, as opposed to what to send.
+ *
+ * Only autosave passes anything here, and only on its way out: `keepalive` is
+ * what lets the write survive the document that started it. Structurally the
+ * same shape as `SaveOptions` in `useAutosave`, so a page can hand the hook's
+ * argument straight down.
+ */
+export interface WriteOptions {
+  keepalive?: boolean;
+}
+
+export function createPost(
+  draft: PostDraft,
+  options: WriteOptions = {},
+): Promise<Post> {
+  return apiRequest<Post>("/posts/", {
+    method: "POST",
+    body: payload(draft),
+    ...options,
+  });
 }
 
 /**
  * PATCH rather than PUT: an omitted slug then means "keep the current URL",
  * where PUT would treat the missing field as a request to regenerate it.
  */
-export function updatePost(slug: string, draft: PostDraft): Promise<Post> {
+export function updatePost(
+  slug: string,
+  draft: PostDraft,
+  options: WriteOptions = {},
+): Promise<Post> {
   return apiRequest<Post>(`/posts/${encodeURIComponent(slug)}/`, {
     method: "PATCH",
     body: payload(draft),
+    ...options,
   });
 }
 
