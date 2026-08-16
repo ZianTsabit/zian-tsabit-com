@@ -7,12 +7,15 @@ import CloseIcon from "@mui/icons-material/Close";
 import ColorModeToggle from "./ColorModeToggle";
 import { HEADER_HEIGHT } from "../constants/layout";
 
+// Feeds first, then the pages about their author. Home is deliberately absent:
+// the "ZianTsabit" logo is the link there. This one array feeds both the
+// desktop nav and the mobile Drawer, so the order set here holds for both.
 const navItems = [
-  { to: "/about", label: "About" },
-  { to: "/curriculum-vitae", label: "CV" },
   { to: "/posts", label: "Posts" },
   { to: "/books", label: "Books" },
   { to: "/projects", label: "Projects" },
+  { to: "/curriculum-vitae", label: "CV" },
+  { to: "/about", label: "About" },
 ];
 
 function Header() {

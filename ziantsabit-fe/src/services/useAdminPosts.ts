@@ -1,25 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { fetchAdminPostPage, fetchAdminPosts } from "./adminPosts";
-import { isAbort, type Post } from "./posts";
+import { fetchAdminPosts } from "./adminPosts";
+import { isAbort, PAGE_SIZE, type Post } from "./posts";
 
 type Phase = "loading" | "ready" | "error";
 
 interface State {
   posts: Post[];
-  next: string | null;
+  count: number;
   phase: Phase;
   error: string | null;
 }
 
-const INITIAL: State = { posts: [], next: null, phase: "loading", error: null };
+const INITIAL: State = { posts: [], count: 0, phase: "loading", error: null };
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
 /**
- * The admin page's post list: every category by default, drafts included.
+ * The admin page's post list: one numbered page, every category by default,
+ * drafts included.
  *
  * Filters are passed as separate strings rather than an object so that a caller
  * can build them inline -- a fresh object literal every render would re-trigger
@@ -27,76 +28,50 @@ function message(error: unknown): string {
  * means the API's default (newest first), and `after`/`before` are inclusive
  * YYYY-MM-DD bounds.
  *
- * `reload` re-fetches from the first page, and every mutation calls it: a create
- * or a status change moves rows around under `-published_at` ordering, so
+ * `reload` re-fetches the page currently shown, and every mutation calls it: a
+ * create or a status change moves rows around under the API's ordering, so
  * patching one row in place would leave the list in an order the API disagrees
- * with.
+ * with. Note a mutation can empty the last page -- delete the only row on page
+ * 3 and page 3 stops existing -- which is why the caller watches for a ready
+ * page with no rows and steps back.
  */
 export function useAdminPosts(
   category: string,
   status: string,
   ordering: string,
+  page: number,
   after = "",
   before = "",
 ) {
   const [state, setState] = useState<State>(INITIAL);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const moreController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    // Any load-more still in flight belongs to the previous filter, and its rows
-    // would be appended to the list that replaced them.
-    moreController.current?.abort();
-    setLoadingMore(false);
     setState(INITIAL);
 
-    fetchAdminPosts({ category, status, ordering, after, before }, controller.signal)
-      .then((page) =>
+    fetchAdminPosts(
+      { category, status, ordering, page, after, before },
+      controller.signal,
+    )
+      .then((result) =>
         setState({
-          posts: page.results,
-          next: page.next,
+          posts: result.results,
+          count: result.count,
           phase: "ready",
           error: null,
         }),
       )
       .catch((error: unknown) => {
         if (isAbort(error)) return;
-        setState({ posts: [], next: null, phase: "error", error: message(error) });
+        setState({ posts: [], count: 0, phase: "error", error: message(error) });
       });
 
     return () => controller.abort();
-  }, [category, status, ordering, after, before, attempt]);
-
-  useEffect(() => () => moreController.current?.abort(), []);
-
-  const loadMore = useCallback(() => {
-    const url = state.next;
-    if (!url || loadingMore) return;
-
-    const controller = new AbortController();
-    moreController.current = controller;
-    setLoadingMore(true);
-
-    fetchAdminPostPage(url, controller.signal)
-      .then((page) => {
-        setState((current) => ({
-          ...current,
-          posts: [...current.posts, ...page.results],
-          next: page.next,
-        }));
-        setLoadingMore(false);
-      })
-      .catch((error: unknown) => {
-        if (isAbort(error)) return;
-        // The rows on screen stay: only the extra page failed.
-        setState((current) => ({ ...current, error: message(error) }));
-        setLoadingMore(false);
-      });
-  }, [state.next, loadingMore]);
+  }, [category, status, ordering, page, after, before, attempt]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
+  const totalPages = Math.max(1, Math.ceil(state.count / PAGE_SIZE));
 
-  return { ...state, loadingMore, loadMore, reload };
+  return { ...state, totalPages, reload };
 }

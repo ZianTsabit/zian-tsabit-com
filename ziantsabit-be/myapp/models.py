@@ -1,3 +1,4 @@
+from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
@@ -38,6 +39,12 @@ class Post(models.Model):
     # Falls back to the title at render time; a decorative cover is better
     # described by nothing than by its filename.
     cover_image_alt = models.CharField(max_length=200, blank=True)
+    # Free-form labels, kept in the order they were typed. An ArrayField rather
+    # than a Tag table and a join: nothing here needs a canonical tag row to
+    # hang a description or a count off, and a post's tags are only ever read
+    # with the post itself. Postgres is the only database this project supports
+    # -- there is deliberately no sqlite fallback -- so it costs no portability.
+    tags = ArrayField(models.CharField(max_length=50), default=list, blank=True)
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.DRAFT
     )
@@ -60,7 +67,30 @@ class Post(models.Model):
     def __str__(self):
         return self.title
 
+    @staticmethod
+    def clean_tags(tags):
+        """Trim, drop blanks, and drop repeats without regard to case.
+
+        Here rather than in the serializer, for the same reason slug generation
+        is: the admin and the shell write posts too, and a tag list that is
+        only tidied on the API path would be tidy only some of the time.
+        "Django", " django " and "DJANGO" are one tag; the first spelling seen
+        is the one kept, since that is the one the author chose to display.
+        """
+        seen = set()
+        cleaned = []
+        for tag in tags or []:
+            # split()/join() also collapses runs of spaces inside a tag.
+            label = " ".join(str(tag).split())
+            key = label.casefold()
+            if not label or key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(label)
+        return cleaned
+
     def save(self, *args, **kwargs):
+        self.tags = self.clean_tags(self.tags)
         if not self.slug:
             self.slug = self._unique_slug(slugify(self.title) or "post")
         # Publishing without an explicit date stamps it now, so an ordered feed

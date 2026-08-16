@@ -1,9 +1,9 @@
-import { MenuItem, Stack, TextField } from "@mui/material";
+import { Autocomplete, MenuItem, Stack, TextField } from "@mui/material";
 
 import CoverImageField from "./CoverImageField";
 import MarkdownEditor from "./MarkdownEditor";
 import type { FieldErrors } from "../../services/api";
-import { CATEGORIES, STATUSES, type PostDraft } from "../../services/adminPosts";
+import { CATEGORIES, type PostDraft } from "../../services/adminPosts";
 import type { PostCategory } from "../../services/posts";
 
 /**
@@ -40,6 +40,10 @@ interface Props {
   /** Differs by caller: a post already live breaks a link if its slug moves;
    *  one that hasn't been created yet has nothing to break. */
   slugHelperText: string;
+  /** Off when creating. A new post has no date to correct: "Publish" stamps
+   *  `published_at` server-side in `Post.save()`, and "Save as draft" leaves it
+   *  null on purpose. Editing is where backdating an entry is worth a field. */
+  showPublishedAt?: boolean;
 }
 
 /**
@@ -48,7 +52,13 @@ interface Props {
  * both render the same inputs, so this is what they share instead of two
  * copies drifting apart.
  */
-function PostFormFields({ draft, fieldErrors, onChange, slugHelperText }: Props) {
+function PostFormFields({
+  draft,
+  fieldErrors,
+  onChange,
+  slugHelperText,
+  showPublishedAt = true,
+}: Props) {
   return (
     <Stack sx={{ gap: 2 }}>
       <TextField
@@ -68,56 +78,6 @@ function PostFormFields({ draft, fieldErrors, onChange, slugHelperText }: Props)
         onChange={(event) => onChange("slug", event.target.value)}
         error={Boolean(fieldErrors.slug)}
         helperText={fieldErrors.slug ?? slugHelperText}
-        fullWidth
-      />
-
-      <Stack direction={{ xs: "column", sm: "row" }} sx={{ gap: 2 }}>
-        <TextField
-          select
-          label="Category"
-          value={draft.category}
-          onChange={(event) => onChange("category", event.target.value as PostCategory)}
-          error={Boolean(fieldErrors.category)}
-          helperText={fieldErrors.category}
-          fullWidth
-        >
-          {CATEGORIES.map((option) => (
-            <MenuItem key={option.value} value={option.value}>
-              {option.label}
-            </MenuItem>
-          ))}
-        </TextField>
-
-        <TextField
-          select
-          label="Status"
-          value={draft.status}
-          onChange={(event) =>
-            onChange("status", event.target.value as PostDraft["status"])
-          }
-          error={Boolean(fieldErrors.status)}
-          helperText={fieldErrors.status}
-          fullWidth
-        >
-          {STATUSES.map((option) => (
-            <MenuItem key={option.value} value={option.value}>
-              {option.label}
-            </MenuItem>
-          ))}
-        </TextField>
-      </Stack>
-
-      <TextField
-        label="Published at"
-        type="datetime-local"
-        value={toLocalInput(draft.published_at)}
-        onChange={(event) => onChange("published_at", fromLocalInput(event.target.value))}
-        error={Boolean(fieldErrors.published_at)}
-        helperText={
-          fieldErrors.published_at ??
-          "Sets the position in the feed. Left empty, publishing stamps it now."
-        }
-        slotProps={{ inputLabel: { shrink: true } }}
         fullWidth
       />
 
@@ -149,12 +109,82 @@ function PostFormFields({ draft, fieldErrors, onChange, slugHelperText }: Props)
         helperText={
           fieldErrors.body ??
           "Markdown. Tab indents — press Esc first if you want Tab to leave the field. " +
+            "Size an image with a title: ![alt](url \"=400\"), or \"=400x300\", or \"=50%\". " +
             "Stands in for the excerpt if it is blank."
         }
         // Both callers are full pages now, so the body gets room to write in
         // rather than the 5 rows that suited a dialog.
         minRows={12}
       />
+
+      {/* Filing and publishing come after the writing: the fields above are
+          what the post *is*, these are what happens to it.
+
+          There is no Status field here. Status is chosen by which button ends
+          the form -- "Save as draft" or "Publish" -- so a dropdown would be a
+          second control for the same thing, and the two could disagree. The
+          admin list still flips it per row without opening the editor. */}
+      <TextField
+        select
+        label="Category"
+        value={draft.category}
+        onChange={(event) => onChange("category", event.target.value as PostCategory)}
+        error={Boolean(fieldErrors.category)}
+        helperText={fieldErrors.category}
+        fullWidth
+      >
+        {CATEGORIES.map((option) => (
+          <MenuItem key={option.value} value={option.value}>
+            {option.label}
+          </MenuItem>
+        ))}
+      </TextField>
+
+      {/* freeSolo, because tags are typed rather than chosen: there is no
+          canonical list of them on the backend either, just an array of
+          strings per post. `autoSelect` commits whatever is in the box when it
+          loses focus, so a tag typed but not confirmed with Enter is not
+          silently dropped on the way to Save. */}
+      <Autocomplete
+        multiple
+        freeSolo
+        autoSelect
+        options={[] as string[]}
+        value={draft.tags}
+        onChange={(_event, next) =>
+          // The API trims and dedupes too; this only keeps an empty chip from
+          // being created by an Enter on a blank box.
+          onChange("tags", next.map((tag) => tag.trim()).filter(Boolean))
+        }
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Tags"
+            error={Boolean(fieldErrors.tags)}
+            helperText={
+              fieldErrors.tags ?? "Press Enter after each tag. 50 characters max."
+            }
+          />
+        )}
+      />
+
+      {showPublishedAt && (
+        <TextField
+          label="Published at"
+          type="datetime-local"
+          value={toLocalInput(draft.published_at)}
+          onChange={(event) =>
+            onChange("published_at", fromLocalInput(event.target.value))
+          }
+          error={Boolean(fieldErrors.published_at)}
+          helperText={
+            fieldErrors.published_at ??
+            "Sets the position in the feed. Left empty, publishing stamps it now."
+          }
+          slotProps={{ inputLabel: { shrink: true } }}
+          fullWidth
+        />
+      )}
     </Stack>
   );
 }

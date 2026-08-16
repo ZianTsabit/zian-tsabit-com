@@ -10,6 +10,7 @@ import {
   fetchAdminPost,
   updatePost,
   type PostDraft,
+  type PostStatus,
 } from "../services/adminPosts";
 import { isAbort, type Post } from "../services/posts";
 
@@ -42,7 +43,9 @@ function AdminEditPost() {
   const [phase, setPhase] = useState<Phase>(initialDraft ? "ready" : "loading");
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [saving, setSaving] = useState(false);
+  // Which button is in flight, or null. A plain boolean would not say which of
+  // the two to relabel while the request runs.
+  const [saving, setSaving] = useState<PostStatus | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
@@ -68,17 +71,20 @@ function AdminEditPost() {
   const set = <K extends keyof PostDraft>(key: K, value: PostDraft[K]) =>
     setDraft((current) => (current ? { ...current, [key]: value } : current));
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
+  // Status comes from the button, not from a field: the form has no status
+  // control any more. On an already-published post that means "Save as draft"
+  // unpublishes it -- the same thing the list's per-row toggle does, reached
+  // from the editor.
+  const save = async (status: PostStatus) => {
     if (!draft) return;
-    setSaving(true);
+    setSaving(status);
     setSaveError(null);
     setFieldErrors({});
     try {
       // The URL's slug, not draft.slug -- the draft's may have just been
       // edited, but that's the *new* value; the request still targets the
       // post at its current address.
-      await updatePost(slug, draft);
+      await updatePost(slug, { ...draft, status });
       navigate("/admin");
     } catch (failure: unknown) {
       if (failure instanceof ApiError) {
@@ -90,8 +96,19 @@ function AdminEditPost() {
       } else {
         setSaveError(failure instanceof Error ? failure.message : "Could not save.");
       }
-      setSaving(false);
+      setSaving(null);
     }
+  };
+
+  // Neither button is type="submit" -- each has to name its own status -- so
+  // with this many fields the browser will not submit implicitly either. This
+  // is the guard for the case where it does: it keeps whatever status the post
+  // already has, so an implicit submit can neither publish a draft nor
+  // unpublish a live post, and it stops a default submission from reloading
+  // the page over unsaved edits.
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (draft) void save(draft.status);
   };
 
   return (
@@ -147,7 +164,7 @@ function AdminEditPost() {
             />
 
             {/* The page has no bottom padding of its own, so without this the
-                Save button sits flush against the footer's top border. */}
+                buttons sit flush against the footer's top border. */}
             <Stack
               direction="row"
               sx={{
@@ -159,13 +176,17 @@ function AdminEditPost() {
             >
               <Button
                 color="inherit"
-                disabled={saving}
-                onClick={() => navigate("/admin")}
+                disabled={saving !== null}
+                onClick={() => void save("draft")}
               >
-                Cancel
+                {saving === "draft" ? "Saving..." : "Save as draft"}
               </Button>
-              <Button type="submit" variant="contained" disabled={saving}>
-                {saving ? "Saving..." : "Save"}
+              <Button
+                variant="contained"
+                disabled={saving !== null}
+                onClick={() => void save("published")}
+              >
+                {saving === "published" ? "Publishing..." : "Publish"}
               </Button>
             </Stack>
           </Stack>

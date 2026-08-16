@@ -94,6 +94,9 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    # Required by Post.tags, which is an ArrayField. Django refuses the system
+    # check without it (postgres.E005) rather than failing at query time.
+    'django.contrib.postgres',
     'django.contrib.staticfiles',
     'corsheaders',
     'rest_framework',
