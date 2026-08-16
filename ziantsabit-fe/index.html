@@ -5,8 +5,13 @@
     <link rel="icon" type="image/png" href="/pp-github.png" />
     <!-- The ital axis is required: index.css sets font-synthesis: none, so
          without a real italic face <em> and fontStyle: "italic" render
-         identically to regular text. -->
-    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,400;0,500;0,700;1,400;1,700&display=swap" rel="stylesheet">
+         identically to regular text -- and font-synthesis disables faked
+         *weight* too, which is why every bold weight in use is requested here.
+         Check a candidate family actually serves italics before switching:
+         Google Fonts answers ?family=Space+Grotesk:ital,... with a 200 and no
+         italic @font-face at all, so the URL alone proves nothing.
+         Mono is Plex's own, so `code` matches the body text it sits in. -->
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hello, I'm Zian Tsabit 👋</title>
     <script>

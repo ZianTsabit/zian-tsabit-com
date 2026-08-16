@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Alert, Box, Button, Stack, TextField, Typography } from "@mui/material";
+import { MONO_FONT } from "../../theme";
 
 /**
  * The gate in front of the admin page.
@@ -78,7 +79,7 @@ function LoginForm({
 
         <Typography sx={{ fontSize: "13px", color: "text.secondary" }}>
           The same account as the Django admin. Create one with{" "}
-          <Box component="code" sx={{ fontFamily: "monospace" }}>
+          <Box component="code" sx={{ fontFamily: MONO_FONT }}>
             manage.py createsuperuser
           </Box>
           .

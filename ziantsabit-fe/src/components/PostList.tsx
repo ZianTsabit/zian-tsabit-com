@@ -90,7 +90,6 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
         <Typography
           component="h2"
           sx={{
-            fontFamily: "'Ubuntu', sans-serif",
             fontWeight: "bold",
             fontSize: { xs: "16px", sm: "18px" },
             color: "text.primary",
@@ -102,7 +101,6 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
           component="time"
           dateTime={post.published_at ?? post.created_at}
           sx={{
-            fontFamily: "'Ubuntu', sans-serif",
             fontSize: { xs: "12px", sm: "14px" },
             color: "text.secondary",
             whiteSpace: "nowrap",
@@ -115,7 +113,6 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
       {text && (
         <Typography
           sx={{
-            fontFamily: "'Ubuntu', sans-serif",
             fontSize: { xs: "14px", sm: "16px" },
             color: "text.primary",
             mt: 1,
@@ -172,7 +169,6 @@ function PostList({
       <Centered>
         <Alert
           severity="error"
-          sx={{ fontFamily: "'Ubuntu', sans-serif" }}
           action={
             <Button color="inherit" size="small" onClick={retry}>
               Retry
@@ -207,7 +203,7 @@ function PostList({
 
       {/* An error raised by load-more, with the rows already fetched still shown. */}
       {error && (
-        <Alert severity="error" sx={{ fontFamily: "'Ubuntu', sans-serif" }}>
+        <Alert severity="error">
           {error}
         </Alert>
       )}
@@ -217,7 +213,7 @@ function PostList({
           <Button
             onClick={loadMore}
             disabled={loadingMore}
-            sx={{ fontFamily: "'Ubuntu', sans-serif", color: "primary.main" }}
+            sx={{ color: "primary.main" }}
           >
             {loadingMore ? "Loading..." : "Load more"}
           </Button>

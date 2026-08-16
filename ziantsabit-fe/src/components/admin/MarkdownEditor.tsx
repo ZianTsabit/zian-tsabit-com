@@ -31,6 +31,7 @@ import TitleIcon from "@mui/icons-material/Title";
 import Markdown from "../Markdown";
 import { ApiError } from "../../services/api";
 import { ACCEPT_ATTRIBUTE, uploadImage } from "../../services/uploads";
+import { MONO_FONT } from "../../theme";
 import {
   BULLET,
   continueList,
@@ -382,7 +383,7 @@ function MarkdownEditor({
             slotProps={{
               // Monospace, because the whole point of the Write tab is seeing
               // the syntax line up.
-              input: { sx: { fontFamily: "monospace", fontSize: "14px" } },
+              input: { sx: { fontFamily: MONO_FONT, fontSize: "14px" } },
             }}
           />
         </>

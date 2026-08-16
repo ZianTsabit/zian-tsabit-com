@@ -27,7 +27,6 @@ function LatestUpdates({ limit }: { limit: number }) {
       <Centered>
         <Alert
           severity="error"
-          sx={{ fontFamily: "'Ubuntu', sans-serif" }}
           action={
             <Button color="inherit" size="small" onClick={retry}>
               Retry
@@ -82,7 +81,7 @@ function LatestUpdates({ limit }: { limit: number }) {
         <Button
           component={RouterLink}
           to="/posts"
-          sx={{ fontFamily: "'Ubuntu', sans-serif", color: "primary.main" }}
+          sx={{ color: "primary.main" }}
         >
           {/* A literal glyph, matching PostDetail's "← Back to ..." link, so the
               two navigation affordances read as a pair. */}
