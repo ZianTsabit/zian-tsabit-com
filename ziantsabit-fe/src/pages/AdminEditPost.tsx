@@ -152,7 +152,7 @@ function AdminEditPost() {
       // just been edited, but that's the *new* value; the request still
       // targets the post where it lives now.
       await enqueue(() => persist(draft, status, false));
-      navigate("/admin");
+      navigate("/admin/posts");
     } catch (failure: unknown) {
       if (failure instanceof ApiError) {
         setSaveError(failure.message);
@@ -235,7 +235,7 @@ function AdminEditPost() {
           </Alert>
           {/* A dead link (post deleted, typo'd URL) otherwise leaves nothing
               but Retry, which just fails the same way again. */}
-          <Button color="inherit" onClick={() => navigate("/admin")}>
+          <Button color="inherit" onClick={() => navigate("/admin/posts")}>
             Back to posts
           </Button>
         </Stack>

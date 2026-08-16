@@ -1,11 +1,16 @@
 import type { ReactNode } from "react";
-import { Autocomplete, MenuItem, Stack, TextField } from "@mui/material";
+import { Autocomplete, Checkbox, MenuItem, Stack, TextField } from "@mui/material";
 
 import CoverImageField from "./CoverImageField";
 import MarkdownEditor from "./MarkdownEditor";
+import { TagChipRow } from "../TagChip";
 import type { FieldErrors } from "../../services/api";
 import { CATEGORIES, type PostDraft } from "../../services/adminPosts";
-import type { PostCategory } from "../../services/posts";
+import {
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
+  type PostCategory,
+} from "../../services/posts";
 
 /**
  * ISO timestamp -> the `YYYY-MM-DDTHH:mm` a `datetime-local` input wants.
@@ -132,18 +137,57 @@ function PostFormFields({
           admin list still flips it per row without opening the editor. */}
       <TextField
         select
-        label="Category"
-        value={draft.category}
-        onChange={(event) => onChange("category", event.target.value as PostCategory)}
-        error={Boolean(fieldErrors.category)}
-        helperText={fieldErrors.category}
+        label="Categories"
+        value={draft.categories}
+        onChange={(event) => {
+          // A multiple Select hands back the array as the event value, typed
+          // as a string because the DOM event says so.
+          const next = event.target.value as unknown as PostCategory[];
+          // Sorted into the site's one display order, so ticking Projects then
+          // Books produces the same draft as ticking them the other way round
+          // -- otherwise autosave would see a change where there is none. The
+          // server normalises too; this keeps the form agreeing with it before
+          // the round trip.
+          onChange(
+            "categories",
+            CATEGORY_ORDER.filter((value) => next.includes(value)),
+          );
+        }}
+        error={Boolean(fieldErrors.categories)}
+        helperText={
+          fieldErrors.categories ??
+          "A post can appear in more than one section. At least one is required."
+        }
         fullWidth
+        slotProps={{
+          select: {
+            multiple: true,
+            // Without this the field renders the raw values, comma-joined
+            // ("garage_sale, posts"); the menu is where the labels live.
+            renderValue: (selected) => (
+              <TagChipRow
+                labels={(selected as PostCategory[]).map(
+                  (value) => CATEGORY_LABELS[value],
+                )}
+              />
+            ),
+          },
+        }}
       >
-        {CATEGORIES.map((option) => (
-          <MenuItem key={option.value} value={option.value}>
-            {option.label}
-          </MenuItem>
-        ))}
+        {CATEGORIES.map((option) => {
+          const checked = draft.categories.includes(option.value);
+          // Unticking the last one would build a draft the API refuses, and
+          // autosave would then retry it every three seconds -- an error
+          // banner for what is really a missing control. Moving a post between
+          // sections stays possible: tick the new one first, then untick this.
+          const locked = checked && draft.categories.length === 1;
+          return (
+            <MenuItem key={option.value} value={option.value} disabled={locked}>
+              <Checkbox size="small" checked={checked} sx={{ mr: 1, p: 0.5 }} />
+              {option.label}
+            </MenuItem>
+          );
+        })}
       </TextField>
 
       {/* freeSolo, because tags are typed rather than chosen: there is no

@@ -136,9 +136,20 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
 
             <Stack
               direction="row"
-              sx={{ alignSelf: "flex-start", gap: 1.5, alignItems: "center" }}
+              sx={{
+                alignSelf: "flex-start",
+                gap: 1.5,
+                alignItems: "center",
+                // A post can be in several sections, and on a phone three
+                // badges plus the view count overrun the line.
+                flexWrap: "wrap",
+              }}
             >
-              <TagChip label={CATEGORY_LABELS[post.category]} />
+              {/* Already in CATEGORY_ORDER: the API sorts them, so the badges
+                  read the same way round on every post. */}
+              {post.categories.map((category) => (
+                <TagChip key={category} label={CATEGORY_LABELS[category]} />
+              ))}
               {views !== null && (
                 <Typography
                   sx={{

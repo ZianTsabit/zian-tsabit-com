@@ -38,7 +38,9 @@ export interface PostDraft {
   title: string;
   /** Blank means "generate from the title" on create, "leave alone" on update. */
   slug: string;
-  category: PostCategory;
+  /** Every section the post appears on. The API rejects an empty list, so the
+   *  form has to keep at least one ticked. */
+  categories: PostCategory[];
   status: PostStatus;
   excerpt: string;
   body: string;
@@ -57,7 +59,7 @@ export function draftFrom(post: Post): PostDraft {
   return {
     title: post.title,
     slug: post.slug,
-    category: post.category,
+    categories: post.categories,
     status: post.status,
     excerpt: post.excerpt,
     body: post.body,
@@ -72,7 +74,9 @@ export function emptyDraft(category: PostCategory = "posts"): PostDraft {
   return {
     title: "",
     slug: "",
-    category,
+    // One to start with rather than none: an empty list is a 400, and the
+    // section the author was looking at is the likeliest answer anyway.
+    categories: [category],
     status: "draft",
     excerpt: "",
     body: "",

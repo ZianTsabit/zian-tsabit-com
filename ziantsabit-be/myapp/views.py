@@ -1,16 +1,24 @@
-from django.db.models import F
-from django.db.models.functions import Coalesce
+from django.db.models import Avg, Count, F, Q, Sum
+from django.db.models.functions import Coalesce, TruncMonth
 from django.utils.dateparse import parse_date
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import AllowAny, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import (
+    AllowAny,
+    IsAuthenticated,
+    IsAuthenticatedOrReadOnly,
+)
 from rest_framework.response import Response
 
 from .models import Post
-from .serializers import PostSerializer, ViewCountSerializer
+from .serializers import PostSerializer, PostStatsSerializer, ViewCountSerializer
+
+# How many rows the statistics page's "most read" table asks for. Enough to
+# show a ranking rather than a podium, short enough to stay one glance.
+MOST_READ_LIMIT = 10
 
 # What ?ordering= accepts, and the order_by() each value means. "views" keeps
 # the default ordering as its tie-breaker so a page of all-zero counts still
@@ -34,7 +42,10 @@ ORDERINGS = {
         parameters=[
             OpenApiParameter(
                 name="category",
-                description="Only posts in this section.",
+                description=(
+                    "Only posts in this section. A post may be in several, and "
+                    "is returned by each of them."
+                ),
                 enum=Post.Category.values,
             ),
             OpenApiParameter(
@@ -113,7 +124,10 @@ class PostViewSet(viewsets.ModelViewSet):
         # An unrecognised value has to be an error: filtering it out silently
         # would answer a typo'd ?category=book with every post on the site.
         self._reject_unknown(category, Post.Category.values, "category")
-        return queryset.filter(category=category)
+        # Containment, not equality: a post filed under several sections belongs
+        # on each of their pages. Still singular as a parameter -- it asks
+        # "which section am I looking at", which has one answer per page.
+        return queryset.filter(categories__contains=[category])
 
     def _filter_dates(self, queryset):
         after = self._date_param("published_after")
@@ -170,6 +184,69 @@ class PostViewSet(viewsets.ModelViewSet):
                     ]
                 }
             )
+
+    @extend_schema(responses={200: PostStatsSerializer})
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="stats",
+        # Authenticated only, unlike the rest of the reads here: the draft count
+        # and every draft's view count are the owner's business, and a public
+        # total would also disclose how many unpublished posts exist.
+        permission_classes=[IsAuthenticated],
+    )
+    def stats(self, request):
+        """Site-wide aggregates for the admin statistics page.
+
+        Deliberately built from `Post.objects.all()` rather than
+        `get_queryset()`: this is an overview of everything, so the list's
+        `?category=` / `?status=` filters must not silently narrow it.
+        """
+        # One query for the three counts and the view total, rather than four
+        # round trips for numbers that are always read together.
+        totals = Post.objects.aggregate(
+            total=Count("id"),
+            published=Count("id", filter=Q(status=Post.Status.PUBLISHED)),
+            total_views=Coalesce(Sum("view_count"), 0),
+            # Avg over published posts only -- see the serializer.
+            average_views=Coalesce(
+                Avg("view_count", filter=Q(status=Post.Status.PUBLISHED)), 0.0
+            ),
+        )
+
+        most_read = (
+            Post.objects.filter(view_count__gt=0)
+            .order_by("-view_count", "-published_at", "-created_at")
+            .values("slug", "title", "status", "view_count")[:MOST_READ_LIMIT]
+        )
+
+        # Only months that actually have a post; filling the gaps is the
+        # client's job, since which range to show is a question about the chart
+        # rather than about the data.
+        by_month = (
+            Post.objects.filter(
+                status=Post.Status.PUBLISHED, published_at__isnull=False
+            )
+            .annotate(month=TruncMonth("published_at"))
+            .values("month")
+            .annotate(count=Count("id"))
+            .order_by("month")
+        )
+
+        return Response(
+            PostStatsSerializer(
+                {
+                    **totals,
+                    "drafts": totals["total"] - totals["published"],
+                    "average_views": round(totals["average_views"], 1),
+                    "most_read": list(most_read),
+                    "published_by_month": [
+                        {"month": row["month"].strftime("%Y-%m"), "count": row["count"]}
+                        for row in by_month
+                    ],
+                }
+            ).data
+        )
 
     @extend_schema(
         request=None,

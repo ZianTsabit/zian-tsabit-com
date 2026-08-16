@@ -140,7 +140,7 @@ function AdminNewPost() {
     setFieldErrors({});
     try {
       await enqueue(() => persist(draft, status));
-      navigate("/admin");
+      navigate("/admin/posts");
     } catch (failure: unknown) {
       if (failure instanceof ApiError) {
         setError(failure.message);
@@ -198,7 +198,7 @@ function AdminNewPost() {
           {createdSlug && (
             <Alert severity="info">
               Saved as a draft in{" "}
-              <Link component={RouterLink} to="/admin" color="inherit">
+              <Link component={RouterLink} to="/admin/posts" color="inherit">
                 your posts
               </Link>
               . Leaving this page keeps it; delete it there if you change your mind.

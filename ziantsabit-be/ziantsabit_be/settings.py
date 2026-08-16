@@ -119,8 +119,9 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     'TITLE': 'ziantsabit.com API',
     'DESCRIPTION': (
-        'Content API for ziantsabit.com. Posts are filed under one category — '
-        'books, projects or garage_sale — and addressed by slug.'
+        'Content API for ziantsabit.com. Posts are filed under one or more '
+        'categories — posts, books, projects or garage_sale — and addressed '
+        'by slug.'
     ),
     'VERSION': '1.0.0',
     # The schema endpoint is served separately; listing it inside its own output

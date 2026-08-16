@@ -130,7 +130,12 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
             direction="row"
             sx={{ gap: 1, mt: 1, alignItems: "center", flexWrap: "wrap" }}
           >
-            <TagChip label={CATEGORY_LABELS.get(post.category) ?? post.category} />
+            {post.categories.map((category) => (
+              <TagChip
+                key={category}
+                label={CATEGORY_LABELS.get(category) ?? category}
+              />
+            ))}
             <TagChip label={published ? "Published" : "Draft"} emphasis={published} />
             {post.tags.map((tag) => (
               <TagChip key={tag} label={tag} />
