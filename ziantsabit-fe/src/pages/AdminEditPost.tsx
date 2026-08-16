@@ -261,6 +261,9 @@ function AdminEditPost() {
               fieldErrors={fieldErrors}
               onChange={set}
               slugHelperText="The post's URL. Changing it breaks any existing link."
+              // The copy below is covered while the body is full screen, and
+              // Ctrl+S works in there.
+              fullscreenStatus={<AutosaveStatus state={autosave} duplicate />}
             />
 
             {/* The page has no bottom padding of its own, so without this the

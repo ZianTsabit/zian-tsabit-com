@@ -17,6 +17,16 @@ interface Props {
   /** "Draft saved" while creating, "Saved" while editing a post that may well
    *  already be published -- calling that one a draft would be a lie. */
   savedLabel?: string;
+  /**
+   * A second copy of a line already rendered elsewhere on the page: shown, but
+   * not announced.
+   *
+   * The full-screen editor covers the form's own status line rather than
+   * unmounting it, so both are in the document at once. A live region does not
+   * have to be visible to be read out, so without this a screen reader would
+   * be told about every save twice.
+   */
+  duplicate?: boolean;
 }
 
 /**
@@ -26,7 +36,7 @@ interface Props {
  * the question those buttons raise, and this is where the eye already is when
  * deciding whether it is safe to leave.
  */
-function AutosaveStatus({ state, savedLabel = "Saved" }: Props) {
+function AutosaveStatus({ state, savedLabel = "Saved", duplicate = false }: Props) {
   const icon = { fontSize: 16 };
 
   return (
@@ -34,8 +44,9 @@ function AutosaveStatus({ state, savedLabel = "Saved" }: Props) {
     // without being asked for, so a screen reader user gets no other signal.
     // `polite`, so it waits for a pause instead of interrupting typing.
     <Stack
-      role="status"
-      aria-live="polite"
+      {...(duplicate
+        ? { "aria-hidden": true }
+        : { role: "status", "aria-live": "polite" as const })}
       direction="row"
       sx={{
         gap: 0.75,

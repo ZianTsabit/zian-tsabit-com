@@ -211,6 +211,11 @@ function AdminNewPost() {
             onChange={set}
             slugHelperText="Leave blank to generate it from the title."
             showPublishedAt={false}
+            // The copy below is covered while the body is full screen, and
+            // Ctrl+S works in there.
+            fullscreenStatus={
+              <AutosaveStatus state={autosave} savedLabel="Draft saved" duplicate />
+            }
           />
 
           {/* The page has no bottom padding of its own, so without this the

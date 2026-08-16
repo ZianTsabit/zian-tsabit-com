@@ -61,6 +61,16 @@ interface Props {
   error?: boolean;
   helperText?: ReactNode;
   minRows?: number;
+  /**
+   * The page's autosave line, repeated in the header while full screen.
+   *
+   * Full screen covers the form -- including the status line beside the Save
+   * buttons -- so without this a Ctrl+S in here saves with nothing on screen to
+   * say it did. Passed in already rendered rather than as an `AutosaveState`,
+   * so the editor stays a text box that knows nothing about how posts are
+   * saved, and each page keeps its own wording ("Draft saved" against "Saved").
+   */
+  fullscreenStatus?: ReactNode;
 }
 
 /**
@@ -75,6 +85,7 @@ function MarkdownEditor({
   error,
   helperText,
   minRows = 12,
+  fullscreenStatus,
 }: Props) {
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [fullscreen, setFullscreen] = useState(false);
@@ -346,12 +357,22 @@ function MarkdownEditor({
           mb: 1,
         }}
       >
-        <Typography
-          component="span"
-          sx={{ fontSize: "13px", color: error ? "error.main" : "text.secondary" }}
+        <Stack
+          direction="row"
+          sx={{ alignItems: "center", gap: 1.5, minWidth: 0 }}
         >
-          Body
-        </Typography>
+          <Typography
+            component="span"
+            sx={{ fontSize: "13px", color: error ? "error.main" : "text.secondary" }}
+          >
+            Body
+          </Typography>
+
+          {/* Only in full screen: outside it the form's own line is a few
+              inches further down the page, and two copies of it at once would
+              be a question about which one to trust. */}
+          {fullscreen && fullscreenStatus}
+        </Stack>
 
         <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
           <Tabs

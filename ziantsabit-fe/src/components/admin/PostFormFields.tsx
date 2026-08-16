@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Autocomplete, MenuItem, Stack, TextField } from "@mui/material";
 
 import CoverImageField from "./CoverImageField";
@@ -44,6 +45,9 @@ interface Props {
    *  `published_at` server-side in `Post.save()`, and "Save as draft" leaves it
    *  null on purpose. Editing is where backdating an entry is worth a field. */
   showPublishedAt?: boolean;
+  /** Passed straight to the body editor, which shows it while full screen --
+   *  the one place the caller's own copy of it is behind the overlay. */
+  fullscreenStatus?: ReactNode;
 }
 
 /**
@@ -58,6 +62,7 @@ function PostFormFields({
   onChange,
   slugHelperText,
   showPublishedAt = true,
+  fullscreenStatus,
 }: Props) {
   return (
     <Stack sx={{ gap: 2 }}>
@@ -115,6 +120,7 @@ function PostFormFields({
         // Both callers are full pages now, so the body gets room to write in
         // rather than the 5 rows that suited a dialog.
         minRows={12}
+        fullscreenStatus={fullscreenStatus}
       />
 
       {/* Filing and publishing come after the writing: the fields above are
