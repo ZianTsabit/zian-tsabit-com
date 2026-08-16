@@ -11,6 +11,8 @@ import About from "./pages/About";
 import CV from "./pages/CV";
 import Admin from "./pages/Admin";
 import AdminConsole from "./components/admin/AdminConsole";
+import AdminOverview from "./pages/AdminOverview";
+import AdminStats from "./pages/AdminStats";
 import AdminNewPost from "./pages/AdminNewPost";
 import AdminEditPost from "./pages/AdminEditPost";
 import PostDetail from "./pages/PostDetail";
@@ -66,7 +68,9 @@ function App() {
                 Nested so `Admin` checks the session exactly once and hands it
                 down via `<Outlet context>` to whichever of these is active. */}
             <Route path="/admin" element={<Admin />}>
-              <Route index element={<AdminConsole />} />
+              <Route index element={<AdminOverview />} />
+              <Route path="posts" element={<AdminConsole />} />
+              <Route path="stats" element={<AdminStats />} />
               <Route path="new" element={<AdminNewPost />} />
               <Route path="edit/:slug" element={<AdminEditPost />} />
             </Route>

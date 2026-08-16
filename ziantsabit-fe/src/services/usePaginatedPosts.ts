@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   fetchPostsPage,
   isAbort,
+  isVisible,
   PAGE_SIZE,
-  VISIBLE_CATEGORIES,
   type Post,
   type PostCategory,
 } from "./posts";
@@ -38,10 +38,10 @@ function message(error: unknown): string {
  * caller can pass them inline: a fresh object literal every render would
  * re-trigger the effect forever.
  *
- * That "every category" case filters out `garage_sale` client-side (see
- * `VISIBLE_CATEGORIES`), since it has no public page to link to -- so `count`
- * (and the page count derived from it) can run slightly high if any exist.
- * Not worth a backend change for a category the site no longer surfaces.
+ * That "every category" case drops posts filed *only* under `garage_sale`
+ * client-side (see `isVisible`), since they have no public page to link to --
+ * so `count` (and the page count derived from it) can run slightly high if any
+ * exist. Not worth a backend change for a category the site no longer surfaces.
  */
 export function usePaginatedPosts(
   category: PostCategory | undefined,
@@ -60,9 +60,7 @@ export function usePaginatedPosts(
     fetchPostsPage({ category, page, after, before }, controller.signal)
       .then((result) =>
         setState({
-          posts: category
-            ? result.results
-            : result.results.filter((post) => VISIBLE_CATEGORIES.includes(post.category)),
+          posts: category ? result.results : result.results.filter(isVisible),
           count: result.count,
           phase: "ready",
           error: null,

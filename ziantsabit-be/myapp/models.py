@@ -1,11 +1,12 @@
 from django.contrib.postgres.fields import ArrayField
+from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
 
 
 class Post(models.Model):
-    """A single piece of content, filed under one of the site's sections.
+    """A single piece of content, filed under one or more of the site's sections.
 
     Replaces the earlier Book / Project / GarageSale / Update models: those were
     four near-identical title-plus-fields tables, and the site renders them as
@@ -26,7 +27,20 @@ class Post(models.Model):
     # Left blank on create and derived from the title in save(); it is the URL
     # key the API looks posts up by, so it has to stay unique.
     slug = models.SlugField(max_length=220, unique=True, blank=True)
-    category = models.CharField(max_length=20, choices=Category.choices)
+    # A post can sit in more than one section -- a write-up of a book that is
+    # also a project belongs on both feeds, and duplicating the post to achieve
+    # that would mean two slugs, two view counts and two things to keep in step.
+    #
+    # An ArrayField for the same reasons as `tags` below: the sections are a
+    # fixed enum declared right here, so a Category table would carry no column
+    # this does not, and nothing ever reads a category without its post.
+    # Membership is a set -- stored order carries no meaning, and nothing may
+    # read it as ranking -- but it is deduplicated and kept in the order
+    # declared above so two equal posts cannot differ by row order alone.
+    categories = ArrayField(
+        models.CharField(max_length=20, choices=Category.choices),
+        default=list,
+    )
     excerpt = models.TextField(blank=True)
     body = models.TextField(blank=True)
     # The post's lead image, shown on its card and above the body. A URL rather
@@ -61,7 +75,12 @@ class Post(models.Model):
         # sensibly because created_at breaks the tie.
         ordering = ["-published_at", "-created_at"]
         indexes = [
-            models.Index(fields=["category", "status"]),
+            # GIN, because the section filter is now a containment test
+            # (categories @> ['books']) and a btree cannot answer that. The
+            # composite ("category", "status") index this replaces has no array
+            # equivalent, so status keeps its own.
+            GinIndex(fields=["categories"]),
+            models.Index(fields=["status"]),
         ]
 
     def __str__(self):
@@ -89,8 +108,27 @@ class Post(models.Model):
             cleaned.append(label)
         return cleaned
 
+    @classmethod
+    def clean_categories(cls, categories):
+        """Drop repeats and return the rest in the order `Category` declares.
+
+        Membership is a set, so ["books", "posts"] and ["posts", "books"] have
+        to be the same post -- otherwise the order someone happened to tick the
+        boxes in would leak into the API, and every consumer would have to sort
+        it themselves before comparing or displaying. Declaration order rather
+        than alphabetical, so the badges on a card come out in the same order as
+        the sections in the site's nav.
+
+        Unknown values are left alone for the serializer's ChoiceField to
+        reject: silently dropping a typo would answer a bad write with a 201.
+        """
+        rank = {value: index for index, value in enumerate(cls.Category.values)}
+        unique = dict.fromkeys(categories or [])
+        return sorted(unique, key=lambda value: rank.get(value, len(rank)))
+
     def save(self, *args, **kwargs):
         self.tags = self.clean_tags(self.tags)
+        self.categories = self.clean_categories(self.categories)
         if not self.slug:
             self.slug = self._unique_slug(slugify(self.title) or "post")
         # Publishing without an explicit date stamps it now, so an ordered feed

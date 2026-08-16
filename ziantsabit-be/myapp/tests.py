@@ -22,13 +22,13 @@ SPA_ORIGIN = "http://spa.test"
 
 class PostModelTests(APITestCase):
     def test_slug_is_derived_from_title(self):
-        post = Post.objects.create(title="Clean Code", category=Post.Category.BOOKS)
+        post = Post.objects.create(title="Clean Code", categories=[Post.Category.BOOKS])
         self.assertEqual(post.slug, "clean-code")
 
     def test_duplicate_titles_get_distinct_slugs(self):
-        first = Post.objects.create(title="Clean Code", category=Post.Category.BOOKS)
-        second = Post.objects.create(title="Clean Code", category=Post.Category.BOOKS)
-        third = Post.objects.create(title="Clean Code", category=Post.Category.BOOKS)
+        first = Post.objects.create(title="Clean Code", categories=[Post.Category.BOOKS])
+        second = Post.objects.create(title="Clean Code", categories=[Post.Category.BOOKS])
+        third = Post.objects.create(title="Clean Code", categories=[Post.Category.BOOKS])
         self.assertEqual(
             [first.slug, second.slug, third.slug],
             ["clean-code", "clean-code-2", "clean-code-3"],
@@ -36,24 +36,24 @@ class PostModelTests(APITestCase):
 
     def test_explicit_slug_is_kept(self):
         post = Post.objects.create(
-            title="Clean Code", slug="the-one", category=Post.Category.BOOKS
+            title="Clean Code", slug="the-one", categories=[Post.Category.BOOKS]
         )
         self.assertEqual(post.slug, "the-one")
 
     def test_publishing_stamps_published_at(self):
         post = Post.objects.create(
             title="Shipped",
-            category=Post.Category.PROJECTS,
+            categories=[Post.Category.PROJECTS],
             status=Post.Status.PUBLISHED,
         )
         self.assertIsNotNone(post.published_at)
 
     def test_draft_has_no_published_at(self):
-        post = Post.objects.create(title="Draft", category=Post.Category.BOOKS)
+        post = Post.objects.create(title="Draft", categories=[Post.Category.BOOKS])
         self.assertIsNone(post.published_at)
 
     def test_title_of_only_punctuation_still_gets_a_slug(self):
-        post = Post.objects.create(title="!!!", category=Post.Category.BOOKS)
+        post = Post.objects.create(title="!!!", categories=[Post.Category.BOOKS])
         self.assertEqual(post.slug, "post")
 
 
@@ -64,15 +64,15 @@ class PostAPITests(APITestCase):
         cls.list_url = reverse("post-list")
         cls.published = Post.objects.create(
             title="Published Book",
-            category=Post.Category.BOOKS,
+            categories=[Post.Category.BOOKS],
             status=Post.Status.PUBLISHED,
         )
         cls.draft = Post.objects.create(
-            title="Draft Project", category=Post.Category.PROJECTS
+            title="Draft Project", categories=[Post.Category.PROJECTS]
         )
         cls.sale = Post.objects.create(
             title="Old Desk",
-            category=Post.Category.GARAGE_SALE,
+            categories=[Post.Category.GARAGE_SALE],
             status=Post.Status.PUBLISHED,
         )
 
@@ -104,7 +104,7 @@ class PostAPITests(APITestCase):
     def test_filter_by_posts_category(self):
         ordinary = Post.objects.create(
             title="Just a Post",
-            category=Post.Category.POSTS,
+            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
         response = self.client.get(self.list_url, {"category": "posts"})
@@ -117,6 +117,30 @@ class PostAPITests(APITestCase):
         response = self.client.get(self.list_url, {"category": "book"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("category", response.data)
+
+    def test_a_post_in_two_sections_is_returned_by_both(self):
+        both = Post.objects.create(
+            title="Building a Bookshelf",
+            categories=[Post.Category.BOOKS, Post.Category.PROJECTS],
+            status=Post.Status.PUBLISHED,
+        )
+        for section in ("books", "projects"):
+            with self.subTest(section=section):
+                response = self.client.get(self.list_url, {"category": section})
+                slugs = [r["slug"] for r in response.data["results"]]
+                self.assertIn(both.slug, slugs)
+
+    def test_a_post_appears_once_in_an_unfiltered_list(self):
+        # Containment, not a join: the multi-section post must not arrive twice
+        # just because it matches on two counts.
+        Post.objects.create(
+            title="Building a Bookshelf",
+            categories=[Post.Category.BOOKS, Post.Category.PROJECTS],
+            status=Post.Status.PUBLISHED,
+        )
+        response = self.client.get(self.list_url)
+        slugs = [r["slug"] for r in response.data["results"]]
+        self.assertEqual(len(slugs), len(set(slugs)))
 
     def test_filter_by_status_when_authenticated(self):
         self.client.force_authenticate(self.user)
@@ -132,7 +156,7 @@ class PostAPITests(APITestCase):
 
     def test_anonymous_cannot_create(self):
         response = self.client.post(
-            self.list_url, {"title": "Nope", "category": "books"}, format="json"
+            self.list_url, {"title": "Nope", "categories": ["books"]}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(Post.objects.count(), 3)
@@ -141,7 +165,7 @@ class PostAPITests(APITestCase):
         self.client.force_authenticate(self.user)
         response = self.client.post(
             self.list_url,
-            {"title": "A New Post", "category": "books", "body": "hello"},
+            {"title": "A New Post", "categories": ["books"], "body": "hello"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -154,7 +178,7 @@ class PostAPITests(APITestCase):
         token = base64.b64encode(b"zian:pw-for-tests").decode()
         response = self.client.post(
             self.list_url,
-            {"title": "Via Curl", "category": "books"},
+            {"title": "Via Curl", "categories": ["books"]},
             format="json",
             HTTP_AUTHORIZATION=f"Basic {token}",
         )
@@ -163,16 +187,62 @@ class PostAPITests(APITestCase):
     def test_create_rejects_unknown_category(self):
         self.client.force_authenticate(self.user)
         response = self.client.post(
-            self.list_url, {"title": "X", "category": "recipes"}, format="json"
+            self.list_url, {"title": "X", "categories": ["recipes"]}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("category", response.data)
+        self.assertIn("categories", response.data)
+
+    def test_create_rejects_empty_categories(self):
+        # A post filed under nothing appears on no page: invisible, and only
+        # discoverable by going looking for it in the admin list.
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url, {"title": "Homeless", "categories": []}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("categories", response.data)
+
+    def test_create_rejects_missing_categories(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url, {"title": "Homeless"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("categories", response.data)
+
+    def test_categories_are_deduplicated_and_ordered_on_write(self):
+        # Membership is a set, so the order the boxes were ticked in must not
+        # survive into the API -- two identical posts would otherwise compare
+        # unequal on nothing but row order.
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            {
+                "title": "Tidied",
+                "categories": ["projects", "books", "projects"],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["categories"], ["books", "projects"])
+        self.assertEqual(
+            Post.objects.get(slug=response.data["slug"]).categories,
+            ["books", "projects"],
+        )
+
+    def test_model_save_orders_categories_for_the_shell_too(self):
+        post = Post.objects.create(
+            title="Shell Written",
+            categories=[Post.Category.GARAGE_SALE, Post.Category.POSTS],
+        )
+        post.refresh_from_db()
+        self.assertEqual(post.categories, ["posts", "garage_sale"])
 
     def test_create_rejects_blank_slug(self):
         self.client.force_authenticate(self.user)
         response = self.client.post(
             self.list_url,
-            {"title": "X", "category": "books", "slug": "   "},
+            {"title": "X", "categories": ["books"], "slug": "   "},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -203,7 +273,7 @@ class PostAPITests(APITestCase):
             {
                 "title": "Renamed",
                 "slug": self.published.slug,
-                "category": "books",
+                "categories": ["books"],
                 "excerpt": "",
                 "body": "",
                 "status": "published",
@@ -286,7 +356,7 @@ class SessionAuthTests(APITestCase):
     def create_post(self, token, title="Written By The Admin Page"):
         return self.client.post(
             self.posts_url,
-            {"title": title, "category": "books"},
+            {"title": title, "categories": ["books"]},
             format="json",
             HTTP_X_CSRFTOKEN=token,
         )
@@ -345,7 +415,7 @@ class SessionAuthTests(APITestCase):
     def test_write_with_a_session_but_no_csrf_token_is_rejected(self):
         self.log_in()
         response = self.client.post(
-            self.posts_url, {"title": "No Token", "category": "books"}, format="json"
+            self.posts_url, {"title": "No Token", "categories": ["books"]}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(Post.objects.filter(title="No Token").exists())
@@ -366,7 +436,7 @@ class SessionAuthTests(APITestCase):
     def test_session_write_can_see_and_publish_a_draft(self):
         # The admin page's whole job: drafts are invisible anonymously.
         token = self.log_in()
-        draft = Post.objects.create(title="Hidden", category=Post.Category.BOOKS)
+        draft = Post.objects.create(title="Hidden", categories=[Post.Category.BOOKS])
         detail = reverse("post-detail", kwargs={"slug": draft.slug})
 
         self.assertEqual(
@@ -487,7 +557,7 @@ class CoverImageTests(APITestCase):
         cls.list_url = reverse("post-list")
 
     def test_cover_fields_default_to_blank(self):
-        post = Post.objects.create(title="No Cover", category=Post.Category.BOOKS)
+        post = Post.objects.create(title="No Cover", categories=[Post.Category.BOOKS])
         self.assertEqual(post.cover_image_url, "")
         self.assertEqual(post.cover_image_alt, "")
 
@@ -497,7 +567,7 @@ class CoverImageTests(APITestCase):
             self.list_url,
             {
                 "title": "With Cover",
-                "category": "books",
+                "categories": ["books"],
                 "cover_image_url": "http://localhost:9000/ziantsabit-media/a.png",
                 "cover_image_alt": "A blue square",
             },
@@ -514,7 +584,7 @@ class CoverImageTests(APITestCase):
         self.client.force_authenticate(self.user)
         response = self.client.post(
             self.list_url,
-            {"title": "Bad", "category": "books", "cover_image_url": "not a url"},
+            {"title": "Bad", "categories": ["books"], "cover_image_url": "not a url"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -523,7 +593,7 @@ class CoverImageTests(APITestCase):
     def test_cover_is_exposed_to_anonymous_readers(self):
         Post.objects.create(
             title="Public",
-            category=Post.Category.BOOKS,
+            categories=[Post.Category.BOOKS],
             status=Post.Status.PUBLISHED,
             cover_image_url="http://localhost:9000/ziantsabit-media/b.png",
         )
@@ -536,7 +606,7 @@ class CoverImageTests(APITestCase):
     def test_cover_can_be_cleared(self):
         post = Post.objects.create(
             title="Clear Me",
-            category=Post.Category.BOOKS,
+            categories=[Post.Category.BOOKS],
             cover_image_url="http://localhost:9000/ziantsabit-media/c.png",
         )
         self.client.force_authenticate(self.user)
@@ -558,15 +628,15 @@ class ViewCountTests(APITestCase):
         cls.list_url = reverse("post-list")
         cls.popular = Post.objects.create(
             title="Popular",
-            category=Post.Category.POSTS,
+            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
         cls.quiet = Post.objects.create(
             title="Quiet",
-            category=Post.Category.POSTS,
+            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
-        cls.draft = Post.objects.create(title="Hidden", category=Post.Category.POSTS)
+        cls.draft = Post.objects.create(title="Hidden", categories=[Post.Category.POSTS])
 
     def view_url(self, post):
         return reverse("post-record-view", kwargs={"slug": post.slug})
@@ -642,7 +712,7 @@ class ViewCountTests(APITestCase):
     def test_ordering_combines_with_a_category_filter(self):
         book = Post.objects.create(
             title="A Book",
-            category=Post.Category.BOOKS,
+            categories=[Post.Category.BOOKS],
             status=Post.Status.PUBLISHED,
         )
         Post.objects.filter(pk=self.popular.pk).update(view_count=9)
@@ -671,13 +741,13 @@ class TagTests(APITestCase):
         return reverse("post-detail", kwargs={"slug": post.slug})
 
     def test_a_post_starts_with_no_tags(self):
-        post = Post.objects.create(title="Untagged", category=Post.Category.POSTS)
+        post = Post.objects.create(title="Untagged", categories=[Post.Category.POSTS])
         self.assertEqual(post.tags, [])
 
     def test_tags_are_trimmed_and_blanks_dropped(self):
         post = Post.objects.create(
             title="Tagged",
-            category=Post.Category.POSTS,
+            categories=[Post.Category.POSTS],
             tags=["  django ", "", "   ", "postgres"],
         )
         self.assertEqual(post.tags, ["django", "postgres"])
@@ -685,7 +755,7 @@ class TagTests(APITestCase):
     def test_repeats_are_dropped_case_insensitively_keeping_the_first_spelling(self):
         post = Post.objects.create(
             title="Repeats",
-            category=Post.Category.POSTS,
+            categories=[Post.Category.POSTS],
             tags=["Django", "django", "DJANGO"],
         )
         self.assertEqual(post.tags, ["Django"])
@@ -693,7 +763,7 @@ class TagTests(APITestCase):
     def test_order_is_preserved(self):
         post = Post.objects.create(
             title="Ordered",
-            category=Post.Category.POSTS,
+            categories=[Post.Category.POSTS],
             tags=["zebra", "apple", "mango"],
         )
         self.assertEqual(post.tags, ["zebra", "apple", "mango"])
@@ -701,7 +771,7 @@ class TagTests(APITestCase):
     def test_tags_are_serialised(self):
         post = Post.objects.create(
             title="Serialised",
-            category=Post.Category.POSTS,
+            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
             tags=["django", "rest"],
         )
@@ -715,7 +785,7 @@ class TagTests(APITestCase):
             self.list_url,
             {
                 "title": "Created",
-                "category": Post.Category.POSTS,
+                "categories": [Post.Category.POSTS],
                 "tags": ["Django", " django ", "postgres"],
             },
             format="json",
@@ -726,7 +796,7 @@ class TagTests(APITestCase):
 
     def test_patch_replaces_the_whole_list(self):
         post = Post.objects.create(
-            title="Replaced", category=Post.Category.POSTS, tags=["one", "two"]
+            title="Replaced", categories=[Post.Category.POSTS], tags=["one", "two"]
         )
         self.client.force_authenticate(self.user)
         response = self.client.patch(
@@ -738,7 +808,7 @@ class TagTests(APITestCase):
 
     def test_an_unrelated_patch_leaves_tags_alone(self):
         post = Post.objects.create(
-            title="Kept", category=Post.Category.POSTS, tags=["one", "two"]
+            title="Kept", categories=[Post.Category.POSTS], tags=["one", "two"]
         )
         self.client.force_authenticate(self.user)
         response = self.client.patch(
@@ -750,7 +820,7 @@ class TagTests(APITestCase):
 
     def test_tags_can_be_cleared(self):
         post = Post.objects.create(
-            title="Cleared", category=Post.Category.POSTS, tags=["one"]
+            title="Cleared", categories=[Post.Category.POSTS], tags=["one"]
         )
         self.client.force_authenticate(self.user)
         response = self.client.patch(self.detail_url(post), {"tags": []}, format="json")
@@ -764,7 +834,7 @@ class TagTests(APITestCase):
             self.list_url,
             {
                 "title": "Too long",
-                "category": Post.Category.POSTS,
+                "categories": [Post.Category.POSTS],
                 "tags": ["x" * 51],
             },
             format="json",
@@ -773,7 +843,7 @@ class TagTests(APITestCase):
         self.assertIn("tags", response.data)
 
     def test_anonymous_callers_cannot_write_tags(self):
-        post = Post.objects.create(title="Guarded", category=Post.Category.POSTS)
+        post = Post.objects.create(title="Guarded", categories=[Post.Category.POSTS])
         response = self.client.patch(
             self.detail_url(post), {"tags": ["sneaky"]}, format="json"
         )
@@ -800,12 +870,12 @@ class UpdatedOrderingTests(APITestCase):
         # therefore disagree about it, which is the whole point of the option.
         cls.revised = Post.objects.create(
             title="Revised",
-            category=Post.Category.POSTS,
+            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
         cls.newer = Post.objects.create(
             title="Newer",
-            category=Post.Category.POSTS,
+            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
         Post.objects.filter(pk=cls.revised.pk).update(
@@ -855,14 +925,14 @@ class UpdatedOrderingTests(APITestCase):
         )
 
     def test_drafts_stay_hidden_from_anonymous_callers(self):
-        draft = Post.objects.create(title="Hidden", category=Post.Category.POSTS)
+        draft = Post.objects.create(title="Hidden", categories=[Post.Category.POSTS])
         Post.objects.filter(pk=draft.pk).update(updated_at=timezone.now())
         self.assertNotIn(draft.slug, self.slugs(ordering="updated"))
 
     def test_it_combines_with_a_category_filter(self):
         book = Post.objects.create(
             title="A Book",
-            category=Post.Category.BOOKS,
+            categories=[Post.Category.BOOKS],
             status=Post.Status.PUBLISHED,
         )
         self.assertEqual(
@@ -882,13 +952,13 @@ class DateFilterTests(APITestCase):
         cls.recent = cls._post("Recent", "2026-08-01")
         # No published_at at all: it is filtered by created_at instead, which
         # is what the admin list shows for a draft.
-        cls.draft = Post.objects.create(title="Draft", category=Post.Category.POSTS)
+        cls.draft = Post.objects.create(title="Draft", categories=[Post.Category.POSTS])
 
     @staticmethod
     def _post(title, day):
         post = Post.objects.create(
             title=title,
-            category=Post.Category.POSTS,
+            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
         # save() stamped published_at with now(); pin it to the day under test.
@@ -943,7 +1013,7 @@ class DateFilterTests(APITestCase):
 
     def test_date_filter_combines_with_category(self):
         book = self._post("A Book", "2026-05-21")
-        book.category = Post.Category.BOOKS
+        book.categories = [Post.Category.BOOKS]
         book.save()
         response = self.client.get(
             self.list_url, {"category": "books", "published_after": "2026-05-01"}
@@ -964,3 +1034,88 @@ class DateFilterTests(APITestCase):
         response = self.client.get(self.list_url, {"published_after": ""})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 3)
+
+
+class PostStatsTests(APITestCase):
+    """GET /api/posts/stats/, which backs the admin statistics page."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.url = reverse("post-stats")
+
+        def published(title, when, views):
+            post = Post.objects.create(
+                title=title,
+                categories=[Post.Category.POSTS],
+                status=Post.Status.PUBLISHED,
+                published_at=datetime.datetime(
+                    *when, tzinfo=datetime.timezone.utc
+                ),
+            )
+            # Straight to the column: view_count is editable=False, and a save()
+            # would move updated_at for what is meant to be a read.
+            Post.objects.filter(pk=post.pk).update(view_count=views)
+            return post
+
+        cls.top = published("Most Read", (2026, 3, 4), 300)
+        published("Middling", (2026, 3, 20), 100)
+        published("Quiet", (2026, 5, 9), 0)
+        cls.draft = Post.objects.create(
+            title="Unfinished", categories=[Post.Category.POSTS]
+        )
+
+    def get(self):
+        self.client.force_authenticate(self.user)
+        return self.client.get(self.url)
+
+    def test_anonymous_callers_are_refused(self):
+        # The draft count and drafts' view counts are the owner's business.
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_totals(self):
+        data = self.get().data
+        self.assertEqual(data["total"], 4)
+        self.assertEqual(data["published"], 3)
+        self.assertEqual(data["drafts"], 1)
+        self.assertEqual(data["total_views"], 400)
+
+    def test_average_is_per_published_post_not_per_post(self):
+        # 400 views over 3 published posts, not over all 4 -- a draft has no
+        # public page to be read on.
+        self.assertEqual(self.get().data["average_views"], 133.3)
+
+    def test_most_read_is_ranked_and_excludes_unread_posts(self):
+        rows = self.get().data["most_read"]
+        self.assertEqual([r["view_count"] for r in rows], [300, 100])
+        self.assertEqual(rows[0]["slug"], self.top.slug)
+        self.assertNotIn("quiet", [r["slug"] for r in rows])
+
+    def test_published_by_month_groups_and_skips_empty_months(self):
+        # April has nothing, and the server says so by omission -- filling the
+        # gap is the chart's job, since the range to show is a display question.
+        self.assertEqual(
+            self.get().data["published_by_month"],
+            [{"month": "2026-03", "count": 2}, {"month": "2026-05", "count": 1}],
+        )
+
+    def test_drafts_are_left_out_of_the_cadence(self):
+        months = self.get().data["published_by_month"]
+        self.assertEqual(sum(row["count"] for row in months), 3)
+
+    def test_list_filters_do_not_narrow_it(self):
+        # An overview of everything: ?category= belongs to the list route, and
+        # letting it through here would quietly answer a different question.
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.url, {"category": "books"})
+        self.assertEqual(response.data["total"], 4)
+
+    def test_an_empty_site_reports_zeroes_rather_than_failing(self):
+        Post.objects.all().delete()
+        data = self.get().data
+        self.assertEqual(data["total"], 0)
+        self.assertEqual(data["total_views"], 0)
+        self.assertEqual(data["average_views"], 0)
+        self.assertEqual(data["most_read"], [])
+        self.assertEqual(data["published_by_month"], [])
