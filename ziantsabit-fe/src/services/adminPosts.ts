@@ -38,7 +38,9 @@ export interface PostDraft {
   title: string;
   /** Blank means "generate from the title" on create, "leave alone" on update. */
   slug: string;
-  category: PostCategory;
+  /** Every section the post appears on. The API rejects an empty list, so the
+   *  form has to keep at least one ticked. */
+  categories: PostCategory[];
   status: PostStatus;
   excerpt: string;
   body: string;
@@ -57,7 +59,7 @@ export function draftFrom(post: Post): PostDraft {
   return {
     title: post.title,
     slug: post.slug,
-    category: post.category,
+    categories: post.categories,
     status: post.status,
     excerpt: post.excerpt,
     body: post.body,
@@ -72,7 +74,9 @@ export function emptyDraft(category: PostCategory = "posts"): PostDraft {
   return {
     title: "",
     slug: "",
-    category,
+    // One to start with rather than none: an empty list is a 400, and the
+    // section the author was looking at is the likeliest answer anyway.
+    categories: [category],
     status: "draft",
     excerpt: "",
     body: "",
@@ -90,6 +94,37 @@ function payload(draft: PostDraft) {
   // Post.save()), and omitting the key is how both of its meanings are asked for.
   const trimmed = slug.trim();
   return trimmed ? { ...rest, slug: trimmed } : rest;
+}
+
+/**
+ * The slug Django's `slugify` would derive from a title.
+ *
+ * Needed only by autosave on the new-post page. A post's slug is generated once,
+ * by `Post.save()`, and never regenerated -- so a post created from a
+ * half-finished title keeps the half-finished URL forever. Re-deriving it on
+ * each autosave lets the URL follow the title until the author either types
+ * their own slug or leaves the page.
+ *
+ * A mismatch with Django's version costs nothing worse than a `-2` suffix: the
+ * server dedupes against every post *but this one*, so re-sending a slug the
+ * post already holds is a no-op.
+ */
+export function deriveSlug(title: string): string {
+  return (
+    title
+      .normalize("NFKD")
+      // NFKD splits an accent off its letter; this drops the accent, which is
+      // what Django's ascii-encode step does to it.
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s_-]/g, "")
+      .trim()
+      .replace(/[\s-]+/g, "-")
+      // 220 is the model's max_length; trimming can leave a trailing hyphen, so
+      // the strip comes after it.
+      .slice(0, 220)
+      .replace(/^[-_]+|[-_]+$/g, "")
+  );
 }
 
 export interface AdminFilters {
@@ -144,18 +179,42 @@ export function fetchAdminPost(slug: string, signal?: AbortSignal): Promise<Post
   return apiRequest<Post>(`/posts/${encodeURIComponent(slug)}/`, { signal });
 }
 
-export function createPost(draft: PostDraft): Promise<Post> {
-  return apiRequest<Post>("/posts/", { method: "POST", body: payload(draft) });
+/**
+ * How to send one write, as opposed to what to send.
+ *
+ * Only autosave passes anything here, and only on its way out: `keepalive` is
+ * what lets the write survive the document that started it. Structurally the
+ * same shape as `SaveOptions` in `useAutosave`, so a page can hand the hook's
+ * argument straight down.
+ */
+export interface WriteOptions {
+  keepalive?: boolean;
+}
+
+export function createPost(
+  draft: PostDraft,
+  options: WriteOptions = {},
+): Promise<Post> {
+  return apiRequest<Post>("/posts/", {
+    method: "POST",
+    body: payload(draft),
+    ...options,
+  });
 }
 
 /**
  * PATCH rather than PUT: an omitted slug then means "keep the current URL",
  * where PUT would treat the missing field as a request to regenerate it.
  */
-export function updatePost(slug: string, draft: PostDraft): Promise<Post> {
+export function updatePost(
+  slug: string,
+  draft: PostDraft,
+  options: WriteOptions = {},
+): Promise<Post> {
   return apiRequest<Post>(`/posts/${encodeURIComponent(slug)}/`, {
     method: "PATCH",
     body: payload(draft),
+    ...options,
   });
 }
 

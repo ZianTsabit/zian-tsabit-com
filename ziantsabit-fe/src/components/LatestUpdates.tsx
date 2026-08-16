@@ -1,7 +1,7 @@
 import { Alert, Box, Button, CircularProgress, Divider, Stack } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
 
-import { CATEGORY_BASE_PATHS } from "../services/posts";
+import { CROSS_CATEGORY_BASE_PATH } from "../services/posts";
 import { useLatestPosts } from "../services/useLatestPosts";
 import Centered from "./Centered";
 import { PostCard } from "./PostList";
@@ -61,7 +61,7 @@ function LatestUpdates({ limit }: { limit: number }) {
           <PostCard
             key={post.slug}
             post={post}
-            to={`${CATEGORY_BASE_PATHS[post.category]}/${encodeURIComponent(post.slug)}`}
+            to={`${CROSS_CATEGORY_BASE_PATH}/${encodeURIComponent(post.slug)}`}
           />
         ))}
       </Stack>

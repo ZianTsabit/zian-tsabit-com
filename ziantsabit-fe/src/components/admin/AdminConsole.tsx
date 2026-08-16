@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import {
   Alert,
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -40,8 +39,7 @@ const ALL = "";
  * a request thrown away.
  */
 function AdminConsole() {
-  const { username, onSignOut, onSessionSuspect } =
-    useOutletContext<AdminOutletContext>();
+  const { onSessionSuspect } = useOutletContext<AdminOutletContext>();
   const navigate = useNavigate();
 
   const [category, setCategory] = useState<string>(ALL);
@@ -143,26 +141,20 @@ function AdminConsole() {
           mb: 2,
         }}
       >
-        <Box>
-          <Typography
-            component="h1"
-            sx={{ fontWeight: "bold", fontSize: { xs: "20px", sm: "24px" } }}
-          >
-            Posts
-          </Typography>
-          <Typography sx={{ fontSize: "13px", color: "text.secondary" }}>
-            Signed in as {username ?? "unknown"}
-          </Typography>
-        </Box>
+        <Typography
+          component="h1"
+          sx={{ fontWeight: "bold", fontSize: { xs: "20px", sm: "24px" } }}
+        >
+          Posts
+        </Typography>
 
-        <Stack direction="row" sx={{ gap: 1, flexShrink: 0 }}>
-          <Button variant="contained" onClick={handleNewPost}>
-            New post
-          </Button>
-          <Button color="inherit" onClick={onSignOut}>
-            Sign out
-          </Button>
-        </Stack>
+        {/* "Signed in as ..." and Sign out used to sit here. They are chrome
+            for the whole admin, not for this list, so they moved to `AdminNav`
+            -- otherwise the overview and statistics pages would each need
+            their own copy, or signing out would only be reachable from here. */}
+        <Button variant="contained" sx={{ flexShrink: 0 }} onClick={handleNewPost}>
+          New post
+        </Button>
       </Stack>
 
       {/* Sticky for the same reason as the Posts page's filters -- see the

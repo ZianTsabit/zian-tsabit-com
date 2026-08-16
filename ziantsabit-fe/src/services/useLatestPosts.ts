@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { fetchLatestPosts, isAbort, VISIBLE_CATEGORIES, type Post } from "./posts";
+import { fetchLatestPosts, isAbort, isVisible, type Post } from "./posts";
 
 type Phase = "loading" | "ready" | "error";
 
@@ -34,10 +34,9 @@ export function useLatestPosts(limit: number) {
     fetchLatestPosts(controller.signal)
       .then((page) =>
         setState({
-          // garage_sale has no public page to link to -- see VISIBLE_CATEGORIES.
-          posts: page.results
-            .filter((post) => VISIBLE_CATEGORIES.includes(post.category))
-            .slice(0, limit),
+          // Dropped only when garage_sale is the post's *only* section: one
+          // filed under both it and Projects still has a page to link to.
+          posts: page.results.filter(isVisible).slice(0, limit),
           phase: "ready",
           error: null,
         }),

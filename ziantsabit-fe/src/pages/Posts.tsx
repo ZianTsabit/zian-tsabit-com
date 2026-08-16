@@ -17,7 +17,7 @@ import { HEADER_HEIGHT } from "../constants/layout";
 import { PostCard } from "../components/PostList";
 import Typewriter from "../components/Typewriter";
 import {
-  CATEGORY_BASE_PATHS,
+  CROSS_CATEGORY_BASE_PATH,
   CATEGORY_LABELS,
   VISIBLE_CATEGORIES,
   type PostCategory,
@@ -190,7 +190,7 @@ function Posts() {
                 <PostCard
                   key={post.slug}
                   post={post}
-                  to={`${CATEGORY_BASE_PATHS[post.category]}/${encodeURIComponent(post.slug)}`}
+                  to={`${CROSS_CATEGORY_BASE_PATH}/${encodeURIComponent(post.slug)}`}
                 />
               ))}
             </Stack>

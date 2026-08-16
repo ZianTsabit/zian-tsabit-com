@@ -121,11 +121,34 @@ interface RequestOptions {
    *  the one endpoint that takes a file. Omit for GET and DELETE. */
   body?: unknown;
   signal?: AbortSignal;
+  /**
+   * Let the request outlive the page that started it.
+   *
+   * For a write issued while the document is going away -- autosave's flush on
+   * `pagehide`, where an ordinary `fetch` is cancelled along with the document.
+   * Only worth setting where nothing reads the response, since on that path
+   * there is no longer anywhere to read it.
+   */
+  keepalive?: boolean;
 }
+
+/**
+ * Body size above which the `keepalive` flag is dropped rather than set.
+ *
+ * The browser rejects a keepalive request outright once the bodies of all
+ * in-flight ones exceed 64 KiB, and that rejection would surface as "Autosave
+ * failed" on exactly the long posts the flush matters most for. Sending such a
+ * body as an ordinary request instead is no worse than not trying: it is the
+ * behaviour every write had before keepalive existed. Under the limit for
+ * headroom, since a page can have more than one write leaving at once.
+ */
+const KEEPALIVE_MAX_BYTES = 60_000;
+
+const encoder = new TextEncoder();
 
 async function send(
   pathOrUrl: string,
-  { method = "GET", body, signal }: RequestOptions,
+  { method = "GET", body, signal, keepalive = false }: RequestOptions,
   token: string | null,
 ): Promise<Response> {
   // FormData sets its own Content-Type, and it has to: the header carries the
@@ -138,15 +161,21 @@ async function send(
   if (body !== undefined && !isFormData) headers["Content-Type"] = "application/json";
   if (token) headers["X-CSRFToken"] = token;
 
+  const payload =
+    body === undefined ? undefined : isFormData ? body : JSON.stringify(body);
+
   try {
     return await fetch(url(pathOrUrl), {
       method,
       headers,
       signal,
+      keepalive:
+        keepalive &&
+        (typeof payload !== "string" ||
+          encoder.encode(payload).byteLength <= KEEPALIVE_MAX_BYTES),
       // The session cookie lives on the API's origin, which is not this one.
       credentials: "include",
-      body:
-        body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
+      body: payload,
     });
   } catch (error) {
     if (isAbort(error)) throw error;
@@ -181,6 +210,10 @@ export async function apiRequest<T>(
   const method = (options.method ?? "GET").toUpperCase();
   const needsToken = UNSAFE_METHODS.has(method);
 
+  // A `keepalive` write depends on this being the cached branch: fetching a
+  // token needs its *response*, which a document being torn down will never
+  // read. In the admin editor it always is -- the shell asks for the session on
+  // mount -- so the flush is one request, not two.
   let token = needsToken
     ? csrfToken ?? (await refreshCsrfToken(options.signal))
     : null;

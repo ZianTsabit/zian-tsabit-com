@@ -12,7 +12,11 @@ export interface Post {
   id: number;
   title: string;
   slug: string;
-  category: PostCategory;
+  /** Every section this post appears on -- at least one, and the API rejects
+   *  an empty list. A set, not a ranking: the server deduplicates it and
+   *  returns it in `CATEGORY_ORDER`, so nothing here should read `[0]` as a
+   *  primary category. */
+  categories: PostCategory[];
   excerpt: string;
   body: string;
   /** Lead image, shown on the card and above the body. Empty string, never
@@ -49,29 +53,46 @@ export const CATEGORY_LABELS: Record<PostCategory, string> = {
   garage_sale: "Garage Sale",
 };
 
-/** Route each category's list page lives at. Every other caller already knows
- *  its own category statically; this exists for Home's "Latest Updates" feed
- *  and the Posts page's "all categories" view, which mix posts from more than
- *  one category and so have to look the route up per post.
+/**
+ * The one order categories are ever displayed in, matching the declaration
+ * order of `Post.Category` on the backend and the site's own nav.
  *
- *  `garage_sale` has no page of its own -- the category is still valid on the
- *  backend, just with nothing public to browse it on -- so `VISIBLE_CATEGORIES`
- *  filters those posts out of both feeds before this map is ever consulted for
- *  one. The entry below only exists to keep this a total map over
- *  `PostCategory`; it should never actually be reached.
+ * A post's `categories` arrives already sorted this way, so this exists for
+ * anything building a list of its own -- the admin form's checkboxes, a filter
+ * dropdown -- so those cannot drift from the order the badges come out in.
  */
-export const CATEGORY_BASE_PATHS: Record<PostCategory, string> = {
-  posts: "/posts",
-  books: "/books",
-  projects: "/projects",
-  garage_sale: "/posts",
-};
+export const CATEGORY_ORDER: PostCategory[] = [
+  "posts",
+  "books",
+  "projects",
+  "garage_sale",
+];
 
 /** Categories with a public page to browse them on -- everything except
  *  `garage_sale`. Cross-category views (Home's "Latest Updates", the Posts
  *  page's "all categories" filter) filter to this list so they never link to
  *  the now-removed Garage Sale page. */
 export const VISIBLE_CATEGORIES: PostCategory[] = ["posts", "books", "projects"];
+
+/** Whether a post belongs to any section with a page of its own. A post filed
+ *  only under `garage_sale` has nowhere public to be linked from. */
+export function isVisible(post: Post): boolean {
+  return post.categories.some((category) =>
+    VISIBLE_CATEGORIES.includes(category),
+  );
+}
+
+/**
+ * Where a card links when the view it sits in is not itself a section page.
+ *
+ * Always `/posts/:slug`, because a post can be in several sections and none of
+ * them outranks the others -- picking one would be inventing a primary
+ * category. `PostDetail` looks posts up by slug alone and the route prefix only
+ * supplies the "back" link, so this reaches exactly the same page that
+ * `/books/:slug` would; a card *on* a section page still uses that section's
+ * path, so "back" returns you where you came from.
+ */
+export const CROSS_CATEGORY_BASE_PATH = "/posts";
 
 // Matches REST_FRAMEWORK.PAGE_SIZE in settings.py.
 export const PAGE_SIZE = 20;
