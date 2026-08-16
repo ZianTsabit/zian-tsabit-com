@@ -5,7 +5,12 @@ import { Alert, Box, Button, Stack, Typography } from "@mui/material";
 import type { AdminOutletContext } from "../components/admin/AdminOutletContext";
 import PostFormFields from "../components/admin/PostFormFields";
 import { ApiError, type FieldErrors } from "../services/api";
-import { createPost, emptyDraft, type PostDraft } from "../services/adminPosts";
+import {
+  createPost,
+  emptyDraft,
+  type PostDraft,
+  type PostStatus,
+} from "../services/adminPosts";
 import type { PostCategory } from "../services/posts";
 
 /**
@@ -24,20 +29,24 @@ function AdminNewPost() {
     ?.category;
 
   const [draft, setDraft] = useState<PostDraft>(() => emptyDraft(presetCategory));
-  const [saving, setSaving] = useState(false);
+  // Which button is in flight, or null. A plain boolean would not say which of
+  // the two to relabel while the request runs.
+  const [saving, setSaving] = useState<PostStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const set = <K extends keyof PostDraft>(key: K, value: PostDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
+  // Status comes from the button, not from a field: the form has no status
+  // control any more, so "Save as draft" and "Publish" are the same save with
+  // a different value for it.
+  const save = async (status: PostStatus) => {
+    setSaving(status);
     setError(null);
     setFieldErrors({});
     try {
-      await createPost(draft);
+      await createPost({ ...draft, status });
       navigate("/admin");
     } catch (failure: unknown) {
       if (failure instanceof ApiError) {
@@ -49,8 +58,19 @@ function AdminNewPost() {
       } else {
         setError(failure instanceof Error ? failure.message : "Could not save.");
       }
-      setSaving(false);
+      setSaving(null);
     }
+  };
+
+  // Neither button is type="submit" -- each has to name its own status -- so
+  // with this many fields the browser will not submit implicitly either. This
+  // is the guard for the case where it does: it saves the safer of the two (a
+  // new post is a draft until its author says otherwise) and, more to the
+  // point, stops a default submission from reloading the page and taking an
+  // unsaved draft with it.
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    void save("draft");
   };
 
   return (
@@ -73,8 +93,8 @@ function AdminNewPost() {
             slugHelperText="Leave blank to generate it from the title."
           />
 
-          {/* The page has no bottom padding of its own, so without this the Save
-              button sits flush against the footer's top border. */}
+          {/* The page has no bottom padding of its own, so without this the
+              buttons sit flush against the footer's top border. */}
           <Stack
             direction="row"
             sx={{
@@ -84,11 +104,19 @@ function AdminNewPost() {
               pb: { xs: 3, sm: 4 },
             }}
           >
-            <Button color="inherit" disabled={saving} onClick={() => navigate("/admin")}>
-              Cancel
+            <Button
+              color="inherit"
+              disabled={saving !== null}
+              onClick={() => void save("draft")}
+            >
+              {saving === "draft" ? "Saving..." : "Save as draft"}
             </Button>
-            <Button type="submit" variant="contained" disabled={saving}>
-              {saving ? "Saving..." : "Save"}
+            <Button
+              variant="contained"
+              disabled={saving !== null}
+              onClick={() => void save("published")}
+            >
+              {saving === "published" ? "Publishing..." : "Publish"}
             </Button>
           </Stack>
         </Stack>

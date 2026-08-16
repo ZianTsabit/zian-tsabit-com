@@ -3,7 +3,7 @@ import { MenuItem, Stack, TextField } from "@mui/material";
 import CoverImageField from "./CoverImageField";
 import MarkdownEditor from "./MarkdownEditor";
 import type { FieldErrors } from "../../services/api";
-import { CATEGORIES, STATUSES, type PostDraft } from "../../services/adminPosts";
+import { CATEGORIES, type PostDraft } from "../../services/adminPosts";
 import type { PostCategory } from "../../services/posts";
 
 /**
@@ -71,56 +71,6 @@ function PostFormFields({ draft, fieldErrors, onChange, slugHelperText }: Props)
         fullWidth
       />
 
-      <Stack direction={{ xs: "column", sm: "row" }} sx={{ gap: 2 }}>
-        <TextField
-          select
-          label="Category"
-          value={draft.category}
-          onChange={(event) => onChange("category", event.target.value as PostCategory)}
-          error={Boolean(fieldErrors.category)}
-          helperText={fieldErrors.category}
-          fullWidth
-        >
-          {CATEGORIES.map((option) => (
-            <MenuItem key={option.value} value={option.value}>
-              {option.label}
-            </MenuItem>
-          ))}
-        </TextField>
-
-        <TextField
-          select
-          label="Status"
-          value={draft.status}
-          onChange={(event) =>
-            onChange("status", event.target.value as PostDraft["status"])
-          }
-          error={Boolean(fieldErrors.status)}
-          helperText={fieldErrors.status}
-          fullWidth
-        >
-          {STATUSES.map((option) => (
-            <MenuItem key={option.value} value={option.value}>
-              {option.label}
-            </MenuItem>
-          ))}
-        </TextField>
-      </Stack>
-
-      <TextField
-        label="Published at"
-        type="datetime-local"
-        value={toLocalInput(draft.published_at)}
-        onChange={(event) => onChange("published_at", fromLocalInput(event.target.value))}
-        error={Boolean(fieldErrors.published_at)}
-        helperText={
-          fieldErrors.published_at ??
-          "Sets the position in the feed. Left empty, publishing stamps it now."
-        }
-        slotProps={{ inputLabel: { shrink: true } }}
-        fullWidth
-      />
-
       <CoverImageField
         url={draft.cover_image_url}
         alt={draft.cover_image_alt}
@@ -154,6 +104,43 @@ function PostFormFields({ draft, fieldErrors, onChange, slugHelperText }: Props)
         // Both callers are full pages now, so the body gets room to write in
         // rather than the 5 rows that suited a dialog.
         minRows={12}
+      />
+
+      {/* Filing and publishing come after the writing: the fields above are
+          what the post *is*, these are what happens to it.
+
+          There is no Status field here. Status is chosen by which button ends
+          the form -- "Save as draft" or "Publish" -- so a dropdown would be a
+          second control for the same thing, and the two could disagree. The
+          admin list still flips it per row without opening the editor. */}
+      <TextField
+        select
+        label="Category"
+        value={draft.category}
+        onChange={(event) => onChange("category", event.target.value as PostCategory)}
+        error={Boolean(fieldErrors.category)}
+        helperText={fieldErrors.category}
+        fullWidth
+      >
+        {CATEGORIES.map((option) => (
+          <MenuItem key={option.value} value={option.value}>
+            {option.label}
+          </MenuItem>
+        ))}
+      </TextField>
+
+      <TextField
+        label="Published at"
+        type="datetime-local"
+        value={toLocalInput(draft.published_at)}
+        onChange={(event) => onChange("published_at", fromLocalInput(event.target.value))}
+        error={Boolean(fieldErrors.published_at)}
+        helperText={
+          fieldErrors.published_at ??
+          "Sets the position in the feed. Left empty, publishing stamps it now."
+        }
+        slotProps={{ inputLabel: { shrink: true } }}
+        fullWidth
       />
     </Stack>
   );
