@@ -30,15 +30,25 @@ function message(error: unknown): string {
 }
 
 /**
- * Loads one numbered page of posts, for the Posts page's category filter and
- * Prev/Next pagination. `category` of `undefined` asks for every category.
+ * Loads one numbered page of posts, for the Posts page's filters and numbered
+ * pagination. `category` of `undefined` asks for every category, and `after` /
+ * `before` are YYYY-MM-DD days (either may be "" for an open-ended range).
+ *
+ * The two dates are separate string arguments rather than one object so a
+ * caller can pass them inline: a fresh object literal every render would
+ * re-trigger the effect forever.
  *
  * That "every category" case filters out `garage_sale` client-side (see
  * `VISIBLE_CATEGORIES`), since it has no public page to link to -- so `count`
  * (and the page count derived from it) can run slightly high if any exist.
  * Not worth a backend change for a category the site no longer surfaces.
  */
-export function usePaginatedPosts(category: PostCategory | undefined, page: number) {
+export function usePaginatedPosts(
+  category: PostCategory | undefined,
+  page: number,
+  after = "",
+  before = "",
+) {
   const [state, setState] = useState<PaginatedPostsState>(INITIAL);
   // Bumping this re-runs the effect below; it is what the retry button drives.
   const [attempt, setAttempt] = useState(0);
@@ -47,7 +57,7 @@ export function usePaginatedPosts(category: PostCategory | undefined, page: numb
     const controller = new AbortController();
     setState(INITIAL);
 
-    fetchPostsPage({ category, page }, controller.signal)
+    fetchPostsPage({ category, page, after, before }, controller.signal)
       .then((result) =>
         setState({
           posts: category
@@ -64,7 +74,7 @@ export function usePaginatedPosts(category: PostCategory | undefined, page: numb
       });
 
     return () => controller.abort();
-  }, [category, page, attempt]);
+  }, [category, page, after, before, attempt]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   const totalPages = Math.max(1, Math.ceil(state.count / PAGE_SIZE));

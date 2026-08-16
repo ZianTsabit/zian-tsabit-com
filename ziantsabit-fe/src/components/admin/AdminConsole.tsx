@@ -20,6 +20,7 @@ import AdminPostList from "./AdminPostList";
 import { ApiError } from "../../services/api";
 import {
   CATEGORIES,
+  SORTS,
   STATUSES,
   deletePost,
   setPostStatus,
@@ -44,7 +45,12 @@ function AdminConsole() {
 
   const [category, setCategory] = useState<string>(ALL);
   const [status, setStatus] = useState<string>(ALL);
-  const list = useAdminPosts(category, status);
+  // "" is the API's default ordering, newest first; "views" is most-read first.
+  const [ordering, setOrdering] = useState<string>("");
+  // Inclusive YYYY-MM-DD bounds; "" leaves that end of the range open.
+  const [after, setAfter] = useState("");
+  const [before, setBefore] = useState("");
+  const list = useAdminPosts(category, status, ordering, after, before);
   // Stable across renders, unlike `list` itself, so the callbacks below are too.
   const { reload } = list;
 
@@ -140,12 +146,16 @@ function AdminConsole() {
       </Stack>
 
       <Stack direction="row" sx={{ gap: 2, mb: 2, flexWrap: "wrap" }}>
+        {/* All three selects default to "", and `displayEmpty` is what makes
+            that show as "All categories" / "All statuses" / "Newest first"
+            rather than an empty box; the label is pinned shrunk to match. */}
         <TextField
           select
           size="small"
           label="Category"
           value={category}
           onChange={(event) => setCategory(event.target.value)}
+          slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
           sx={{ minWidth: 160 }}
         >
           <MenuItem value={ALL}>All categories</MenuItem>
@@ -162,6 +172,7 @@ function AdminConsole() {
           label="Status"
           value={status}
           onChange={(event) => setStatus(event.target.value)}
+          slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
           sx={{ minWidth: 160 }}
         >
           <MenuItem value={ALL}>All statuses</MenuItem>
@@ -171,6 +182,45 @@ function AdminConsole() {
             </MenuItem>
           ))}
         </TextField>
+
+        <TextField
+          select
+          size="small"
+          label="Sort"
+          value={ordering}
+          onChange={(event) => setOrdering(event.target.value)}
+          slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+          sx={{ minWidth: 160 }}
+        >
+          {SORTS.map((option) => (
+            <MenuItem key={option.value} value={option.value}>
+              {option.label}
+            </MenuItem>
+          ))}
+        </TextField>
+
+        {/* Native date inputs, as on the public Posts page: they hand back a
+            YYYY-MM-DD string, which is what the API takes. `shrink` is forced
+            because the browser paints its own placeholder in an empty field,
+            which a floating label would otherwise sit on top of. */}
+        <TextField
+          type="date"
+          size="small"
+          label="From"
+          value={after}
+          onChange={(event) => setAfter(event.target.value)}
+          slotProps={{ inputLabel: { shrink: true } }}
+          sx={{ minWidth: 160 }}
+        />
+        <TextField
+          type="date"
+          size="small"
+          label="To"
+          value={before}
+          onChange={(event) => setBefore(event.target.value)}
+          slotProps={{ inputLabel: { shrink: true } }}
+          sx={{ minWidth: 160 }}
+        />
       </Stack>
 
       {actionError && (

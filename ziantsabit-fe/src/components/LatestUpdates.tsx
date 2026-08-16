@@ -69,6 +69,10 @@ function LatestUpdates({ limit }: { limit: number }) {
           display: "flex",
           justifyContent: "center",
           pt: 1,
+          // Breathing room above the footer's top border. `mt: "auto"` parks
+          // this link at the very bottom of the page on a short list, which
+          // otherwise leaves it sitting right on that line.
+          pb: { xs: 3, sm: 4 },
           // Soaks up whatever vertical space the cards leave, so the link sits
           // at the bottom of the page on a short list and directly under the
           // last card once the list is long enough to fill it.

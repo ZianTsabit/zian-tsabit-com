@@ -92,6 +92,10 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
             <Typography sx={{ fontSize: "12px", color: "text.secondary" }}>
               {formatDate(post)}
             </Typography>
+            <Typography sx={{ fontSize: "12px", color: "text.secondary" }}>
+              {post.view_count.toLocaleString()}{" "}
+              {post.view_count === 1 ? "view" : "views"}
+            </Typography>
           </Stack>
         </Box>
 
