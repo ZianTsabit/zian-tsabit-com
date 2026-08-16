@@ -17,9 +17,10 @@ function message(error: unknown): string {
 }
 
 /**
- * Loads the newest `limit` posts across every category, for Home's "Latest
- * Updates" feed. No pagination -- it's a fixed-size teaser, not a full list,
- * so there is no `loadMore` the way `usePosts` has one.
+ * Loads the `limit` most recently edited posts across every category, for
+ * Home's "Latest Updates" feed -- ordered by updated_at, not by publication
+ * date. No pagination: it's a fixed-size teaser, not a full list, so there is
+ * no `loadMore` the way `usePosts` has one.
  */
 export function useLatestPosts(limit: number) {
   const [state, setState] = useState<LatestPostsState>(INITIAL);

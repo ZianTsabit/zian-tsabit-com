@@ -659,6 +659,94 @@ class ViewCountTests(APITestCase):
         self.assertIn("ordering", response.data)
 
 
+class UpdatedOrderingTests(APITestCase):
+    """?ordering=updated -- most recently edited first.
+
+    Every timestamp here is written with queryset.update() rather than save():
+    updated_at is auto_now, so a save() would overwrite the value under test
+    with "now" and the assertions would pass for the wrong reason.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("post-list")
+        now = timezone.now()
+
+        # Published first, but edited most recently -- the two orderings
+        # therefore disagree about it, which is the whole point of the option.
+        cls.revised = Post.objects.create(
+            title="Revised",
+            category=Post.Category.POSTS,
+            status=Post.Status.PUBLISHED,
+        )
+        cls.newer = Post.objects.create(
+            title="Newer",
+            category=Post.Category.POSTS,
+            status=Post.Status.PUBLISHED,
+        )
+        Post.objects.filter(pk=cls.revised.pk).update(
+            published_at=now - datetime.timedelta(days=30),
+            updated_at=now - datetime.timedelta(minutes=1),
+        )
+        Post.objects.filter(pk=cls.newer.pk).update(
+            published_at=now - datetime.timedelta(days=1),
+            updated_at=now - datetime.timedelta(days=1),
+        )
+
+    def slugs(self, **params):
+        response = self.client.get(self.list_url, params)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return [row["slug"] for row in response.data["results"]]
+
+    def test_most_recently_edited_comes_first(self):
+        self.assertEqual(
+            self.slugs(ordering="updated"), [self.revised.slug, self.newer.slug]
+        )
+
+    def test_it_differs_from_the_default_ordering(self):
+        # Same two posts, opposite order: proves the param is doing the work
+        # rather than the fixtures happening to agree.
+        self.assertEqual(self.slugs(), [self.newer.slug, self.revised.slug])
+
+    def test_editing_a_post_moves_it_to_the_front(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            reverse("post-detail", kwargs={"slug": self.newer.slug}),
+            {"title": "Newer, revised"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.client.force_authenticate(None)
+        self.assertEqual(
+            self.slugs(ordering="updated"), [self.newer.slug, self.revised.slug]
+        )
+
+    def test_recording_a_view_does_not_reorder(self):
+        # The counter is an F() UPDATE precisely so it does not touch
+        # updated_at; if that ever became a save(), reading a post would
+        # silently promote it to the top of Home's feed.
+        self.client.post(reverse("post-record-view", kwargs={"slug": self.newer.slug}))
+        self.assertEqual(
+            self.slugs(ordering="updated"), [self.revised.slug, self.newer.slug]
+        )
+
+    def test_drafts_stay_hidden_from_anonymous_callers(self):
+        draft = Post.objects.create(title="Hidden", category=Post.Category.POSTS)
+        Post.objects.filter(pk=draft.pk).update(updated_at=timezone.now())
+        self.assertNotIn(draft.slug, self.slugs(ordering="updated"))
+
+    def test_it_combines_with_a_category_filter(self):
+        book = Post.objects.create(
+            title="A Book",
+            category=Post.Category.BOOKS,
+            status=Post.Status.PUBLISHED,
+        )
+        self.assertEqual(
+            self.slugs(ordering="updated", category="books"), [book.slug]
+        )
+
+
 class DateFilterTests(APITestCase):
     """?published_after= / ?published_before=, both inclusive."""
 

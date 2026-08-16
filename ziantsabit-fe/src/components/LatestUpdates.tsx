@@ -8,8 +8,9 @@ import { PostCard } from "./PostList";
 import Typewriter from "./Typewriter";
 
 /**
- * Home's "Latest Updates" feed: the newest posts across every section, each
- * card linking back into whichever section it actually belongs to.
+ * Home's "Latest Updates" feed: the most recently edited posts across every
+ * section, each card linking back into whichever section it actually belongs
+ * to, and dated by that same last edit rather than by publication.
  */
 function LatestUpdates({ limit }: { limit: number }) {
   const { posts, phase, error, retry } = useLatestPosts(limit);
@@ -58,6 +59,10 @@ function LatestUpdates({ limit }: { limit: number }) {
           key={post.slug}
           post={post}
           to={`${CATEGORY_BASE_PATHS[post.category]}/${encodeURIComponent(post.slug)}`}
+          // The date this feed is ordered by, so the cards agree with the
+          // order they are in. Only here: the section lists are still by
+          // publication date, and so are their cards.
+          dated="updated"
         />
       ))}
 

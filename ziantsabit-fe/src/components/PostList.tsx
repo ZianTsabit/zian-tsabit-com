@@ -14,10 +14,7 @@ import Centered from "./Centered";
 import { toPlainText } from "./markdownText";
 import Typewriter from "./Typewriter";
 
-function formatDate(post: Post): string {
-  // published_at is null only on drafts, which the public API never returns;
-  // created_at keeps this honest if an authenticated caller ever sees one.
-  const stamp = post.published_at ?? post.created_at;
+function formatDate(stamp: string): string {
   const date = new Date(stamp);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleDateString(undefined, {
@@ -27,9 +24,30 @@ function formatDate(post: Post): string {
   });
 }
 
+/** Which timestamp a card shows.
+ *
+ *  "published" is the post's own date, and the default. "updated" is its last
+ *  edit, for Home's feed: that list is ordered by `updated_at`, so a card there
+ *  showing a publication date would contradict the order it appears in -- a
+ *  post revised today but published in January would lead the feed under a
+ *  January date and read as a bug. */
+export type CardDate = "published" | "updated";
+
 /** Exported for reuse by Home's "Latest Updates" feed, which mixes posts from
  *  every category and so needs to build each card's `to` itself. */
-export function PostCard({ post, to }: { post: Post; to: string }) {
+export function PostCard({
+  post,
+  to,
+  dated = "published",
+}: {
+  post: Post;
+  to: string;
+  dated?: CardDate;
+}) {
+  // published_at is null only on drafts, which the public API never returns;
+  // created_at keeps this honest if an authenticated caller ever sees one.
+  const stamp =
+    dated === "updated" ? post.updated_at : post.published_at ?? post.created_at;
   // Excerpt is the summary when there is one; otherwise the body stands in, so
   // a post written without an excerpt is not a bare title. The body is
   // Markdown, so it is flattened first -- a card is no place for `## Heading`.
@@ -99,14 +117,16 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
         </Typography>
         <Typography
           component="time"
-          dateTime={post.published_at ?? post.created_at}
+          dateTime={stamp}
           sx={{
             fontSize: { xs: "12px", sm: "14px" },
             color: "text.secondary",
             whiteSpace: "nowrap",
           }}
         >
-          {formatDate(post)}
+          {dated === "updated"
+            ? `Updated ${formatDate(stamp)}`
+            : formatDate(stamp)}
         </Typography>
       </Stack>
 

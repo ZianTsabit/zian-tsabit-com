@@ -15,8 +15,14 @@ from .serializers import PostSerializer, ViewCountSerializer
 # What ?ordering= accepts, and the order_by() each value means. "views" keeps
 # the default ordering as its tie-breaker so a page of all-zero counts still
 # reads newest-first rather than in whatever order the database returns rows.
+#
+# "updated" sorts by last edit rather than by publication: a post revised today
+# leads the feed even if it was first published a year ago. updated_at is
+# auto_now, so every save bumps it -- but recording a view deliberately does
+# not, since that path is an F() UPDATE rather than a save() (see record_view).
 ORDERINGS = {
     "recent": ["-published_at", "-created_at"],
+    "updated": ["-updated_at", "-created_at"],
     "views": ["-view_count", "-published_at", "-created_at"],
 }
 
@@ -43,6 +49,7 @@ ORDERINGS = {
                 name="ordering",
                 description=(
                     "Sort order. 'recent' (the default) is newest first; "
+                    "'updated' is most-recently-edited first; "
                     "'views' is most-read first."
                 ),
                 enum=sorted(ORDERINGS),
@@ -73,7 +80,7 @@ class PostViewSet(viewsets.ModelViewSet):
     Query params on list:
       ?category=posts|books|projects|garage_sale
       ?status=draft|published   (authenticated only; anonymous never sees drafts)
-      ?ordering=recent|views    (default recent)
+      ?ordering=recent|updated|views    (default recent)
       ?published_after=YYYY-MM-DD, ?published_before=YYYY-MM-DD (both inclusive)
     """
 
