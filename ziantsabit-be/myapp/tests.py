@@ -659,6 +659,129 @@ class ViewCountTests(APITestCase):
         self.assertIn("ordering", response.data)
 
 
+class TagTests(APITestCase):
+    """Post.tags: a list of labels, tidied in save() and writable through the API."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("post-list")
+
+    def detail_url(self, post):
+        return reverse("post-detail", kwargs={"slug": post.slug})
+
+    def test_a_post_starts_with_no_tags(self):
+        post = Post.objects.create(title="Untagged", category=Post.Category.POSTS)
+        self.assertEqual(post.tags, [])
+
+    def test_tags_are_trimmed_and_blanks_dropped(self):
+        post = Post.objects.create(
+            title="Tagged",
+            category=Post.Category.POSTS,
+            tags=["  django ", "", "   ", "postgres"],
+        )
+        self.assertEqual(post.tags, ["django", "postgres"])
+
+    def test_repeats_are_dropped_case_insensitively_keeping_the_first_spelling(self):
+        post = Post.objects.create(
+            title="Repeats",
+            category=Post.Category.POSTS,
+            tags=["Django", "django", "DJANGO"],
+        )
+        self.assertEqual(post.tags, ["Django"])
+
+    def test_order_is_preserved(self):
+        post = Post.objects.create(
+            title="Ordered",
+            category=Post.Category.POSTS,
+            tags=["zebra", "apple", "mango"],
+        )
+        self.assertEqual(post.tags, ["zebra", "apple", "mango"])
+
+    def test_tags_are_serialised(self):
+        post = Post.objects.create(
+            title="Serialised",
+            category=Post.Category.POSTS,
+            status=Post.Status.PUBLISHED,
+            tags=["django", "rest"],
+        )
+        response = self.client.get(self.detail_url(post))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["tags"], ["django", "rest"])
+
+    def test_create_with_tags(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            {
+                "title": "Created",
+                "category": Post.Category.POSTS,
+                "tags": ["Django", " django ", "postgres"],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # Cleaned on the way in, so the response is what was actually stored.
+        self.assertEqual(response.data["tags"], ["Django", "postgres"])
+
+    def test_patch_replaces_the_whole_list(self):
+        post = Post.objects.create(
+            title="Replaced", category=Post.Category.POSTS, tags=["one", "two"]
+        )
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(post), {"tags": ["three"]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        post.refresh_from_db()
+        self.assertEqual(post.tags, ["three"])
+
+    def test_an_unrelated_patch_leaves_tags_alone(self):
+        post = Post.objects.create(
+            title="Kept", category=Post.Category.POSTS, tags=["one", "two"]
+        )
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(post), {"title": "Kept, renamed"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        post.refresh_from_db()
+        self.assertEqual(post.tags, ["one", "two"])
+
+    def test_tags_can_be_cleared(self):
+        post = Post.objects.create(
+            title="Cleared", category=Post.Category.POSTS, tags=["one"]
+        )
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(self.detail_url(post), {"tags": []}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        post.refresh_from_db()
+        self.assertEqual(post.tags, [])
+
+    def test_an_overlong_tag_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            {
+                "title": "Too long",
+                "category": Post.Category.POSTS,
+                "tags": ["x" * 51],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("tags", response.data)
+
+    def test_anonymous_callers_cannot_write_tags(self):
+        post = Post.objects.create(title="Guarded", category=Post.Category.POSTS)
+        response = self.client.patch(
+            self.detail_url(post), {"tags": ["sneaky"]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        post.refresh_from_db()
+        self.assertEqual(post.tags, [])
+
+
 class UpdatedOrderingTests(APITestCase):
     """?ordering=updated -- most recently edited first.
 

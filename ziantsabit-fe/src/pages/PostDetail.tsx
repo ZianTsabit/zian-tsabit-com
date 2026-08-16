@@ -11,7 +11,7 @@ import {
 
 import Centered from "../components/Centered";
 import Markdown from "../components/Markdown";
-import TagChip from "../components/TagChip";
+import TagChip, { TagChipRow } from "../components/TagChip";
 import Typewriter from "../components/Typewriter";
 import { usePost } from "../services/usePost";
 import { useRecordView } from "../services/useRecordView";
@@ -150,6 +150,11 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
                 </Typography>
               )}
             </Stack>
+
+            {/* Their own row rather than alongside the category chip: a post
+                with several tags would otherwise push the view count off the
+                end of the line on a phone. */}
+            {post.tags.length > 0 && <TagChipRow labels={post.tags} />}
 
             {post.cover_image_url && (
               <Box

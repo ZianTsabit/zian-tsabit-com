@@ -5,6 +5,7 @@ import {
   Button,
   CircularProgress,
   Container,
+  Divider,
   MenuItem,
   Pagination,
   Stack,
@@ -12,6 +13,7 @@ import {
 } from "@mui/material";
 
 import Centered from "../components/Centered";
+import { HEADER_HEIGHT } from "../constants/layout";
 import { PostCard } from "../components/PostList";
 import Typewriter from "../components/Typewriter";
 import {
@@ -75,9 +77,32 @@ function Posts() {
           gap: 3,
         }}
       >
+        {/* Sticky, so the filters stay reachable while reading down a long
+            list. Four details make that work rather than half-work:
+              - `top` is HEADER_HEIGHT, not 0: the site header is `fixed` and
+                out of flow, so a bar stuck to 0 would slide under it.
+              - an opaque background, or the list scrolls visibly through it.
+              - negative margins plus matching padding, so that background
+                reaches the Container's gutters instead of leaving a strip of
+                page showing either side of the fields.
+              - zIndex 1 -- above the list, far below the header's 1000.
+            `index.css` uses `overflow-x: clip` rather than `hidden` on
+            html/body precisely so this works; `hidden` would make them scroll
+            containers and silently cancel every `position: sticky` inside. */}
         <Stack
           direction={{ xs: "column", sm: "row" }}
-          sx={{ gap: 2, flexWrap: "wrap", alignSelf: "stretch" }}
+          sx={{
+            gap: 2,
+            flexWrap: "wrap",
+            alignSelf: "stretch",
+            position: "sticky",
+            top: HEADER_HEIGHT,
+            zIndex: 1,
+            bgcolor: "background.default",
+            mx: { xs: -2, sm: -3 },
+            px: { xs: 2, sm: 3 },
+            py: 1.5,
+          }}
         >
           {/* `displayEmpty` is what makes the "All categories" row show as the
               current value: without it a Select whose value is "" renders as an
@@ -155,7 +180,12 @@ function Posts() {
 
         {phase === "ready" && posts.length > 0 && (
           <>
-            <Stack sx={{ gap: 2, width: "100%" }}>
+            {/* Same divided list as PostList; the gap is per side, since the
+                divider sits between the entries as a flex child of its own. */}
+            <Stack
+              divider={<Divider />}
+              sx={{ gap: { xs: 2.5, sm: 3 }, width: "100%" }}
+            >
               {posts.map((post) => (
                 <PostCard
                   key={post.slug}

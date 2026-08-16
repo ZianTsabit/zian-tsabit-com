@@ -15,6 +15,7 @@ class PostSerializer(serializers.ModelSerializer):
             "body",
             "cover_image_url",
             "cover_image_alt",
+            "tags",
             "status",
             "published_at",
             "view_count",

@@ -18,8 +18,8 @@
       // Applies the stored colour scheme before first paint, so a returning
       // visitor never sees the wrong background flash. Must stay in sync with
       // MUI's storage key ("mui-mode") and colorSchemeSelector ("class").
-      // Visitors with no stored choice are handled by the media queries in
-      // index.css, so nothing is done for them here.
+      // Visitors with no stored choice get light, which index.css already
+      // paints on bare `html`, so nothing is done for them here.
       (function () {
         try {
           var mode = localStorage.getItem('mui-mode');

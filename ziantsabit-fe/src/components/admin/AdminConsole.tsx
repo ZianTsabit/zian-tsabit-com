@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import {
   Alert,
@@ -17,6 +17,7 @@ import {
 
 import type { AdminOutletContext } from "./AdminOutletContext";
 import AdminPostList from "./AdminPostList";
+import { HEADER_HEIGHT } from "../../constants/layout";
 import { ApiError } from "../../services/api";
 import {
   CATEGORIES,
@@ -50,13 +51,32 @@ function AdminConsole() {
   // Inclusive YYYY-MM-DD bounds; "" leaves that end of the range open.
   const [after, setAfter] = useState("");
   const [before, setBefore] = useState("");
-  const list = useAdminPosts(category, status, ordering, after, before);
+  const [page, setPage] = useState(1);
+  const list = useAdminPosts(category, status, ordering, page, after, before);
   // Stable across renders, unlike `list` itself, so the callbacks below are too.
   const { reload } = list;
 
   const [pendingDelete, setPendingDelete] = useState<Post | null>(null);
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  /** Every filter change goes back to page 1: page 3 of an unfiltered list is
+   *  usually past the end of a filtered one, and landing on an empty page
+   *  looks like the filter matched nothing. Same rule as the Posts page. */
+  const changeFilter = (set: (value: string) => void, value: string) => {
+    set(value);
+    setPage(1);
+  };
+
+  // A mutation can empty the page being shown -- delete the only row on page 3
+  // and page 3 stops existing, leaving "No posts match this filter" over a list
+  // that is not in fact empty. Stepping back re-fetches, and repeats if that
+  // page has gone too.
+  useEffect(() => {
+    if (list.phase === "ready" && list.posts.length === 0 && page > 1) {
+      setPage((current) => current - 1);
+    }
+  }, [list.phase, list.posts.length, page]);
 
   const handleFailure = useCallback(
     (failure: unknown) => {
@@ -145,7 +165,26 @@ function AdminConsole() {
         </Stack>
       </Stack>
 
-      <Stack direction="row" sx={{ gap: 2, mb: 2, flexWrap: "wrap" }}>
+      {/* Sticky for the same reason as the Posts page's filters -- see the
+          comment there for why `top` is HEADER_HEIGHT and why the background
+          and the negative margins are load-bearing. `background.default` and
+          not `transparent`: Admin.tsx's own wrapper is transparent, so the
+          page colour comes from the body and has to be named here. */}
+      <Stack
+        direction="row"
+        sx={{
+          gap: 2,
+          flexWrap: "wrap",
+          position: "sticky",
+          top: HEADER_HEIGHT,
+          zIndex: 1,
+          bgcolor: "background.default",
+          mx: { xs: -2, sm: -3 },
+          px: { xs: 2, sm: 3 },
+          py: 1.5,
+          mb: 2,
+        }}
+      >
         {/* All three selects default to "", and `displayEmpty` is what makes
             that show as "All categories" / "All statuses" / "Newest first"
             rather than an empty box; the label is pinned shrunk to match. */}
@@ -154,7 +193,7 @@ function AdminConsole() {
           size="small"
           label="Category"
           value={category}
-          onChange={(event) => setCategory(event.target.value)}
+          onChange={(event) => changeFilter(setCategory, event.target.value)}
           slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
           sx={{ minWidth: 160 }}
         >
@@ -171,7 +210,7 @@ function AdminConsole() {
           size="small"
           label="Status"
           value={status}
-          onChange={(event) => setStatus(event.target.value)}
+          onChange={(event) => changeFilter(setStatus, event.target.value)}
           slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
           sx={{ minWidth: 160 }}
         >
@@ -188,7 +227,7 @@ function AdminConsole() {
           size="small"
           label="Sort"
           value={ordering}
-          onChange={(event) => setOrdering(event.target.value)}
+          onChange={(event) => changeFilter(setOrdering, event.target.value)}
           slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
           sx={{ minWidth: 160 }}
         >
@@ -208,7 +247,7 @@ function AdminConsole() {
           size="small"
           label="From"
           value={after}
-          onChange={(event) => setAfter(event.target.value)}
+          onChange={(event) => changeFilter(setAfter, event.target.value)}
           slotProps={{ inputLabel: { shrink: true } }}
           sx={{ minWidth: 160 }}
         />
@@ -217,7 +256,7 @@ function AdminConsole() {
           size="small"
           label="To"
           value={before}
-          onChange={(event) => setBefore(event.target.value)}
+          onChange={(event) => changeFilter(setBefore, event.target.value)}
           slotProps={{ inputLabel: { shrink: true } }}
           sx={{ minWidth: 160 }}
         />
@@ -231,12 +270,12 @@ function AdminConsole() {
 
       <AdminPostList
         posts={list.posts}
-        next={list.next}
         phase={list.phase}
         error={list.error}
-        loadingMore={list.loadingMore}
         busySlug={busySlug}
-        onLoadMore={list.loadMore}
+        page={page}
+        totalPages={list.totalPages}
+        onPageChange={setPage}
         onRetry={list.reload}
         onEdit={openEditor}
         onToggleStatus={handleToggleStatus}

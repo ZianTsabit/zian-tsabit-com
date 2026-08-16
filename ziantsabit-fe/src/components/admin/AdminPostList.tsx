@@ -3,11 +3,14 @@ import {
   Box,
   Button,
   CircularProgress,
+  Divider,
+  Pagination,
   Stack,
   Typography,
 } from "@mui/material";
 
 import TagChip from "../TagChip";
+import { toPlainText } from "../markdownText";
 import { CATEGORIES } from "../../services/adminPosts";
 import type { Post } from "../../services/posts";
 import { MONO_FONT } from "../../theme";
@@ -15,10 +18,11 @@ import { MONO_FONT } from "../../theme";
 /** Rows rather than a table: a five-column table is unusable on a phone. */
 const CATEGORY_LABELS = new Map(CATEGORIES.map((c) => [c.value, c.label]));
 
+/** Matches the public entries: last edit, not publication. The time of day is
+ *  kept, which they drop -- editing twice in an afternoon is exactly the case
+ *  this list is for, and a bare date could not tell those two apart. */
 function formatDate(post: Post): string {
-  // A draft has no published_at, so its created date is what there is to show.
-  const stamp = post.published_at ?? post.created_at;
-  const date = new Date(stamp);
+  const date = new Date(post.updated_at);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString(undefined, {
     year: "numeric",
@@ -27,6 +31,10 @@ function formatDate(post: Post): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatViews(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "view" : "views"}`;
 }
 
 interface RowProps {
@@ -39,15 +47,16 @@ interface RowProps {
 
 function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
   const published = post.status === "published";
+  // Excerpt when there is one, the flattened body otherwise -- the same
+  // fallback the public entries use, so a row previews what a visitor sees.
+  const text = post.excerpt || toPlainText(post.body);
 
   return (
     <Box
       component="article"
       sx={{
-        border: "1px solid",
-        borderColor: "divider",
-        borderRadius: 1,
-        p: { xs: 1.5, sm: 2 },
+        // No border, no surface -- the same divided list the public pages use
+        // (see PostCard). The rule between rows comes from the Stack below.
         // Dimmed while its own request is in flight, so a slow publish is
         // visibly doing something rather than looking ignored.
         opacity: busy ? 0.5 : 1,
@@ -62,6 +71,11 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
           alignItems: { xs: "stretch", md: "center" },
         }}
       >
+        {/* Same running order as the public entries (see PostCard): title,
+            then updated | views, then the excerpt, then the chips. The slug
+            sits under the title because it identifies the row, and the two
+            admin-only chips lead the chip row so the post's own tags do not
+            get lost among them. */}
         <Box sx={{ minWidth: 0 }}>
           <Typography
             component="h2"
@@ -84,19 +98,43 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
           >
             /{post.slug}
           </Typography>
+
+          <Typography sx={{ fontSize: "12px", color: "text.secondary", mt: 0.5 }}>
+            <Box component="time" dateTime={post.updated_at}>
+              Updated {formatDate(post)}
+            </Box>
+            {" | "}
+            {formatViews(post.view_count)}
+          </Typography>
+
+          {text && (
+            <Typography
+              sx={{
+                fontSize: { xs: "13px", sm: "14px" },
+                color: "text.primary",
+                mt: 0.5,
+                whiteSpace: "pre-line",
+                // Two lines, not the public entries' three: this list runs 20
+                // rows to a page and is read by scanning titles.
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical",
+                WebkitLineClamp: 2,
+                overflow: "hidden",
+              }}
+            >
+              {text}
+            </Typography>
+          )}
+
           <Stack
             direction="row"
             sx={{ gap: 1, mt: 1, alignItems: "center", flexWrap: "wrap" }}
           >
             <TagChip label={CATEGORY_LABELS.get(post.category) ?? post.category} />
             <TagChip label={published ? "Published" : "Draft"} emphasis={published} />
-            <Typography sx={{ fontSize: "12px", color: "text.secondary" }}>
-              {formatDate(post)}
-            </Typography>
-            <Typography sx={{ fontSize: "12px", color: "text.secondary" }}>
-              {post.view_count.toLocaleString()}{" "}
-              {post.view_count === 1 ? "view" : "views"}
-            </Typography>
+            {post.tags.map((tag) => (
+              <TagChip key={tag} label={tag} />
+            ))}
           </Stack>
         </Box>
 
@@ -131,25 +169,25 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
 
 interface Props extends Omit<RowProps, "post" | "busy"> {
   posts: Post[];
-  next: string | null;
   phase: "loading" | "ready" | "error";
   error: string | null;
-  loadingMore: boolean;
   /** Slug of the post whose own request is in flight, if any. */
   busySlug: string | null;
-  onLoadMore: () => void;
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
   onRetry: () => void;
 }
 
 /** Renders the four states the list can be in: loading, error, empty, populated. */
 function AdminPostList({
   posts,
-  next,
   phase,
   error,
-  loadingMore,
   busySlug,
-  onLoadMore,
+  page,
+  totalPages,
+  onPageChange,
   onRetry,
   onEdit,
   onToggleStatus,
@@ -188,27 +226,33 @@ function AdminPostList({
   }
 
   return (
-    <Stack sx={{ gap: 1.5, width: "100%" }}>
-      {posts.map((post) => (
-        <PostRow
-          key={post.slug}
-          post={post}
-          busy={busySlug === post.slug}
-          onEdit={onEdit}
-          onToggleStatus={onToggleStatus}
-          onDelete={onDelete}
-        />
-      ))}
+    <Stack sx={{ gap: 3, width: "100%" }}>
+      {/* Its own Stack so the rule falls only between rows, not above the
+          error alert or the pagination. The gap is per side, since a
+          divider is a flex child of its own -- tighter than the public lists'
+          2.5/3 because these rows are denser and there are up to 20 of them. */}
+      <Stack divider={<Divider />} sx={{ gap: { xs: 2, sm: 2.5 } }}>
+        {posts.map((post) => (
+          <PostRow
+            key={post.slug}
+            post={post}
+            busy={busySlug === post.slug}
+            onEdit={onEdit}
+            onToggleStatus={onToggleStatus}
+            onDelete={onDelete}
+          />
+        ))}
+      </Stack>
 
-      {/* Raised by a load-more, with the rows already fetched left in place. */}
       {error && <Alert severity="error">{error}</Alert>}
 
-      {next && (
-        <Box sx={{ display: "flex", justifyContent: "center", pt: 1 }}>
-          <Button onClick={onLoadMore} disabled={loadingMore}>
-            {loadingMore ? "Loading..." : "Load more"}
-          </Button>
-        </Box>
+      {totalPages > 1 && (
+        <Pagination
+          count={totalPages}
+          page={page}
+          onChange={(_event, value) => onPageChange(value)}
+          sx={{ alignSelf: "center" }}
+        />
       )}
     </Stack>
   );

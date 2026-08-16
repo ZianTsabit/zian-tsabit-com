@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -19,6 +20,8 @@ import {
   Typography,
 } from "@mui/material";
 import CodeIcon from "@mui/icons-material/Code";
+import FullscreenIcon from "@mui/icons-material/Fullscreen";
+import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import ImageIcon from "@mui/icons-material/Image";
 import FormatBoldIcon from "@mui/icons-material/FormatBold";
 import FormatItalicIcon from "@mui/icons-material/FormatItalic";
@@ -74,6 +77,7 @@ function MarkdownEditor({
   minRows = 12,
 }: Props) {
   const [tab, setTab] = useState<"write" | "preview">("write");
+  const [fullscreen, setFullscreen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Set by Escape, cleared by anything else. See the Tab handling below.
   const tabReleased = useRef(false);
@@ -86,6 +90,18 @@ function MarkdownEditor({
   const insertAt = useRef<{ start: number; end: number } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // The overlay covers the viewport, so the form underneath must not scroll
+  // behind it -- a wheel over the editor would otherwise move the page it is
+  // hiding. Restores whatever was there rather than assuming "visible".
+  useEffect(() => {
+    if (!fullscreen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [fullscreen]);
 
   const apply = (edit: Edit) => {
     const el = inputRef.current;
@@ -224,6 +240,18 @@ function MarkdownEditor({
     tabReleased.current = false;
   };
 
+  /**
+   * Escape leaves full screen, including from inside the textarea.
+   *
+   * There it still arms the Tab release as well -- `handleKeyDown` runs on the
+   * textarea first and this one catches the same event on the way up. Both
+   * readings of the key are "let me out of this box", so firing both is the
+   * behaviour either user was asking for, and neither meaning is lost.
+   */
+  const handleContainerKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (fullscreen && event.key === "Escape") setFullscreen(false);
+  };
+
   const tools = [
     {
       key: "bold",
@@ -286,7 +314,28 @@ function MarkdownEditor({
   ];
 
   return (
-    <Box>
+    // Full screen is a style change on this one element, deliberately not a
+    // Dialog: a Dialog renders through a portal, so entering or leaving it
+    // would tear down the textarea and take the caret, the scroll position and
+    // the browser's undo stack with it -- the very thing `apply` goes out of
+    // its way to preserve. Same node, different box.
+    <Box
+      onKeyDown={handleContainerKeyDown}
+      sx={
+        fullscreen
+          ? {
+              position: "fixed",
+              inset: 0,
+              // Above the site header, which is fixed at 1000.
+              zIndex: (theme) => theme.zIndex.modal,
+              bgcolor: "background.default",
+              p: { xs: 2, sm: 3 },
+              display: "flex",
+              flexDirection: "column",
+            }
+          : undefined
+      }
+    >
       <Stack
         direction="row"
         sx={{
@@ -304,14 +353,33 @@ function MarkdownEditor({
           Body
         </Typography>
 
-        <Tabs
-          value={tab}
-          onChange={(_event, next) => setTab(next)}
-          sx={{ minHeight: 0, "& .MuiTab-root": { minHeight: 0, py: 1 } }}
-        >
-          <Tab value="write" label="Write" />
-          <Tab value="preview" label="Preview" />
-        </Tabs>
+        <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
+          <Tabs
+            value={tab}
+            onChange={(_event, next) => setTab(next)}
+            sx={{ minHeight: 0, "& .MuiTab-root": { minHeight: 0, py: 1 } }}
+          >
+            <Tab value="write" label="Write" />
+            <Tab value="preview" label="Preview" />
+          </Tabs>
+
+          <Tooltip title={fullscreen ? "Exit full screen (Esc)" : "Full screen"}>
+            <IconButton
+              size="small"
+              aria-label={fullscreen ? "Exit full screen" : "Edit full screen"}
+              // Same reason as the toolbar buttons: taking focus would drop the
+              // selection, and expanding should leave the caret where it was.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setFullscreen((on) => !on)}
+            >
+              {fullscreen ? (
+                <FullscreenExitIcon fontSize="small" />
+              ) : (
+                <FullscreenIcon fontSize="small" />
+              )}
+            </IconButton>
+          </Tooltip>
+        </Stack>
       </Stack>
 
       {tab === "write" ? (
@@ -380,6 +448,28 @@ function MarkdownEditor({
             multiline
             minRows={minRows}
             fullWidth
+            sx={
+              fullscreen
+                ? {
+                    // Fill whatever the toolbar and helper text leave. minHeight
+                    // is what lets a flex child actually shrink -- without it
+                    // the textarea's own content height sets a floor and long
+                    // bodies push the helper text off the bottom of the screen.
+                    flex: 1,
+                    minHeight: 0,
+                    display: "flex",
+                    "& .MuiInputBase-root": { height: "100%", alignItems: "stretch" },
+                    // TextareaAutosize writes an inline height from the content,
+                    // so overriding it takes !important. Only the real textarea:
+                    // the hidden one beside it is how that measurement is taken,
+                    // and resizing it would corrupt the number it reports.
+                    "& textarea:not([aria-hidden])": {
+                      height: "100% !important",
+                      overflow: "auto !important",
+                    },
+                  }
+                : undefined
+            }
             slotProps={{
               // Monospace, because the whole point of the Write tab is seeing
               // the syntax line up.
@@ -394,9 +484,12 @@ function MarkdownEditor({
             borderColor: "divider",
             borderRadius: 1,
             p: 2,
-            // Roughly a full textarea, so switching tabs does not jump the
-            // page around under the Save button.
-            minHeight: minRows * 24,
+            ...(fullscreen
+              ? // Match the textarea: fill the window and scroll inside itself.
+                { flex: 1, minHeight: 0, overflowY: "auto" }
+              : // Roughly a full textarea, so switching tabs does not jump the
+                // page around under the Save button.
+                { minHeight: minRows * 24 }),
           }}
         >
           {value.trim() ? (

@@ -5,6 +5,44 @@ import remarkGfm from "remark-gfm";
 import { Box } from "@mui/material";
 import { MONO_FONT } from "../theme";
 
+/** `=400`, `=400x300` or `=50%` -- nothing else is read as a size. */
+const SIZE = /^=(\d{1,4})(%)?(?:x(\d{1,4}))?$/;
+
+/**
+ * Reads an image's size out of its Markdown *title*: `![alt](url "=400")`.
+ *
+ * Markdown has no size syntax, and the two usual answers are both shut here --
+ * `![alt](url =400x300)` is a Pandoc extension CommonMark does not parse (the
+ * ` =400x300` would be swallowed into the URL and the image would 404), and
+ * `<img width>` needs raw HTML, which this renderer deliberately does not
+ * enable. The title slot is real CommonMark, so a body using it stays valid
+ * everywhere else: another renderer just shows the text as a tooltip.
+ *
+ * A title that is not a size is left alone and passed through as a title, so
+ * the convention costs nothing to anyone not using it.
+ *
+ * Width and height together become an `aspect-ratio` rather than a literal
+ * height: the image then shrinks proportionally inside `maxWidth: 100%` on a
+ * narrow screen, where a fixed height would stretch it out of shape.
+ */
+function imageSize(title?: string): {
+  width?: string;
+  aspectRatio?: string;
+  title?: string;
+} {
+  const match = title?.match(SIZE);
+  if (!match) return { title };
+
+  const [, value, percent, height] = match;
+  const width = percent ? `${value}%` : `${value}px`;
+  // An aspect ratio needs both numbers in the same unit; a percentage width is
+  // resolved against the column, so pairing it with a pixel height means
+  // nothing. Height is ignored there rather than guessed at.
+  return height && !percent
+    ? { width, aspectRatio: `${value} / ${height}` }
+    : { width };
+}
+
 /**
  * Markdown headings are demoted one level.
  *
@@ -232,14 +270,27 @@ const components: Components = {
     </Box>
   ),
 
-  img: ({ src, alt }) => (
-    <Box
-      component="img"
-      src={typeof src === "string" ? src : undefined}
-      alt={alt ?? ""}
-      sx={{ maxWidth: "100%", height: "auto", borderRadius: 1, my: 2 }}
-    />
-  ),
+  img: ({ src, alt, title }) => {
+    const { width, aspectRatio, title: caption } = imageSize(title);
+    return (
+      <Box
+        component="img"
+        src={typeof src === "string" ? src : undefined}
+        alt={alt ?? ""}
+        title={caption}
+        sx={{
+          // Stays first: an author asking for a width wider than the column
+          // must still not widen the page (see the overflow rule in index.css).
+          maxWidth: "100%",
+          width,
+          aspectRatio,
+          height: "auto",
+          borderRadius: 1,
+          my: 2,
+        }}
+      />
+    );
+  },
 };
 
 /**

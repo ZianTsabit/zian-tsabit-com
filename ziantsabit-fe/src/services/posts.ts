@@ -20,6 +20,9 @@ export interface Post {
   cover_image_url: string;
   /** Alt text for the cover. Blank falls back to the title at render time. */
   cover_image_alt: string;
+  /** Free-form labels in the order they were typed. The API trims them, drops
+   *  blanks and drops case-insensitive repeats, so this is already tidy. */
+  tags: string[];
   status: "draft" | "published";
   /** Null only on drafts, which an unauthenticated caller never receives. */
   published_at: string | null;
@@ -114,20 +117,12 @@ async function request(
   }
 }
 
-/** Fetch one page of posts. `signal` lets a caller cancel an in-flight request. */
-export async function fetchPosts(
-  category: PostCategory,
-  signal?: AbortSignal,
-): Promise<PostPage> {
-  const url = `${API_BASE_URL}/posts/?category=${encodeURIComponent(category)}`;
-  return fetchPostPage(url, signal);
-}
-
 /** Fetch the most recently *edited* posts across every category, unfiltered --
  *  for Home's "Latest Updates" feed. `?ordering=updated` rather than the API's
  *  default: the section says updates, so a post revised today belongs at the
  *  top even if it was first published a year ago. Its card is dated by the same
- *  field (`<PostCard dated="updated">`), so the dates agree with the order.
+ *  field -- every entry is dated by its last edit -- so the dates agree with
+ *  the order this feed is in.
  *
  *  Reading a post does not disturb this -- the view counter is an F() UPDATE
  *  precisely so it leaves updated_at alone. */
@@ -157,6 +152,12 @@ export async function fetchPostsPage(
   signal?: AbortSignal,
 ): Promise<PostPage> {
   const params = new URLSearchParams();
+  // Matches the Home feed: the entries show their last-edited date, so that is
+  // what they are sorted by. Note the date *filter* below is
+  // still on published_at (or created_at for a draft) -- "edited recently" and
+  // "published in this range" are different questions, and the filter answers
+  // the one its labels ask.
+  params.set("ordering", "updated");
   if (category) params.set("category", category);
   if (page && page > 1) params.set("page", String(page));
   // An empty string would be sent as `?published_after=` and, unlike a bad

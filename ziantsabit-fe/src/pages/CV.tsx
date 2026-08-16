@@ -3,7 +3,27 @@ import TimelineItem from "../components/TimelineItem";
 import SectionHeading from "../components/SectionHeading";
 import { TagChipRow } from "../components/TagChip";
 
-const summary = `Data Engineer with experience architecting high-throughput data platforms across GCP, Azure, and on-premise environments. Proven track record of leading event tracking services handling ~2,500 RPS and ~500 GB of daily data, achieving significant cloud cost reductions of ~30% for BigQuery and ~35% for Dataflow and Pub/Sub. Expertise spans the full data lifecycle, including implementing Medallion Architecture, orchestrating 800+ DBT models with Apache Airflow, and deploying AI-driven RAG pipelines using Gemma 3. Proficient in building scalable infrastructure and implementing observability infrastructure.`;
+/**
+ * A link out of a CV bullet, styled to match `TimelineItem`'s company link.
+ *
+ * A plain `<a>`, not react-router's `Link`: this leaves the site, and routing an
+ * off-site URL through the router asks it to match a path it has no route for.
+ */
+function ExternalLink({ href, children }: { href: string; children: string }) {
+  return (
+    <Box
+      component="a"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      sx={{ color: "primary.main", textDecoration: "underline" }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+const summary =`Data Engineer with experience architecting high-throughput data platforms across GCP, Azure, and on-premise environments. Proven track record of leading event tracking services handling ~2,500 RPS and ~500 GB of daily data, achieving significant cloud cost reductions of ~30% for BigQuery and ~35% for Dataflow and Pub/Sub. Expertise spans the full data lifecycle, including implementing Medallion Architecture, orchestrating 800+ DBT models with Apache Airflow, and deploying AI-driven RAG pipelines using Gemma 3. Proficient in building scalable infrastructure and implementing observability infrastructure.`;
 
 const experience = [
   {
@@ -16,6 +36,7 @@ const experience = [
       "Cermati Fintech Group (CFG) is a fintech company founded in 2015, consisting of five entities. I am part of the Data Platform Team, supporting all entities under CFG (officially under the Indodana entity).",
     points: [
       "Owned a high-scale event tracking service adopted by the engineering team across the group company, managing ~2,500 RPS and ~500 GB of daily throughput. Redesigned data pipelines to slash Pub/Sub and Dataflow costs by ~35% (yielding ~$2,000 USD in monthly savings) and implemented a strict data retention strategy of the event's BigQuery table that successfully optimized the BigQuery costs by ~30% for several events.",
+      "Implemented Snowflake ID generation inside that same event tracking service to eliminate event ID collisions, improving data integrity at scale.",
       "Maintained and enhanced a large-scale DBT project consisting of 800+ models, streamlined through the orchestration of 186+ Apache Airflow DAGs to assist the Business Intelligence team building and architecting the group company data warehouse and data mart.",
       "Maintained and managed group company-wide Apache Airflow infrastructure and successfully solved a critical memory leak in the Airflow Triggerer component thus removing the whole on-call routine related to that case.",
     ],
@@ -29,7 +50,13 @@ const experience = [
     blurb:
       "Intiva is an IT consulting and services company specializing in software development, automation, machine learning, and big data analytics.",
     points: [
-      "Engineered the Bamtren MVP, a news analytics platform using Gemma 3 for RAG-driven content generation and sentiment analysis, processing hundreds of thousands of daily messages via a robust pipeline of Airflow, MongoDB, RabbitMQ, and Celery.",
+      <>
+        Engineered the <ExternalLink href="https://bamtren.com/">Bamtren</ExternalLink>{" "}
+        MVP, a news analytics platform using Gemma 3 for RAG-driven content
+        generation and sentiment analysis, processing hundreds of thousands of
+        daily messages via a robust pipeline of Airflow, MongoDB, RabbitMQ, and
+        Celery.
+      </>,
       "Built internal LLM infrastructure and FastAPI services utilized by 5+ engineers and data scientists, integrating Ollama and LangChain while implementing a full-stack monitoring suite (Grafana, Prometheus, Loki) to track on-premise performance.",
       "Standardized DevOps and security protocols by establishing monorepo CI/CD pipelines and implementing HashiCorp Vault secret management, successfully adopted across two production projects to enhance deployment security and efficiency.",
     ],
