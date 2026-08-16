@@ -134,7 +134,6 @@ function Posts() {
           <Centered>
             <Alert
               severity="error"
-              sx={{ fontFamily: "'Ubuntu', sans-serif" }}
               action={
                 <Button color="inherit" size="small" onClick={retry}>
                   Retry

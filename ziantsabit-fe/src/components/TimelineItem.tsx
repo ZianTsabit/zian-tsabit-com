@@ -65,7 +65,6 @@ function TimelineItem({
         <Typography
           component="div"
           sx={{
-            fontFamily: "'Ubuntu', sans-serif",
             fontWeight: 700,
             color: "text.primary",
             fontSize: { xs: "15px", sm: "17px", md: "18px" },
@@ -76,7 +75,6 @@ function TimelineItem({
         <Typography
           component="div"
           sx={{
-            fontFamily: "'Ubuntu', sans-serif",
             color: "text.secondary",
             fontSize: { xs: "12px", sm: "13px", md: "14px" },
             whiteSpace: "nowrap",
@@ -90,7 +88,6 @@ function TimelineItem({
         <Typography
           component="div"
           sx={{
-            fontFamily: "'Ubuntu', sans-serif",
             fontSize: { xs: "13px", sm: "15px", md: "16px" },
             mt: 0.25,
           }}
@@ -117,7 +114,6 @@ function TimelineItem({
         <Typography
           component="div"
           sx={{
-            fontFamily: "'Ubuntu', sans-serif",
             color: "text.secondary",
             fontSize: { xs: "11px", sm: "12px", md: "13px" },
             mt: 0.25,
@@ -131,7 +127,6 @@ function TimelineItem({
         <Typography
           component="div"
           sx={{
-            fontFamily: "'Ubuntu', sans-serif",
             color: "text.secondary",
             fontStyle: "italic",
             fontSize: { xs: "12px", sm: "13px", md: "14px" },
@@ -175,7 +170,6 @@ function TimelineItem({
               <Typography
                 component="div"
                 sx={{
-                  fontFamily: "'Ubuntu', sans-serif",
                   color: "text.primary",
                   fontSize: { xs: "12px", sm: "14px", md: "15px" },
                   lineHeight: 1.6,

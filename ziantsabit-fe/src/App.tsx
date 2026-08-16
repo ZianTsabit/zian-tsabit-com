@@ -14,6 +14,7 @@ import AdminConsole from "./components/admin/AdminConsole";
 import AdminNewPost from "./pages/AdminNewPost";
 import AdminEditPost from "./pages/AdminEditPost";
 import PostDetail from "./pages/PostDetail";
+import NotFound from "./pages/NotFound";
 import './App.css'
 
 function App() {
@@ -69,6 +70,14 @@ function App() {
               <Route path="new" element={<AdminNewPost />} />
               <Route path="edit/:slug" element={<AdminEditPost />} />
             </Route>
+            {/* Must stay last: `*` matches anything, and the routes above are
+                only reached because a more specific match wins. `/admin/typo`
+                lands here too -- a parent route whose children all miss is not
+                a match, so the whole branch fails rather than rendering the
+                console. Deliberately not a nested catch-all inside `/admin`:
+                that would put the 404 behind the session check, so a logged-out
+                visitor would get a login form for a page that does not exist. */}
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Box>
         <Footer />

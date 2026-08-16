@@ -39,8 +39,20 @@ const theme = createTheme({
     },
   },
   typography: {
-    fontFamily: "'Ubuntu', sans-serif",
+    fontFamily: "'IBM Plex Sans', sans-serif",
   },
 });
+
+/**
+ * The monospace face, for `code`, the Markdown editor's Write tab and the
+ * admin's slug column.
+ *
+ * It needs a home of its own because MUI's typography has one `fontFamily`
+ * slot and it is already spent on the body face. Everything else inherits the
+ * theme, so this is the only font any component should name: a component
+ * writing out the *body* font is redundant at best, and silently ignores a
+ * later change to the theme at worst -- the same trap as a colour literal.
+ */
+export const MONO_FONT = "'IBM Plex Mono', monospace";
 
 export default theme;

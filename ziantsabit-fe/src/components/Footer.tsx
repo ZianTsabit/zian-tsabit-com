@@ -46,7 +46,6 @@ function Footer() {
           <Typography
             component="div"
             sx={{
-              fontFamily: "'Ubuntu', sans-serif",
               color: "text.secondary",
               fontSize: { xs: "12px", sm: "13px" },
             }}
@@ -69,7 +68,6 @@ function Footer() {
                   gap: 0.5,
                   color: "primary.main",
                   textDecoration: "none",
-                  fontFamily: "'Ubuntu', sans-serif",
                   fontSize: { xs: "13px", sm: "14px" },
                   "&:hover": { textDecoration: "underline" },
                 }}

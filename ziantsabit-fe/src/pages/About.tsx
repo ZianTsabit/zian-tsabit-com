@@ -3,7 +3,6 @@ import FlipPhoto from "../components/FlipPhoto";
 import SectionHeading from "../components/SectionHeading";
 
 const bodyStyle = {
-  fontFamily: "'Ubuntu', sans-serif",
   fontSize: { xs: "14px", sm: "16px", md: "17px" },
   color: "text.primary",
   lineHeight: 1.8,
@@ -53,7 +52,6 @@ function About() {
             <Typography
               component="h1"
               sx={{
-                fontFamily: "'Ubuntu', sans-serif",
                 fontWeight: 700,
                 fontSize: { xs: "22px", sm: "28px" },
                 color: "text.primary",
@@ -65,7 +63,6 @@ function About() {
             <Typography
               component="div"
               sx={{
-                fontFamily: "'Ubuntu', sans-serif",
                 fontSize: { xs: "14px", sm: "16px" },
                 color: "text.primary",
               }}
@@ -75,7 +72,6 @@ function About() {
             <Typography
               component="div"
               sx={{
-                fontFamily: "'Ubuntu', sans-serif",
                 fontSize: { xs: "12px", sm: "14px" },
                 color: "text.secondary",
               }}
