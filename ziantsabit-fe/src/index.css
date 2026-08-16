@@ -38,35 +38,29 @@ body {
 
    The page background is the one exception. MUI emits its palette as CSS
    variables injected by JavaScript, so between first paint and React mounting
-   there is nothing colouring the page and a dark-mode visitor sees a white
-   flash. These rules live in the static stylesheet, which is render-blocking,
-   so the correct backdrop is painted immediately:
-     - the media queries handle a first-time visitor following their OS;
+   there is nothing colouring the page and a visitor would see a flash of the
+   wrong scheme. These rules live in the static stylesheet, which is
+   render-blocking, so the correct backdrop is painted immediately:
+     - the bare `html` rule is the default, and must match main.tsx's
+       `defaultMode` -- light. `prefers-color-scheme` is deliberately not
+       consulted: the site no longer follows the OS, so honouring it here would
+       paint dark for an OS-dark visitor and then swap to light on mount;
      - the .light/.dark classes handle a stored explicit choice, and are set by
        the inline script in index.html before this stylesheet is parsed.
    Keep these values in sync with palette.background.default in theme.ts. */
 
-@media (prefers-color-scheme: dark) {
-  html:not(.light) {
-    background-color: #000000;
-    color-scheme: dark;
-  }
-}
-
-@media (prefers-color-scheme: light) {
-  html:not(.dark) {
-    background-color: #ffffff;
-    color-scheme: light;
-  }
+html {
+  background-color: #f9f6ee;
+  color-scheme: light;
 }
 
 html.dark {
-  background-color: #000000;
+  background-color: #121212;
   color-scheme: dark;
 }
 
 html.light {
-  background-color: #ffffff;
+  background-color: #f9f6ee;
   color-scheme: light;
 }
 

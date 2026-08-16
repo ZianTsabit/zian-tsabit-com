@@ -37,9 +37,13 @@ function Home() {
             mb: "8px",
             ml: "4px",
             fontWeight: "bold",
-            // Same scale as SectionHeading, so section titles are one size
-            // across Home, CV and About.
-            fontSize: { xs: "16px", sm: "18px", md: "20px" },
+            // A step above the entry titles below it (16/18px in PostCard) at
+            // every breakpoint: this names the whole feed, and a section
+            // heading that reads the same size as the items inside it stops
+            // looking like their parent. Deliberately larger than
+            // `SectionHeading` on the CV and About pages, which labels blocks
+            // of prose rather than a list of headed items.
+            fontSize: { xs: "20px", sm: "22px", md: "24px" },
           }}
         >
           Latest Updates

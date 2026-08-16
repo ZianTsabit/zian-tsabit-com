@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Box, Stack, Typography } from "@mui/material";
 
 interface TimelineItemProps {
@@ -7,7 +8,9 @@ interface TimelineItemProps {
   location?: string;
   duration: string;
   blurb?: string;
-  points?: string[];
+  /** ReactNode, not string: a point may carry an inline link (see the Bamtren
+   *  entry on the CV). Plain strings still work unchanged. */
+  points?: ReactNode[];
   /** The last entry in a section draws no connecting line below its dot. */
   last?: boolean;
 }
@@ -151,10 +154,13 @@ function TimelineItem({
             gap: 1,
           }}
         >
-          {points.map((point) => (
+          {points.map((point, index) => (
             <Box
               component="li"
-              key={point}
+              // Index, since a point is no longer necessarily a string it can
+              // be keyed by. The list is a hardcoded constant -- it is never
+              // reordered or filtered at runtime, so this is stable.
+              key={index}
               sx={{
                 position: "relative",
                 pl: 2,

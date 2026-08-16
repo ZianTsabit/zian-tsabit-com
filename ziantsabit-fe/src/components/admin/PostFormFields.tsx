@@ -1,4 +1,4 @@
-import { MenuItem, Stack, TextField } from "@mui/material";
+import { Autocomplete, MenuItem, Stack, TextField } from "@mui/material";
 
 import CoverImageField from "./CoverImageField";
 import MarkdownEditor from "./MarkdownEditor";
@@ -40,6 +40,10 @@ interface Props {
   /** Differs by caller: a post already live breaks a link if its slug moves;
    *  one that hasn't been created yet has nothing to break. */
   slugHelperText: string;
+  /** Off when creating. A new post has no date to correct: "Publish" stamps
+   *  `published_at` server-side in `Post.save()`, and "Save as draft" leaves it
+   *  null on purpose. Editing is where backdating an entry is worth a field. */
+  showPublishedAt?: boolean;
 }
 
 /**
@@ -48,7 +52,13 @@ interface Props {
  * both render the same inputs, so this is what they share instead of two
  * copies drifting apart.
  */
-function PostFormFields({ draft, fieldErrors, onChange, slugHelperText }: Props) {
+function PostFormFields({
+  draft,
+  fieldErrors,
+  onChange,
+  slugHelperText,
+  showPublishedAt = true,
+}: Props) {
   return (
     <Stack sx={{ gap: 2 }}>
       <TextField
@@ -99,6 +109,7 @@ function PostFormFields({ draft, fieldErrors, onChange, slugHelperText }: Props)
         helperText={
           fieldErrors.body ??
           "Markdown. Tab indents — press Esc first if you want Tab to leave the field. " +
+            "Size an image with a title: ![alt](url \"=400\"), or \"=400x300\", or \"=50%\". " +
             "Stands in for the excerpt if it is blank."
         }
         // Both callers are full pages now, so the body gets room to write in
@@ -129,19 +140,51 @@ function PostFormFields({ draft, fieldErrors, onChange, slugHelperText }: Props)
         ))}
       </TextField>
 
-      <TextField
-        label="Published at"
-        type="datetime-local"
-        value={toLocalInput(draft.published_at)}
-        onChange={(event) => onChange("published_at", fromLocalInput(event.target.value))}
-        error={Boolean(fieldErrors.published_at)}
-        helperText={
-          fieldErrors.published_at ??
-          "Sets the position in the feed. Left empty, publishing stamps it now."
+      {/* freeSolo, because tags are typed rather than chosen: there is no
+          canonical list of them on the backend either, just an array of
+          strings per post. `autoSelect` commits whatever is in the box when it
+          loses focus, so a tag typed but not confirmed with Enter is not
+          silently dropped on the way to Save. */}
+      <Autocomplete
+        multiple
+        freeSolo
+        autoSelect
+        options={[] as string[]}
+        value={draft.tags}
+        onChange={(_event, next) =>
+          // The API trims and dedupes too; this only keeps an empty chip from
+          // being created by an Enter on a blank box.
+          onChange("tags", next.map((tag) => tag.trim()).filter(Boolean))
         }
-        slotProps={{ inputLabel: { shrink: true } }}
-        fullWidth
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Tags"
+            error={Boolean(fieldErrors.tags)}
+            helperText={
+              fieldErrors.tags ?? "Press Enter after each tag. 50 characters max."
+            }
+          />
+        )}
       />
+
+      {showPublishedAt && (
+        <TextField
+          label="Published at"
+          type="datetime-local"
+          value={toLocalInput(draft.published_at)}
+          onChange={(event) =>
+            onChange("published_at", fromLocalInput(event.target.value))
+          }
+          error={Boolean(fieldErrors.published_at)}
+          helperText={
+            fieldErrors.published_at ??
+            "Sets the position in the feed. Left empty, publishing stamps it now."
+          }
+          slotProps={{ inputLabel: { shrink: true } }}
+          fullWidth
+        />
+      )}
     </Stack>
   );
 }

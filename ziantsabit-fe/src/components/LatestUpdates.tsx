@@ -1,4 +1,4 @@
-import { Alert, Box, Button, CircularProgress, Stack } from "@mui/material";
+import { Alert, Box, Button, CircularProgress, Divider, Stack } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
 
 import { CATEGORY_BASE_PATHS } from "../services/posts";
@@ -53,18 +53,18 @@ function LatestUpdates({ limit }: { limit: number }) {
   return (
     // flex: 1 so the list fills the space Home's feed wrapper hands it, which is
     // what gives the mt: "auto" below something to push against.
-    <Stack sx={{ gap: 2, width: "100%", flex: 1 }}>
-      {posts.map((post) => (
-        <PostCard
-          key={post.slug}
-          post={post}
-          to={`${CATEGORY_BASE_PATHS[post.category]}/${encodeURIComponent(post.slug)}`}
-          // The date this feed is ordered by, so the cards agree with the
-          // order they are in. Only here: the section lists are still by
-          // publication date, and so are their cards.
-          dated="updated"
-        />
-      ))}
+    <Stack sx={{ gap: { xs: 4, sm: 5 }, width: "100%", flex: 1 }}>
+      {/* Its own Stack so the rule falls only between entries, and not above
+          the "See all posts" link below. */}
+      <Stack divider={<Divider />} sx={{ gap: { xs: 2.5, sm: 3 } }}>
+        {posts.map((post) => (
+          <PostCard
+            key={post.slug}
+            post={post}
+            to={`${CATEGORY_BASE_PATHS[post.category]}/${encodeURIComponent(post.slug)}`}
+          />
+        ))}
+      </Stack>
 
       {/* Only under a populated list: with nothing published, /posts would just
           show the same "Coming soon..." this section is already showing. */}

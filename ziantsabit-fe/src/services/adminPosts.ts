@@ -27,6 +27,9 @@ export const STATUSES: { value: PostStatus; label: string }[] = [
  *  is the API's default, so it is sent as an empty value and left off the URL. */
 export const SORTS: { value: string; label: string }[] = [
   { value: "", label: "Newest first" },
+  // The one the rows are dated by: each shows its last edit, so this is the
+  // order in which those dates run downwards.
+  { value: "updated", label: "Recently updated" },
   { value: "views", label: "Most read" },
 ];
 
@@ -44,6 +47,9 @@ export interface PostDraft {
    *  still a plain JSON write. Empty string means "no cover". */
   cover_image_url: string;
   cover_image_alt: string;
+  /** Sent as a list; the API is what trims, dedupes and drops blanks, so the
+   *  form does not have to be the place that guarantees it. */
+  tags: string[];
   published_at: string | null;
 }
 
@@ -57,6 +63,7 @@ export function draftFrom(post: Post): PostDraft {
     body: post.body,
     cover_image_url: post.cover_image_url,
     cover_image_alt: post.cover_image_alt,
+    tags: post.tags,
     published_at: post.published_at,
   };
 }
@@ -71,6 +78,7 @@ export function emptyDraft(category: PostCategory = "posts"): PostDraft {
     body: "",
     cover_image_url: "",
     cover_image_alt: "",
+    tags: [],
     published_at: null,
   };
 }
@@ -89,6 +97,9 @@ export interface AdminFilters {
   status?: string;
   /** "" or omitted means the API's default ordering. */
   ordering?: string;
+  /** 1-based. Omitted or 1 asks for the first page: DRF treats `?page=1` the
+   *  same as no param, so leaving it off keeps that URL clean. */
+  page?: number;
   /** Inclusive YYYY-MM-DD bounds; "" or omitted leaves that end open. A draft
    *  is dated by its created_at, which is the date the list shows for it. */
   after?: string;
@@ -102,6 +113,7 @@ function query(filters: AdminFilters): string {
   if (filters.category) params.set("category", filters.category);
   if (filters.status) params.set("status", filters.status);
   if (filters.ordering) params.set("ordering", filters.ordering);
+  if (filters.page && filters.page > 1) params.set("page", String(filters.page));
   if (filters.after) params.set("published_after", filters.after);
   if (filters.before) params.set("published_before", filters.before);
   const search = params.toString();

@@ -1,16 +1,20 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Alert,
   Box,
   Button,
   CircularProgress,
+  Divider,
+  Pagination,
   Stack,
   Typography,
 } from "@mui/material";
 
 import type { Post, PostCategory } from "../services/posts";
-import { usePosts } from "../services/usePosts";
+import { usePaginatedPosts } from "../services/usePaginatedPosts";
 import Centered from "./Centered";
+import { TagChipRow } from "./TagChip";
 import { toPlainText } from "./markdownText";
 import Typewriter from "./Typewriter";
 
@@ -24,30 +28,23 @@ function formatDate(stamp: string): string {
   });
 }
 
-/** Which timestamp a card shows.
- *
- *  "published" is the post's own date, and the default. "updated" is its last
- *  edit, for Home's feed: that list is ordered by `updated_at`, so a card there
- *  showing a publication date would contradict the order it appears in -- a
- *  post revised today but published in January would lead the feed under a
- *  January date and read as a bug. */
-export type CardDate = "published" | "updated";
+function formatViews(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "view" : "views"}`;
+}
 
-/** Exported for reuse by Home's "Latest Updates" feed, which mixes posts from
- *  every category and so needs to build each card's `to` itself. */
-export function PostCard({
-  post,
-  to,
-  dated = "published",
-}: {
-  post: Post;
-  to: string;
-  dated?: CardDate;
-}) {
-  // published_at is null only on drafts, which the public API never returns;
-  // created_at keeps this honest if an authenticated caller ever sees one.
-  const stamp =
-    dated === "updated" ? post.updated_at : post.published_at ?? post.created_at;
+/** Exported for reuse by Home's "Latest Updates" feed and the Posts page's
+ *  all-categories view, both of which mix categories and so need to build each
+ *  card's `to` themselves.
+ *
+ *  Deliberately not a card: no border, no surface, no hover state. The entries
+ *  are separated by the space between them, so a list of them reads as one
+ *  column of writing rather than a stack of boxes.
+ *
+ *  **The entry is not a link.** Only "Read full post" navigates. A whole block
+ *  wrapped in an anchor cannot hold anything else selectable -- dragging to
+ *  copy a line of the excerpt starts a drag of the link instead -- and it gives
+ *  a screen reader one enormous link whose name is every word in the entry. */
+export function PostCard({ post, to }: { post: Post; to: string }) {
   // Excerpt is the summary when there is one; otherwise the body stands in, so
   // a post written without an excerpt is not a bare title. The body is
   // Markdown, so it is flattened first -- a card is no place for `## Heading`.
@@ -55,34 +52,22 @@ export function PostCard({
 
   return (
     <Box
-      component={Link}
-      to={to}
+      component="article"
       sx={{
         display: "flex",
-        // A cover image leads the card on a wide screen and sits on top of it
-        // on a phone, where 120px of thumbnail would leave the title no room.
+        // The thumbnail leads the entry on a wide screen and sits on top of it
+        // on a phone, where 120px of it would leave the title no room.
         flexDirection: { xs: "column", sm: "row" },
-        gap: { xs: 1.5, sm: 2 },
-        border: "1px solid",
-        borderColor: "divider",
-        borderRadius: 1,
-        p: { xs: 2, sm: 2.5 },
-        textDecoration: "none",
-        color: "inherit",
-        transition: "border-color 0.15s ease, background-color 0.15s ease",
-        "&:hover": {
-          borderColor: "primary.main",
-          bgcolor: "action.hover",
-        },
+        gap: { xs: 1.5, sm: 2.5 },
       }}
     >
       {post.cover_image_url && (
         <Box
           component="img"
           src={post.cover_image_url}
-          // Empty alt, not the title: the card's own heading already says what
-          // this links to, so announcing it twice is noise. A cover with real
-          // alt text still contributes it.
+          // Empty alt marks it decorative, which is the honest default: the
+          // title beside it already carries the meaning. An author who filled
+          // the alt field in gets what they wrote.
           alt={post.cover_image_alt}
           loading="lazy"
           sx={{
@@ -96,62 +81,77 @@ export function PostCard({
         />
       )}
 
-      <Box sx={{ minWidth: 0, flex: 1 }}>
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        sx={{
-          justifyContent: "space-between",
-          alignItems: { xs: "flex-start", sm: "baseline" },
-          gap: { xs: 0.5, sm: 2 },
-        }}
-      >
+      {/* minWidth: 0 so a long unbroken word in the excerpt shrinks this column
+          instead of pushing the entry wider than the page. */}
+      <Box sx={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 1 }}>
         <Typography
           component="h2"
           sx={{
             fontWeight: "bold",
+            // Kept below the heading of whichever list this sits in -- Home's
+            // "Latest Updates" is 20/22/24px.
             fontSize: { xs: "16px", sm: "18px" },
             color: "text.primary",
           }}
         >
           {post.title}
         </Typography>
-        <Typography
-          component="time"
-          dateTime={stamp}
-          sx={{
-            fontSize: { xs: "12px", sm: "14px" },
-            color: "text.secondary",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {dated === "updated"
-            ? `Updated ${formatDate(stamp)}`
-            : formatDate(stamp)}
-        </Typography>
-      </Stack>
 
-      {text && (
         <Typography
+          sx={{ fontSize: { xs: "12px", sm: "13px" }, color: "text.secondary" }}
+        >
+          <Box component="time" dateTime={post.updated_at}>
+            Updated {formatDate(post.updated_at)}
+          </Box>
+          {" | "}
+          {/* The count as it was when this page was fetched. The detail page
+              adds the read it is itself recording; a list records nothing. */}
+          {formatViews(post.view_count)}
+        </Typography>
+
+        {text && (
+          <Typography
+            sx={{
+              fontSize: { xs: "14px", sm: "16px" },
+              color: "text.primary",
+              // Newlines typed in the admin should survive; a justified phone
+              // line of ~35 characters opens rivers of whitespace, hence sm up.
+              whiteSpace: "pre-line",
+              textAlign: { xs: "left", sm: "justify" },
+              // An entry is a teaser. Bodies are Markdown documents, so an
+              // unclamped fallback preview can run to the length of the whole
+              // post; three lines keeps every entry the same rough size.
+              display: "-webkit-box",
+              WebkitBoxOrient: "vertical",
+              WebkitLineClamp: 3,
+              overflow: "hidden",
+            }}
+          >
+            {text}
+          </Typography>
+        )}
+
+        {post.tags.length > 0 && <TagChipRow labels={post.tags} />}
+
+        <Box
+          component={Link}
+          to={to}
+          // "Read full post" on its own is the same name on every entry of the
+          // page, which is no help to anyone listing a page's links; the title
+          // makes each one say where it actually goes.
+          aria-label={`Read full post: ${post.title}`}
           sx={{
-            fontSize: { xs: "14px", sm: "16px" },
-            color: "text.primary",
-            mt: 1,
-            // Newlines typed in the admin should survive; a justified phone line
-            // of ~35 characters opens rivers of whitespace, hence sm and up only.
-            whiteSpace: "pre-line",
-            textAlign: { xs: "left", sm: "justify" },
-            // A card is a teaser. Bodies are Markdown documents now, so an
-            // unclamped fallback preview can run to the length of the whole
-            // post; three lines keeps every card the same rough size.
-            display: "-webkit-box",
-            WebkitBoxOrient: "vertical",
-            WebkitLineClamp: 3,
-            overflow: "hidden",
+            alignSelf: "flex-start",
+            mt: 0.5,
+            fontSize: { xs: "13px", sm: "14px" },
+            color: "primary.main",
+            textDecoration: "none",
+            "&:hover": { textDecoration: "underline" },
           }}
         >
-          {text}
-        </Typography>
-      )}
+          {/* A literal glyph, matching PostDetail's "← Back to ..." link. */}
+          Read full post →
+        </Box>
       </Box>
     </Box>
   );
@@ -173,8 +173,8 @@ function PostList({
   category: PostCategory;
   basePath: string;
 }) {
-  const { posts, next, phase, error, loadingMore, loadMore, retry } =
-    usePosts(category);
+  const [page, setPage] = useState(1);
+  const { posts, phase, error, totalPages, retry } = usePaginatedPosts(category, page);
 
   if (phase === "loading") {
     return (
@@ -212,32 +212,27 @@ function PostList({
   }
 
   return (
-    <Stack sx={{ gap: 2, width: "100%" }}>
-      {posts.map((post) => (
-        <PostCard
-          key={post.slug}
-          post={post}
-          to={`${basePath}/${encodeURIComponent(post.slug)}`}
+    <Stack sx={{ gap: { xs: 4, sm: 5 }, width: "100%" }}>
+      {/* Its own Stack so the rule falls only between entries, not above the
+          pagination. The gap is per side -- a divider is a flex child, so it
+          gets the gap above and below it. */}
+      <Stack divider={<Divider />} sx={{ gap: { xs: 2.5, sm: 3 } }}>
+        {posts.map((post) => (
+          <PostCard
+            key={post.slug}
+            post={post}
+            to={`${basePath}/${encodeURIComponent(post.slug)}`}
+          />
+        ))}
+      </Stack>
+
+      {totalPages > 1 && (
+        <Pagination
+          count={totalPages}
+          page={page}
+          onChange={(_event, value) => setPage(value)}
+          sx={{ alignSelf: "center" }}
         />
-      ))}
-
-      {/* An error raised by load-more, with the rows already fetched still shown. */}
-      {error && (
-        <Alert severity="error">
-          {error}
-        </Alert>
-      )}
-
-      {next && (
-        <Box sx={{ display: "flex", justifyContent: "center", pt: 1 }}>
-          <Button
-            onClick={loadMore}
-            disabled={loadingMore}
-            sx={{ color: "primary.main" }}
-          >
-            {loadingMore ? "Loading..." : "Load more"}
-          </Button>
-        </Box>
       )}
     </Stack>
   );

@@ -91,6 +91,7 @@ function AdminNewPost() {
             fieldErrors={fieldErrors}
             onChange={set}
             slugHelperText="Leave blank to generate it from the title."
+            showPublishedAt={false}
           />
 
           {/* The page has no bottom padding of its own, so without this the
