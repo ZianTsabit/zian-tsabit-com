@@ -92,6 +92,37 @@ function payload(draft: PostDraft) {
   return trimmed ? { ...rest, slug: trimmed } : rest;
 }
 
+/**
+ * The slug Django's `slugify` would derive from a title.
+ *
+ * Needed only by autosave on the new-post page. A post's slug is generated once,
+ * by `Post.save()`, and never regenerated -- so a post created from a
+ * half-finished title keeps the half-finished URL forever. Re-deriving it on
+ * each autosave lets the URL follow the title until the author either types
+ * their own slug or leaves the page.
+ *
+ * A mismatch with Django's version costs nothing worse than a `-2` suffix: the
+ * server dedupes against every post *but this one*, so re-sending a slug the
+ * post already holds is a no-op.
+ */
+export function deriveSlug(title: string): string {
+  return (
+    title
+      .normalize("NFKD")
+      // NFKD splits an accent off its letter; this drops the accent, which is
+      // what Django's ascii-encode step does to it.
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s_-]/g, "")
+      .trim()
+      .replace(/[\s-]+/g, "-")
+      // 220 is the model's max_length; trimming can leave a trailing hyphen, so
+      // the strip comes after it.
+      .slice(0, 220)
+      .replace(/^[-_]+|[-_]+$/g, "")
+  );
+}
+
 export interface AdminFilters {
   category?: string;
   status?: string;
