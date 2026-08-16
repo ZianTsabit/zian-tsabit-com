@@ -10,6 +10,7 @@ import {
 import TagChip from "../TagChip";
 import { CATEGORIES } from "../../services/adminPosts";
 import type { Post } from "../../services/posts";
+import { MONO_FONT } from "../../theme";
 
 /** Rows rather than a table: a five-column table is unusable on a phone. */
 const CATEGORY_LABELS = new Map(CATEGORIES.map((c) => [c.value, c.label]));
@@ -74,7 +75,7 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
           </Typography>
           <Typography
             sx={{
-              fontFamily: "monospace",
+              fontFamily: MONO_FONT,
               fontSize: "12px",
               color: "text.secondary",
               // A long slug should not be able to widen the page.

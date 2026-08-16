@@ -14,7 +14,7 @@ const StyledBox = styled(Box)`
    * The track is a one-cell grid holding two stacked copies of the text: a
    * hidden one in ::before that sizes the cell to the text's real rendered
    * width, and the visible one whose width animates from 0 to exactly 100% of
-   * that cell. Measuring in ch would be wrong -- the text is set in Ubuntu,
+   * that cell. Measuring in ch would be wrong -- the text is set in Plex Sans,
    * which is proportional, so character count says nothing about how wide the
    * text actually is, and the reveal box ended up wider than its own text.
    * Because the track keeps the full width for the whole animation, the text
@@ -77,7 +77,6 @@ function Typewriter({ text = "Typewriter Effect" }: TypewriterProps) {
         className="track"
         data-text={text}
         sx={{
-          fontFamily: "'Ubuntu', sans-serif",
           color: "text.primary",
           // Scales smoothly between the old 18px and 22px endpoints instead of
           // stepping at lg, so it tracks the viewport at every width between.

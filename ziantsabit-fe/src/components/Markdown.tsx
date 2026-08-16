@@ -3,8 +3,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { Box } from "@mui/material";
-
-const FONT = "'Ubuntu', sans-serif";
+import { MONO_FONT } from "../theme";
 
 /**
  * Markdown headings are demoted one level.
@@ -31,7 +30,6 @@ function heading(level: keyof typeof HEADINGS) {
       <Box
         component={as}
         sx={{
-          fontFamily: FONT,
           fontWeight: "bold",
           fontSize: size,
           color: "text.primary",
@@ -60,7 +58,6 @@ const components: Components = {
     <Box
       component="p"
       sx={{
-        fontFamily: FONT,
         fontSize: { xs: "15px", sm: "17px" },
         color: "text.primary",
         lineHeight: 1.7,
@@ -95,7 +92,6 @@ const components: Components = {
     <Box
       component="ul"
       sx={{
-        fontFamily: FONT,
         fontSize: { xs: "15px", sm: "17px" },
         color: "text.primary",
         lineHeight: 1.7,
@@ -111,7 +107,6 @@ const components: Components = {
     <Box
       component="ol"
       sx={{
-        fontFamily: FONT,
         fontSize: { xs: "15px", sm: "17px" },
         color: "text.primary",
         lineHeight: 1.7,
@@ -155,7 +150,7 @@ const components: Components = {
     <Box
       component="code"
       sx={{
-        fontFamily: "monospace",
+        fontFamily: MONO_FONT,
         fontSize: "0.9em",
         bgcolor: "background.paper",
         border: "1px solid",
@@ -201,7 +196,6 @@ const components: Components = {
       <Box
         component="table"
         sx={{
-          fontFamily: FONT,
           fontSize: { xs: "14px", sm: "15px" },
           color: "text.primary",
           borderCollapse: "collapse",

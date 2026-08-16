@@ -32,7 +32,6 @@ function Home() {
           component="div"
           color="text.primary"
           sx={{
-            fontFamily: "'Ubuntu', sans-serif",
             textAlign: "left",
             mt: "18px",
             mb: "8px",

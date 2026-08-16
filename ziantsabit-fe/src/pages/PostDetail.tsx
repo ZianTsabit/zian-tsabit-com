@@ -65,7 +65,6 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
           sx={{
             alignSelf: "flex-start",
             mb: 2,
-            fontFamily: "'Ubuntu', sans-serif",
             fontSize: { xs: "13px", sm: "14px" },
             color: "primary.main",
             textDecoration: "none",
@@ -85,7 +84,6 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
           <Centered>
             <Alert
               severity="error"
-              sx={{ fontFamily: "'Ubuntu', sans-serif" }}
               action={
                 <Button color="inherit" size="small" onClick={retry}>
                   Retry
@@ -116,7 +114,6 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
               <Typography
                 component="h1"
                 sx={{
-                  fontFamily: "'Ubuntu', sans-serif",
                   fontWeight: "bold",
                   fontSize: { xs: "22px", sm: "28px" },
                   color: "text.primary",
@@ -128,7 +125,6 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
                 component="time"
                 dateTime={post.published_at ?? post.created_at}
                 sx={{
-                  fontFamily: "'Ubuntu', sans-serif",
                   fontSize: { xs: "12px", sm: "14px" },
                   color: "text.secondary",
                   whiteSpace: "nowrap",
@@ -146,7 +142,6 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
               {views !== null && (
                 <Typography
                   sx={{
-                    fontFamily: "'Ubuntu', sans-serif",
                     fontSize: { xs: "12px", sm: "13px" },
                     color: "text.secondary",
                   }}

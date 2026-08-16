@@ -7,7 +7,6 @@ function SectionHeading({ children }: { children: ReactNode }) {
     <Typography
       component="div"
       sx={{
-        fontFamily: "'Ubuntu', sans-serif",
         fontWeight: "bold",
         fontSize: { xs: "16px", sm: "18px", md: "20px" },
         color: "text.primary",

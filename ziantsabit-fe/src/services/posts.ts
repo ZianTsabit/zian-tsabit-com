@@ -123,11 +123,16 @@ export async function fetchPosts(
   return fetchPostPage(url, signal);
 }
 
-/** Fetch the newest posts across every category, unfiltered -- for Home's
- *  "Latest Updates" feed. The API's default ordering is already newest-first,
- *  so the first page is exactly what a caller wants to take the top few from. */
+/** Fetch the most recently *edited* posts across every category, unfiltered --
+ *  for Home's "Latest Updates" feed. `?ordering=updated` rather than the API's
+ *  default: the section says updates, so a post revised today belongs at the
+ *  top even if it was first published a year ago. Its card is dated by the same
+ *  field (`<PostCard dated="updated">`), so the dates agree with the order.
+ *
+ *  Reading a post does not disturb this -- the view counter is an F() UPDATE
+ *  precisely so it leaves updated_at alone. */
 export async function fetchLatestPosts(signal?: AbortSignal): Promise<PostPage> {
-  return fetchPostPage(`${API_BASE_URL}/posts/`, signal);
+  return fetchPostPage(`${API_BASE_URL}/posts/?ordering=updated`, signal);
 }
 
 /** A YYYY-MM-DD day, or "" for "no bound". Both ends are inclusive, and a post

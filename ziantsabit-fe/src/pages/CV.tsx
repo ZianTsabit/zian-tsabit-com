@@ -116,7 +116,6 @@ const education = [
 const socialLinkStyle = {
   color: "primary.main",
   textDecoration: "underline",
-  fontFamily: "'Ubuntu', sans-serif",
   fontSize: { xs: "14px", sm: "16px" },
   display: "flex",
   alignItems: "center",
@@ -152,7 +151,6 @@ function CV() {
             gutterBottom
             component="div"
             sx={{
-              fontFamily: "'Ubuntu', sans-serif",
               mt: "24px",
               fontWeight: "bold",
               fontSize: { xs: "22px", sm: "28px" },
@@ -165,7 +163,6 @@ function CV() {
           <Typography
             component="div"
             sx={{
-              fontFamily: "'Ubuntu', sans-serif",
               color: "text.secondary",
               fontSize: { xs: "13px", sm: "15px" },
               mb: 1,
@@ -234,7 +231,6 @@ function CV() {
           <Typography
             component="div"
             sx={{
-              fontFamily: "'Ubuntu', sans-serif",
               textAlign: { xs: "left", sm: "justify" },
               color: "text.primary",
               fontSize: { xs: "12px", sm: "14px", md: "16px" },
@@ -278,7 +274,6 @@ function CV() {
                 <Typography
                   component="div"
                   sx={{
-                    fontFamily: "'Ubuntu', sans-serif",
                     fontWeight: 700,
                     color: "text.secondary",
                     fontSize: { xs: "12px", sm: "13px", md: "14px" },

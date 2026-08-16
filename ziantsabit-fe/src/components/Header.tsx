@@ -79,16 +79,19 @@ function Header() {
           to="/"
           sx={{
             ...linkStyle,
-            fontFamily: "'Ubuntu', sans-serif",
             // A plain 2vw preferred value only clears the 16px floor above an
             // 800px viewport, so the logo was pinned at its minimum on every
             // phone. The rem term makes it scale across the whole range.
             fontSize: "clamp(20px, 1.25rem + 0.7vw, 28px)",
             fontWeight: "bold",
+            // Needs the italic 700 face, which index.html requests: index.css
+            // sets font-synthesis: none, so a missing face would silently
+            // render upright rather than slanting.
+            fontStyle: "italic",
             whiteSpace: "nowrap",
           }}
         >
-          Zian Tsabit
+          ZianTsabit
         </Box>
 
         <Stack direction="row" sx={{ alignItems: "center", gap: { xs: 0.5, md: 2 } }}>
@@ -99,7 +102,6 @@ function Header() {
             sx={{
               display: { xs: "none", md: "flex" },
               flexDirection: "row",
-              fontFamily: "'Ubuntu', sans-serif",
               gap: { xs: 2, sm: 3, md: 4 },
               listStyle: "none",
               m: 0,
@@ -170,7 +172,6 @@ function Header() {
             flexDirection: "column",
             gap: 2,
             mt: 2,
-            fontFamily: "'Ubuntu', sans-serif",
             listStyle: "none",
             m: 0,
             p: 0,

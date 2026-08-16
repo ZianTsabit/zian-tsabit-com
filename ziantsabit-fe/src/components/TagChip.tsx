@@ -10,7 +10,6 @@ function TagChip({ label, emphasis = false }: { label: string; emphasis?: boolea
   return (
     <Box
       sx={{
-        fontFamily: "'Ubuntu', sans-serif",
         fontSize: { xs: "11px", sm: "13px", md: "14px" },
         color: emphasis ? "primary.main" : "text.primary",
         bgcolor: "background.paper",
