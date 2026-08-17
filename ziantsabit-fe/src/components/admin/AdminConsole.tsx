@@ -16,6 +16,7 @@ import {
 
 import type { AdminOutletContext } from "./AdminOutletContext";
 import AdminPostList from "./AdminPostList";
+import NewPostButton from "./NewPostButton";
 import { HEADER_HEIGHT } from "../../constants/layout";
 import { ApiError } from "../../services/api";
 import {
@@ -152,9 +153,7 @@ function AdminConsole() {
             for the whole admin, not for this list, so they moved to `AdminNav`
             -- otherwise the overview and statistics pages would each need
             their own copy, or signing out would only be reachable from here. */}
-        <Button variant="contained" sx={{ flexShrink: 0 }} onClick={handleNewPost}>
-          New post
-        </Button>
+        <NewPostButton onClick={handleNewPost} />
       </Stack>
 
       {/* Sticky for the same reason as the Posts page's filters -- see the

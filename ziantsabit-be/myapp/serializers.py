@@ -75,6 +75,16 @@ class MonthCountSerializer(serializers.Serializer):
     count = serializers.IntegerField(read_only=True)
 
 
+class DayCountSerializer(serializers.Serializer):
+    """One bar of the daily-reads chart."""
+
+    # "YYYY-MM-DD". A string for the same reason `month` is one: it names a
+    # whole day in the server's timezone, and a datetime would invite a client
+    # to shift it into its own and draw the reads on the wrong bar.
+    date = serializers.CharField(read_only=True)
+    count = serializers.IntegerField(read_only=True)
+
+
 class PostStatsSerializer(serializers.Serializer):
     """The body of `GET /api/posts/stats/`.
 
@@ -91,8 +101,16 @@ class PostStatsSerializer(serializers.Serializer):
     # on, so counting drafts in the denominator would drag the average down for
     # a reason that has nothing to do with how well anything is read.
     average_views = serializers.FloatField(read_only=True)
+    # Every view ever counted, over the days since the first post was
+    # published. A lifetime rate, so it covers the reads that happened before
+    # anything was recorded per-day -- which is what `views_by_day` cannot do.
+    views_per_day = serializers.FloatField(read_only=True)
     most_read = MostReadPostSerializer(many=True, read_only=True)
     published_by_month = MonthCountSerializer(many=True, read_only=True)
+    # Exactly `DAILY_VIEWS_DAYS` rows ending on the server's today, **including
+    # the days with no reads** -- the opposite of `published_by_month`, and
+    # deliberately: the window is anchored to a clock only the server has.
+    views_by_day = DayCountSerializer(many=True, read_only=True)
 
 
 class ViewCountSerializer(serializers.Serializer):

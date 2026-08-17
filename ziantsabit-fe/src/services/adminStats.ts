@@ -23,6 +23,13 @@ export interface MonthCount {
   count: number;
 }
 
+/** One bar of the daily-reads chart. `date` is "YYYY-MM-DD", in the server's
+ *  timezone -- see `views_by_day`. */
+export interface DayCount {
+  date: string;
+  count: number;
+}
+
 /** Mirrors `myapp.serializers.PostStatsSerializer`. */
 export interface PostStats {
   total: number;
@@ -33,11 +40,21 @@ export interface PostStats {
    *  counting drafts in the denominator would drag it down for a reason that
    *  has nothing to do with how well anything is read. */
   average_views: number;
+  /** Every view ever counted, over the days since the first post was
+   *  published. A lifetime rate, so unlike `views_by_day` it covers the reads
+   *  that happened before there was any per-day record of them. */
+  views_per_day: number;
   most_read: MostReadPost[];
   /** Ascending, and **only months that have a post** -- the gaps are the
    *  client's to fill, since which range to show is a question about the
    *  chart. See `fillMonths`. */
   published_by_month: MonthCount[];
+  /** Ascending, one row per day for a fixed window ending on the server's
+   *  today, **empty days included**. Deliberately not like
+   *  `published_by_month`: the window is anchored to a clock only the server
+   *  has, and a browser a day either side of it would otherwise draw a last
+   *  bar for a day the server never saw. Nothing to fill in here. */
+  views_by_day: DayCount[];
 }
 
 export function fetchPostStats(signal?: AbortSignal): Promise<PostStats> {
@@ -87,4 +104,22 @@ export function monthLabel(month: string): string {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+/** "2026-03-04" -> "4 Mar 2026", in the viewer's locale. UTC in and UTC out for
+ *  the same reason `monthLabel` is: the string names a day the *server* is
+ *  having, and shifting it into the reader's zone would relabel every bar. */
+export function dayLabel(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** The day of the month, unpadded: the tick under a daily bar. */
+export function dayOfMonth(date: string): string {
+  return String(Number(date.split("-")[2]));
 }

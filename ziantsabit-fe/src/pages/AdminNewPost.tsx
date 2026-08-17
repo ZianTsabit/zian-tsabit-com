@@ -1,7 +1,8 @@
 import { useRef, useState, type FormEvent } from "react";
 import { Link as RouterLink, useLocation, useNavigate, useOutletContext } from "react-router-dom";
-import { Alert, Box, Button, Link, Stack, Typography } from "@mui/material";
+import { Alert, Box, Link, Stack, Typography } from "@mui/material";
 
+import ActionButton from "../components/admin/ActionButton";
 import type { AdminOutletContext } from "../components/admin/AdminOutletContext";
 import AutosaveStatus from "../components/admin/AutosaveStatus";
 import PostFormFields from "../components/admin/PostFormFields";
@@ -239,20 +240,21 @@ function AdminNewPost() {
             <Box sx={{ mr: "auto", minWidth: 0 }}>
               <AutosaveStatus state={autosave} savedLabel="Draft saved" />
             </Box>
-            <Button
-              color="inherit"
+            {/* Publish sits last because it is the page's primary action, and
+                position is the only emphasis these carry now. */}
+            <ActionButton
+              tone="neutral"
               disabled={saving !== null}
               onClick={() => void save("draft")}
             >
               {saving === "draft" ? "Saving..." : "Save as draft"}
-            </Button>
-            <Button
-              variant="contained"
+            </ActionButton>
+            <ActionButton
               disabled={saving !== null}
               onClick={() => void save("published")}
             >
               {saving === "published" ? "Publishing..." : "Publish"}
-            </Button>
+            </ActionButton>
           </Stack>
         </Stack>
       </form>
