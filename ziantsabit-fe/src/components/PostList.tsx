@@ -32,9 +32,8 @@ function formatViews(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? "view" : "views"}`;
 }
 
-/** Exported for reuse by Home's "Latest Updates" feed and the Posts page's
- *  all-categories view, both of which mix categories and so need to build each
- *  card's `to` themselves.
+/** Exported for reuse by the Posts page's all-categories view, which mixes
+ *  categories and so needs to build each card's `to` itself.
  *
  *  Deliberately not a card: no border, no surface, no hover state. The entries
  *  are separated by the space between them, so a list of them reads as one
@@ -88,8 +87,8 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
           component="h2"
           sx={{
             fontWeight: "bold",
-            // Kept below the heading of whichever list this sits in -- Home's
-            // "Latest Updates" is 20/22/24px.
+            // Kept below the heading of whichever list this sits in -- a
+            // section heading is 20/22/24px.
             fontSize: { xs: "16px", sm: "18px" },
             color: "text.primary",
           }}

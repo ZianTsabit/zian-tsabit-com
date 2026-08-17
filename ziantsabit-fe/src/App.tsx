@@ -1,9 +1,13 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import Box from "@mui/material/Box";
 import Header from './components/Header';
 import Footer from './components/Footer';
 import { HEADER_HEIGHT } from "./constants/layout";
-import Home from "./pages/Home";
 import Posts from "./pages/Posts";
 import Projects from "./pages/Projects";
 import Books from "./pages/Books";
@@ -46,13 +50,18 @@ function App() {
           }}
         >
           <Routes>
-            <Route path="/" element={<Home />} />
+            {/* The feed is the home page: there is no separate landing page
+                any more, so "/" is the Posts browser itself. */}
+            <Route path="/" element={<Posts />} />
             <Route path="/about" element={<About />} />
             <Route path="/curriculum-vitae" element={<CV />} />
-            <Route path="/posts" element={<Posts />} />
+            {/* The list moved to "/", but every card built before it did links
+                to /posts/:slug, and CROSS_CATEGORY_BASE_PATH still does -- so
+                the detail route stays put and only the list URL redirects. */}
+            <Route path="/posts" element={<Navigate to="/" replace />} />
             <Route
               path="/posts/:slug"
-              element={<PostDetail backTo="/posts" backLabel="Posts" />}
+              element={<PostDetail backTo="/" backLabel="Posts" />}
             />
             <Route path="/projects" element={<Projects />} />
             <Route
