@@ -11,7 +11,8 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-from .models import Post
+from .models import Post, PostViewDay
+from .views import DAILY_VIEWS_DAYS
 
 # The CORS tests below pin this rather than relying on settings.py's default,
 # so they assert the behaviour and not the environment: a deployment sets
@@ -729,6 +730,64 @@ class ViewCountTests(APITestCase):
         self.assertIn("ordering", response.data)
 
 
+class ViewDayTests(APITestCase):
+    """PostViewDay: the same reads as the counter, filed under the day they happened."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.post = Post.objects.create(
+            title="Popular",
+            categories=[Post.Category.POSTS],
+            status=Post.Status.PUBLISHED,
+        )
+        cls.other = Post.objects.create(
+            title="Also Read",
+            categories=[Post.Category.POSTS],
+            status=Post.Status.PUBLISHED,
+        )
+        cls.draft = Post.objects.create(title="Hidden", categories=[Post.Category.POSTS])
+
+    def view_url(self, post):
+        return reverse("post-record-view", kwargs={"slug": post.slug})
+
+    def test_a_read_is_filed_under_today(self):
+        self.client.post(self.view_url(self.post))
+        row = PostViewDay.objects.get(post=self.post)
+        self.assertEqual(row.date, timezone.localdate())
+        self.assertEqual(row.count, 1)
+
+    def test_further_reads_the_same_day_raise_one_row(self):
+        # The insert happens once; every read after it is an UPDATE, which is
+        # what keeps a day from becoming a pile of rows.
+        for _ in range(4):
+            self.client.post(self.view_url(self.post))
+        self.assertEqual(PostViewDay.objects.filter(post=self.post).count(), 1)
+        self.assertEqual(PostViewDay.objects.get(post=self.post).count, 4)
+
+    def test_each_post_keeps_its_own_row(self):
+        self.client.post(self.view_url(self.post))
+        self.client.post(self.view_url(self.other))
+        self.assertEqual(PostViewDay.objects.count(), 2)
+
+    def test_the_daily_row_matches_the_counter(self):
+        for _ in range(3):
+            self.client.post(self.view_url(self.post))
+        self.post.refresh_from_db()
+        self.assertEqual(
+            self.post.view_count, PostViewDay.objects.get(post=self.post).count
+        )
+
+    def test_a_refused_read_records_nothing(self):
+        # Anonymous callers get a 404 on a draft, and a 404 is not a read.
+        self.client.post(self.view_url(self.draft))
+        self.assertFalse(PostViewDay.objects.filter(post=self.draft).exists())
+
+    def test_deleting_a_post_takes_its_history_with_it(self):
+        self.client.post(self.view_url(self.post))
+        self.post.delete()
+        self.assertEqual(PostViewDay.objects.count(), 0)
+
+
 class TagTests(APITestCase):
     """Post.tags: a list of labels, tidied in save() and writable through the API."""
 
@@ -1117,5 +1176,65 @@ class PostStatsTests(APITestCase):
         self.assertEqual(data["total"], 0)
         self.assertEqual(data["total_views"], 0)
         self.assertEqual(data["average_views"], 0)
+        self.assertEqual(data["views_per_day"], 0)
         self.assertEqual(data["most_read"], [])
         self.assertEqual(data["published_by_month"], [])
+        # Still a full window, all of it empty: the chart's x-axis is the last
+        # 30 days whether or not anything happened in them.
+        self.assertEqual(len(data["views_by_day"]), DAILY_VIEWS_DAYS)
+        self.assertEqual({row["count"] for row in data["views_by_day"]}, {0})
+
+    def test_views_by_day_is_a_dense_window_ending_today(self):
+        # Dense, unlike published_by_month: the window is anchored to the
+        # server's today, which the client has no way to know.
+        rows = self.get().data["views_by_day"]
+        today = timezone.localdate()
+        self.assertEqual(len(rows), DAILY_VIEWS_DAYS)
+        self.assertEqual(rows[-1]["date"], today.isoformat())
+        self.assertEqual(
+            rows[0]["date"],
+            (today - datetime.timedelta(days=DAILY_VIEWS_DAYS - 1)).isoformat(),
+        )
+
+    def test_views_by_day_sums_every_post_and_drops_older_days(self):
+        today = timezone.localdate()
+        PostViewDay.objects.create(post=self.top, date=today, count=5)
+        PostViewDay.objects.create(post=self.draft, date=today, count=2)
+        PostViewDay.objects.create(
+            post=self.top, date=today - datetime.timedelta(days=3), count=4
+        )
+        # Outside the window, so it must not appear anywhere in the series.
+        PostViewDay.objects.create(
+            post=self.top,
+            date=today - datetime.timedelta(days=DAILY_VIEWS_DAYS),
+            count=99,
+        )
+
+        counts = {row["date"]: row["count"] for row in self.get().data["views_by_day"]}
+        self.assertEqual(counts[today.isoformat()], 7)
+        self.assertEqual(
+            counts[(today - datetime.timedelta(days=3)).isoformat()], 4
+        )
+        self.assertEqual(sum(counts.values()), 11)
+
+    def test_views_per_day_is_every_view_over_the_days_since_first_publication(self):
+        Post.objects.all().delete()
+        post = Post.objects.create(
+            title="Only One",
+            categories=[Post.Category.POSTS],
+            status=Post.Status.PUBLISHED,
+            published_at=timezone.now() - datetime.timedelta(days=9),
+        )
+        Post.objects.filter(pk=post.pk).update(view_count=100)
+        # Ten days live, both ends counted -- not nine.
+        self.assertEqual(self.get().data["views_per_day"], 10.0)
+
+    def test_views_per_day_ignores_reads_a_draft_collected_before_publishing(self):
+        # The denominator is the site's public lifetime, so a site with nothing
+        # published has no rate at all rather than a divide by zero.
+        Post.objects.all().delete()
+        draft = Post.objects.create(title="Unfinished", categories=[Post.Category.POSTS])
+        Post.objects.filter(pk=draft.pk).update(view_count=12)
+        data = self.get().data
+        self.assertEqual(data["total_views"], 12)
+        self.assertEqual(data["views_per_day"], 0)

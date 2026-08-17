@@ -9,6 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 
+import ActionButton from "./ActionButton";
 import TagChip from "../TagChip";
 import { toPlainText } from "../markdownText";
 import { CATEGORIES } from "../../services/adminPosts";
@@ -147,25 +148,22 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
           direction="row"
           sx={{ gap: 1, flexShrink: 0, justifyContent: { xs: "flex-end", md: "initial" } }}
         >
-          <Button size="small" onClick={() => onEdit(post)} disabled={busy}>
+          <ActionButton onClick={() => onEdit(post)} disabled={busy}>
             Edit
-          </Button>
-          <Button
-            size="small"
-            color="inherit"
+          </ActionButton>
+          {/* One button, two actions, so the tone follows the label: taking a
+              post down is the page's ink, putting one up is the same primary
+              colour Publish carries in the editor. */}
+          <ActionButton
+            tone={published ? "neutral" : "primary"}
             onClick={() => onToggleStatus(post)}
             disabled={busy}
           >
             {published ? "Unpublish" : "Publish"}
-          </Button>
-          <Button
-            size="small"
-            color="error"
-            onClick={() => onDelete(post)}
-            disabled={busy}
-          >
+          </ActionButton>
+          <ActionButton tone="danger" onClick={() => onDelete(post)} disabled={busy}>
             Delete
-          </Button>
+          </ActionButton>
         </Stack>
       </Stack>
     </Box>
