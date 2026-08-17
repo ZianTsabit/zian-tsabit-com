@@ -26,8 +26,8 @@ body {
 
      `clip` rather than `hidden`, and the difference is load-bearing: `hidden`
      makes the element a scroll container, which silently disables
-     `position: sticky` anywhere inside the page (Home's "Latest Updates"
-     heading was the first casualty). `clip` cuts the overflow off without
+     `position: sticky` anywhere inside the page (the Posts page's filter bar
+     would be the casualty today). `clip` cuts the overflow off without
      creating one. */
   overflow-x: clip;
 }

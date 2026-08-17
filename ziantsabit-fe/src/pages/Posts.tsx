@@ -26,6 +26,17 @@ import { usePaginatedPosts } from "../services/usePaginatedPosts";
 
 const ALL = "";
 
+// The two date fields share a line on a phone: each takes half of whatever the
+// category select left over. `minWidth: 0` is what makes that possible -- a
+// flex item defaults to `min-width: auto`, and a native date input's intrinsic
+// width is wide enough that two of them side by side would overflow a narrow
+// screen rather than shrink. At `sm`+ they sit inline with the select at their
+// natural size instead.
+const dateFieldSx = {
+  flex: { xs: 1, sm: "0 0 auto" },
+  minWidth: { xs: 0, sm: 160 },
+};
+
 function Posts() {
   const [category, setCategory] = useState<string>(ALL);
   // YYYY-MM-DD, or "" for "no bound on this end". Both ends are inclusive.
@@ -90,9 +101,14 @@ function Posts() {
             html/body precisely so this works; `hidden` would make them scroll
             containers and silently cancel every `position: sticky` inside. */}
         <Stack
-          direction={{ xs: "column", sm: "row" }}
+          direction="row"
           sx={{
             gap: 2,
+            // Row + wrap at every size, rather than a column on `xs`: the
+            // category select is given a full-width basis below so it takes a
+            // line of its own, which pushes From/To onto a second line where
+            // they share the width. Stacking all three would cost a third of
+            // the screen above the first post.
             flexWrap: "wrap",
             alignSelf: "stretch",
             position: "sticky",
@@ -114,7 +130,7 @@ function Posts() {
             value={category}
             onChange={(event) => handleCategoryChange(event.target.value)}
             slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
-            sx={{ minWidth: 180 }}
+            sx={{ width: { xs: "100%", sm: "auto" }, minWidth: { sm: 180 } }}
           >
             <MenuItem value={ALL}>All categories</MenuItem>
             {VISIBLE_CATEGORIES.map((value) => (
@@ -136,7 +152,7 @@ function Posts() {
             value={after}
             onChange={(event) => handleAfterChange(event.target.value)}
             slotProps={{ inputLabel: { shrink: true } }}
-            sx={{ minWidth: 160 }}
+            sx={dateFieldSx}
           />
           <TextField
             type="date"
@@ -145,7 +161,7 @@ function Posts() {
             value={before}
             onChange={(event) => handleBeforeChange(event.target.value)}
             slotProps={{ inputLabel: { shrink: true } }}
-            sx={{ minWidth: 160 }}
+            sx={dateFieldSx}
           />
         </Stack>
 
