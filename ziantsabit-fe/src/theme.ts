@@ -64,6 +64,20 @@ const theme = createTheme({
   typography: {
     fontFamily: "'IBM Plex Sans', sans-serif",
   },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        // Material sets every button label in capitals. Nothing else on this
+        // site does -- not the nav, not the headings, not the wordmark -- so a
+        // button was the one thing on a page shouting, and it read as a control
+        // borrowed from another design rather than part of this one. Here
+        // rather than per-button so the buttons cannot disagree with each
+        // other: one sentence-case action beside an uppercase one looks like a
+        // mistake, which is exactly what a per-button fix produces.
+        root: { textTransform: "none" },
+      },
+    },
+  },
 });
 
 /**

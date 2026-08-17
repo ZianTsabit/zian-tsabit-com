@@ -147,3 +147,51 @@ class Post(models.Model):
             slug = f"{base[:220 - len(tail)]}{tail}"
             suffix += 1
         return slug
+
+
+class PostViewDay(models.Model):
+    """How many times one post was read on one day.
+
+    `Post.view_count` is a running total and cannot answer "how did last week
+    go" -- a counter has no history to look back at. This table is that history,
+    one row per post per day it was read, written alongside the counter by
+    `POST /api/posts/{slug}/view/`.
+
+    A row per *post* rather than one global row per day: it costs nothing to sum
+    at read time, it cascades cleanly when a post is deleted, and it leaves the
+    door open to a per-post trend later. The cascade does mean deleting a post
+    rewrites the daily chart's past -- which is the same thing that already
+    happens to the `total_views` figure above it, and two numbers on one page
+    disagreeing about whether a deleted post ever existed would be worse.
+
+    Days that nothing was read on have no row at all, so the table stays
+    proportional to activity rather than to the age of the site.
+    """
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="view_days")
+    # A date, not a datetime: the unit is the bar on the chart. It is the
+    # server's local day (settings.TIME_ZONE), so the boundary between two days
+    # is one the site's owner recognises rather than each reader's own midnight.
+    date = models.DateField()
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-date"]
+        constraints = [
+            # The pair is the identity of a row -- and the reason recording a
+            # view can be a single UPDATE, with the INSERT as the fallback for
+            # the first read of the day. Without it two concurrent first reads
+            # would each insert a row and the day would count them separately.
+            models.UniqueConstraint(
+                fields=["post", "date"], name="unique_post_view_day"
+            ),
+        ]
+        indexes = [
+            # The stats window asks for a range of days across every post, so
+            # date leads; the unique constraint's index is on (post, date) and
+            # cannot answer that.
+            models.Index(fields=["date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.post.slug} on {self.date}: {self.count}"

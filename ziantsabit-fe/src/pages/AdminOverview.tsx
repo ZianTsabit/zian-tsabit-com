@@ -9,6 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 
+import NewPostButton from "../components/admin/NewPostButton";
 import StatTile from "../components/admin/StatTile";
 import { useAdminPosts } from "../services/useAdminPosts";
 import { useAdminStats } from "../services/useAdminStats";
@@ -58,13 +59,7 @@ function AdminOverview() {
         >
           Overview
         </Typography>
-        <Button
-          variant="contained"
-          sx={{ flexShrink: 0 }}
-          onClick={() => navigate("/admin/new")}
-        >
-          New post
-        </Button>
+        <NewPostButton onClick={() => navigate("/admin/new")} />
       </Stack>
 
       {phase === "loading" && (

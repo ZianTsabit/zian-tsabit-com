@@ -1,5 +1,9 @@
-from django.db.models import Avg, Count, F, Q, Sum
+from datetime import timedelta
+
+from django.db import IntegrityError, transaction
+from django.db.models import Avg, Count, F, Min, Q, Sum
 from django.db.models.functions import Coalesce, TruncMonth
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -13,12 +17,17 @@ from rest_framework.permissions import (
 )
 from rest_framework.response import Response
 
-from .models import Post
+from .models import Post, PostViewDay
 from .serializers import PostSerializer, PostStatsSerializer, ViewCountSerializer
 
 # How many rows the statistics page's "most read" table asks for. Enough to
 # show a ranking rather than a podium, short enough to stay one glance.
 MOST_READ_LIMIT = 10
+
+# How many days of the reading history `views_by_day` covers, today included.
+# Bounded here rather than left to the client because days accumulate fast --
+# a year of them is 365 rows for a chart that shows a month.
+DAILY_VIEWS_DAYS = 30
 
 # What ?ordering= accepts, and the order_by() each value means. "views" keeps
 # the default ordering as its tie-breaker so a page of all-zero counts still
@@ -214,11 +223,58 @@ class PostViewSet(viewsets.ModelViewSet):
             ),
         )
 
+        # One reading of the clock for everything below, so the daily window and
+        # the lifetime rate cannot land on different days if this runs across
+        # midnight.
+        today = timezone.localdate()
+
+        # The lifetime rate, which is what makes the daily chart readable on the
+        # day it ships: the chart only knows about days it has recorded, while
+        # every view ever counted is in `total_views`.
+        #
+        # Denominator is days since the *first publication*, not since the first
+        # post was written -- a site with nothing published has no public page
+        # to be read on, so counting the drafting weeks would divide by time
+        # nobody could have been reading. Numerator stays every view, drafts
+        # included: they are reads that happened.
+        first_published = Post.objects.filter(
+            status=Post.Status.PUBLISHED, published_at__isnull=False
+        ).aggregate(first=Min("published_at"))["first"]
+        if first_published is None:
+            views_per_day = 0.0
+        else:
+            # Inclusive of both ends, so the first day is a day. max() guards a
+            # publish date set in the future, which would otherwise divide by
+            # zero or by a negative.
+            days_live = max(
+                1, (today - timezone.localtime(first_published).date()).days + 1
+            )
+            views_per_day = round(totals["total_views"] / days_live, 1)
+
         most_read = (
             Post.objects.filter(view_count__gt=0)
             .order_by("-view_count", "-published_at", "-created_at")
             .values("slug", "title", "status", "view_count")[:MOST_READ_LIMIT]
         )
+
+        # Dense, and unlike `published_by_month` the gaps are filled *here*.
+        # The window is anchored to the server's today, which is the one thing
+        # a client cannot work out for itself: a browser a day ahead would
+        # otherwise draw a last bar for a day this server has never seen, and
+        # one behind would drop today's reads off the end.
+        window_start = today - timedelta(days=DAILY_VIEWS_DAYS - 1)
+        recorded = dict(
+            PostViewDay.objects.filter(date__gte=window_start, date__lte=today)
+            .values_list("date")
+            .annotate(count=Sum("count"))
+        )
+        views_by_day = [
+            {
+                "date": (day := window_start + timedelta(days=offset)).isoformat(),
+                "count": recorded.get(day, 0),
+            }
+            for offset in range(DAILY_VIEWS_DAYS)
+        ]
 
         # Only months that actually have a post; filling the gaps is the
         # client's job, since which range to show is a question about the chart
@@ -239,6 +295,8 @@ class PostViewSet(viewsets.ModelViewSet):
                     **totals,
                     "drafts": totals["total"] - totals["published"],
                     "average_views": round(totals["average_views"], 1),
+                    "views_per_day": views_per_day,
+                    "views_by_day": views_by_day,
                     "most_read": list(most_read),
                     "published_by_month": [
                         {"month": row["month"].strftime("%Y-%m"), "count": row["count"]}
@@ -272,5 +330,32 @@ class PostViewSet(viewsets.ModelViewSet):
         # otherwise each write back the number they loaded, and save() would
         # drag updated_at along with it -- a read is not an edit.
         Post.objects.filter(pk=post.pk).update(view_count=F("view_count") + 1)
+        self._record_view_day(post)
         post.refresh_from_db(fields=["view_count"])
         return Response(ViewCountSerializer(post).data)
+
+    @staticmethod
+    def _record_view_day(post):
+        """Add one to this post's tally for today, in `PostViewDay`.
+
+        The running counter above cannot be looked back through, so the same
+        read is also filed under its day. Update first and insert only when
+        nothing was updated: every read after the first of the day -- which is
+        almost all of them -- is then one statement, and the same F() reasoning
+        applies as for the counter.
+
+        The INSERT is wrapped and its IntegrityError swallowed because two first
+        reads of the day can race into it; the unique constraint is what decides
+        between them, and the loser simply retries the UPDATE that now has a row
+        to hit. `atomic` is what keeps that failure from poisoning an outer
+        transaction (a TestCase runs inside one).
+        """
+        today = timezone.localdate()
+        rows = PostViewDay.objects.filter(post=post, date=today)
+        if rows.update(count=F("count") + 1):
+            return
+        try:
+            with transaction.atomic():
+                PostViewDay.objects.create(post=post, date=today, count=1)
+        except IntegrityError:
+            rows.update(count=F("count") + 1)

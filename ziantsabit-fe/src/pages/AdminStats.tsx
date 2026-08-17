@@ -14,9 +14,10 @@ import {
 } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
 
+import DailyBars from "../components/admin/DailyBars";
 import MonthlyBars from "../components/admin/MonthlyBars";
 import StatTile from "../components/admin/StatTile";
-import { fillMonths, monthLabel } from "../services/adminStats";
+import { dayLabel, fillMonths, monthLabel } from "../services/adminStats";
 import { useAdminStats } from "../services/useAdminStats";
 
 /** 1204 -> "1,204", in the viewer's locale. */
@@ -46,6 +47,10 @@ function AdminStats() {
   const { stats, phase, error, reload } = useAdminStats();
 
   const months = stats ? fillMonths(stats.published_by_month) : [];
+  // The window is dense and always full, so it has bars either way; what
+  // decides whether it is worth drawing is whether anything was read in it.
+  const days = stats?.views_by_day ?? [];
+  const readsInWindow = days.reduce((sum, row) => sum + row.count, 0);
 
   return (
     <Box sx={{ pb: { xs: 3, sm: 4 } }}>
@@ -92,7 +97,75 @@ function AdminStats() {
               value={stats.average_views.toLocaleString()}
               hint="per published post"
             />
+            <StatTile
+              label="Views per day"
+              value={stats.views_per_day.toLocaleString()}
+              hint="since your first post"
+            />
           </Stack>
+
+          <Box>
+            <SectionHeading>Views per day</SectionHeading>
+            {/* Worth saying once, because the two numbers genuinely disagree:
+                the Views tile counts every read ever, while these bars start
+                on the day per-day recording did. Reads from before that are in
+                the total and nowhere in this chart. */}
+            <Typography
+              sx={{ fontSize: "13px", color: "text.secondary", mt: -1, mb: 1.5 }}
+            >
+              The last {days.length} days. Daily figures begin when this chart
+              did, so they can add up to less than the total above.
+            </Typography>
+
+            {readsInWindow === 0 ? (
+              <Typography sx={{ fontSize: "14px", color: "text.secondary" }}>
+                No reads recorded in the last {days.length} days.
+              </Typography>
+            ) : (
+              <>
+                <DailyBars days={days} />
+                {/* The chart's table twin, as above: every value the bars
+                    encode is readable without hovering anything. Only the days
+                    that had a read -- thirty rows of mostly zero is a worse
+                    read of the same data than the bars are. */}
+                <Box component="details" sx={{ mt: 1.5 }}>
+                  <Box
+                    component="summary"
+                    sx={{
+                      fontSize: "13px",
+                      color: "text.secondary",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Show as a table
+                  </Box>
+                  <Table size="small" sx={{ mt: 1, maxWidth: 320 }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Day</TableCell>
+                        <TableCell align="right">Views</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {days
+                        .filter((row) => row.count > 0)
+                        .map((row) => (
+                          <TableRow key={row.date}>
+                            <TableCell>{dayLabel(row.date)}</TableCell>
+                            <TableCell
+                              align="right"
+                              sx={{ fontVariantNumeric: "tabular-nums" }}
+                            >
+                              {count(row.count)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </Box>
+              </>
+            )}
+          </Box>
 
           <Box>
             <SectionHeading>Published per month</SectionHeading>
