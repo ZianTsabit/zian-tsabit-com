@@ -1,22 +1,9 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Divider,
-  Pagination,
-  Stack,
-  Typography,
-} from "@mui/material";
+import { Box, Typography } from "@mui/material";
 
-import type { Post, PostCategory } from "../services/posts";
-import { usePaginatedPosts } from "../services/usePaginatedPosts";
-import Centered from "./Centered";
+import type { Post } from "../services/posts";
 import { TagChipRow } from "./TagChip";
 import { toPlainText } from "./markdownText";
-import Typewriter from "./Typewriter";
 
 function formatDate(stamp: string): string {
   const date = new Date(stamp);
@@ -32,8 +19,7 @@ function formatViews(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? "view" : "views"}`;
 }
 
-/** Exported for reuse by the Posts page's all-categories view, which mixes
- *  categories and so needs to build each card's `to` itself.
+/** One entry in the blog feed.
  *
  *  Deliberately not a card: no border, no surface, no hover state. The entries
  *  are separated by the space between them, so a list of them reads as one
@@ -43,7 +29,7 @@ function formatViews(count: number): string {
  *  wrapped in an anchor cannot hold anything else selectable -- dragging to
  *  copy a line of the excerpt starts a drag of the link instead -- and it gives
  *  a screen reader one enormous link whose name is every word in the entry. */
-export function PostCard({ post, to }: { post: Post; to: string }) {
+function PostCard({ post, to }: { post: Post; to: string }) {
   // Excerpt is the summary when there is one; otherwise the body stands in, so
   // a post written without an excerpt is not a bare title. The body is
   // Markdown, so it is flattened first -- a card is no place for `## Heading`.
@@ -87,8 +73,8 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
           component="h2"
           sx={{
             fontWeight: "bold",
-            // Kept below the heading of whichever list this sits in -- a
-            // section heading is 20/22/24px.
+            // Kept below the heading of the page this sits in, which is
+            // 20/22/24px.
             fontSize: { xs: "16px", sm: "18px" },
             color: "text.primary",
           }}
@@ -156,85 +142,4 @@ export function PostCard({ post, to }: { post: Post; to: string }) {
   );
 }
 
-/**
- * Fetches and renders one category's posts.
- *
- * Needs an unbroken `flex: 1` chain from <main> to grow into, which is why the
- * pages using it make their Container a flex column. `basePath` is the
- * section's own route (e.g. "/books") -- a category's route isn't always
- * derivable from the category value itself, so this is where each card links,
- * appending the post's slug.
- */
-function PostList({
-  category,
-  basePath,
-}: {
-  category: PostCategory;
-  basePath: string;
-}) {
-  const [page, setPage] = useState(1);
-  const { posts, phase, error, totalPages, retry } = usePaginatedPosts(category, page);
-
-  if (phase === "loading") {
-    return (
-      <Centered>
-        <CircularProgress aria-label="Loading posts" />
-      </Centered>
-    );
-  }
-
-  if (phase === "error") {
-    return (
-      <Centered>
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={retry}>
-              Retry
-            </Button>
-          }
-        >
-          {error}
-        </Alert>
-      </Centered>
-    );
-  }
-
-  if (posts.length === 0) {
-    // The placeholder this page shipped with, kept for the case it was written
-    // for: there is genuinely nothing here yet.
-    return (
-      <Centered>
-        <Typewriter text="Coming soon..." />
-      </Centered>
-    );
-  }
-
-  return (
-    <Stack sx={{ gap: { xs: 4, sm: 5 }, width: "100%" }}>
-      {/* Its own Stack so the rule falls only between entries, not above the
-          pagination. The gap is per side -- a divider is a flex child, so it
-          gets the gap above and below it. */}
-      <Stack divider={<Divider />} sx={{ gap: { xs: 2.5, sm: 3 } }}>
-        {posts.map((post) => (
-          <PostCard
-            key={post.slug}
-            post={post}
-            to={`${basePath}/${encodeURIComponent(post.slug)}`}
-          />
-        ))}
-      </Stack>
-
-      {totalPages > 1 && (
-        <Pagination
-          count={totalPages}
-          page={page}
-          onChange={(_event, value) => setPage(value)}
-          sx={{ alignSelf: "center" }}
-        />
-      )}
-    </Stack>
-  );
-}
-
-export default PostList;
+export default PostCard;

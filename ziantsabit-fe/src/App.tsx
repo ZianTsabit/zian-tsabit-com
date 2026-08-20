@@ -8,8 +8,7 @@ import Box from "@mui/material/Box";
 import Header from './components/Header';
 import Footer from './components/Footer';
 import { HEADER_HEIGHT } from "./constants/layout";
-import Posts from "./pages/Posts";
-import Projects from "./pages/Projects";
+import Blog from "./pages/Blog";
 import Books from "./pages/Books";
 import BookDetail from "./pages/BookDetail";
 import About from "./pages/About";
@@ -54,29 +53,29 @@ function App() {
           }}
         >
           <Routes>
-            {/* The feed is the home page: there is no separate landing page
-                any more, so "/" is the Posts browser itself. */}
-            <Route path="/" element={<Posts />} />
+            {/* The feed is the home page: there is no separate landing page,
+                so "/" is the blog itself. */}
+            <Route path="/" element={<Blog />} />
             <Route path="/about" element={<About />} />
             <Route path="/curriculum-vitae" element={<CV />} />
-            {/* The list moved to "/", but every card built before it did links
-                to /posts/:slug, and CROSS_CATEGORY_BASE_PATH still does -- so
-                the detail route stays put and only the list URL redirects. */}
+            {/* The list lives at "/", but every card ever built links to
+                /posts/:slug -- so the detail route stays exactly where it is
+                and only the list URL redirects. The page is called Blog now;
+                the URLs deliberately did not move with the name, since a
+                rename is not worth breaking every link over.
+
+                /projects and /projects/:slug were removed with the category
+                enum: that page listed one hardcoded section, and browsing by
+                tag on "/" is what replaced it. */}
             <Route path="/posts" element={<Navigate to="/" replace />} />
             <Route
               path="/posts/:slug"
-              element={<PostDetail backTo="/" backLabel="Posts" />}
+              element={<PostDetail backTo="/" backLabel="Blog" />}
             />
-            <Route path="/projects" element={<Projects />} />
-            <Route
-              path="/projects/:slug"
-              element={<PostDetail backTo="/projects" backLabel="Projects" />}
-            />
-            {/* The catalogue, not the feed filtered to `category=books`.
-                `/books/:slug` is a `Book`, so it renders `BookDetail` rather
-                than `PostDetail`; a post filed under the books category is
-                writing *about* reading and still reaches its page through
-                CROSS_CATEGORY_BASE_PATH, at /posts/:slug. */}
+            {/* The catalogue. `/books/:slug` is a `Book`, so it renders
+                `BookDetail` rather than `PostDetail`; a post *about* a book is
+                writing, lives in the feed at "/", and reaches its own page at
+                /posts/:slug like every other post. */}
             <Route path="/books" element={<Books />} />
             <Route path="/books/:slug" element={<BookDetail />} />
             {/* Not in Header's navItems: the owner's page, not a visitor's.

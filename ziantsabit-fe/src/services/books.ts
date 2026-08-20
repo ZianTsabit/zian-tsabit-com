@@ -1,11 +1,11 @@
 /**
  * Client for the Django book-catalogue API.
  *
- * Deliberately separate from `posts.ts` rather than another category on it. A
- * book is a thing in the world -- it has an author who is not the site's owner,
- * a year, an ISBN and a review written *about* it -- and `/books` is a shelf
- * rather than a feed. The `books` post category still exists and still means
- * something different: writing about reading, which lives with the other posts.
+ * Deliberately its own resource rather than a slice of `posts.ts`. A book is a
+ * thing in the world -- it has an author who is not the site's owner, a year,
+ * an ISBN and a review written *about* it -- and `/books` is a shelf rather
+ * than a feed. Writing about reading is still a post, tagged however its author
+ * likes, and lives in the blog with everything else.
  *
  * Credential-free like the post client, and for the same reason: a visitor
  * needs no cookie, and sending the owner's session on a public page would

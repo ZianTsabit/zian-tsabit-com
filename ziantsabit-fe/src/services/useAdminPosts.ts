@@ -19,8 +19,8 @@ function message(error: unknown): string {
 }
 
 /**
- * The admin page's post list: one numbered page, every category by default,
- * drafts included.
+ * The admin page's post list: one numbered page, every tag by default, drafts
+ * included.
  *
  * Filters are passed as separate strings rather than an object so that a caller
  * can build them inline -- a fresh object literal every render would re-trigger
@@ -36,7 +36,7 @@ function message(error: unknown): string {
  * page with no rows and steps back.
  */
 export function useAdminPosts(
-  category: string,
+  tag: string,
   status: string,
   ordering: string,
   page: number,
@@ -51,7 +51,7 @@ export function useAdminPosts(
     setState(INITIAL);
 
     fetchAdminPosts(
-      { category, status, ordering, page, after, before },
+      { tag, status, ordering, page, after, before },
       controller.signal,
     )
       .then((result) =>
@@ -68,7 +68,7 @@ export function useAdminPosts(
       });
 
     return () => controller.abort();
-  }, [category, status, ordering, page, after, before, attempt]);
+  }, [tag, status, ordering, page, after, before, attempt]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
   const totalPages = Math.max(1, Math.ceil(state.count / PAGE_SIZE));

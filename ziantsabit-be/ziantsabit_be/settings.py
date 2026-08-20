@@ -120,10 +120,11 @@ SPECTACULAR_SETTINGS = {
     'TITLE': 'ziantsabit.com API',
     'DESCRIPTION': (
         'Content API for ziantsabit.com. Two resources, both addressed by '
-        'slug: posts, filed under one or more categories — posts, books, '
-        'projects or garage_sale — and books, the owner\'s reading catalogue. '
-        'The `books` post category is writing *about* reading; /api/books/ is '
-        'the shelf itself.'
+        'slug and both labelled with free-form lists: posts, browsed by '
+        '`?tag=`, and books, the owner\'s reading catalogue, browsed by '
+        '`?genre=`. Both filters are case-insensitive containment tests, and '
+        'both have a vocabulary endpoint — /api/posts/tags/ and '
+        '/api/books/genres/ — since free text has no enum to read options off.'
     ),
     'VERSION': '1.0.0',
     # The schema endpoint is served separately; listing it inside its own output

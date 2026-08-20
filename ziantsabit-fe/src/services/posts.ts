@@ -1,22 +1,17 @@
 /**
  * Client for the Django posts API.
  *
- * There is one endpoint for all four sections -- /api/posts/ filtered by
- * category -- which is why this replaced the per-section service stubs.
+ * One endpoint, /api/posts/, browsed by tag. The fixed four-category enum this
+ * used to mirror was dropped in the backend's `0009`: tags did the same job
+ * without needing a migration to grow, and every consumer had to understand
+ * both mechanisms.
  */
-
-export type PostCategory = "posts" | "books" | "projects" | "garage_sale";
 
 /** One post, mirroring `myapp.serializers.PostSerializer`. */
 export interface Post {
   id: number;
   title: string;
   slug: string;
-  /** Every section this post appears on -- at least one, and the API rejects
-   *  an empty list. A set, not a ranking: the server deduplicates it and
-   *  returns it in `CATEGORY_ORDER`, so nothing here should read `[0]` as a
-   *  primary category. */
-  categories: PostCategory[];
   excerpt: string;
   body: string;
   /** Lead image, shown on the card and above the body. Empty string, never
@@ -25,7 +20,8 @@ export interface Post {
   /** Alt text for the cover. Blank falls back to the title at render time. */
   cover_image_alt: string;
   /** Free-form labels in the order they were typed. The API trims them, drops
-   *  blanks and drops case-insensitive repeats, so this is already tidy. */
+   *  blanks and drops case-insensitive repeats, so this is already tidy.
+   *  Possibly empty: an untagged post is a perfectly good post. */
   tags: string[];
   status: "draft" | "published";
   /** Null only on drafts, which an unauthenticated caller never receives. */
@@ -45,54 +41,11 @@ export interface PostPage {
   results: Post[];
 }
 
-/** Display label for a category, e.g. on the detail page's badge. */
-export const CATEGORY_LABELS: Record<PostCategory, string> = {
-  posts: "Posts",
-  books: "Books",
-  projects: "Projects",
-  garage_sale: "Garage Sale",
-};
-
-/**
- * The one order categories are ever displayed in, matching the declaration
- * order of `Post.Category` on the backend and the site's own nav.
- *
- * A post's `categories` arrives already sorted this way, so this exists for
- * anything building a list of its own -- the admin form's checkboxes, a filter
- * dropdown -- so those cannot drift from the order the badges come out in.
- */
-export const CATEGORY_ORDER: PostCategory[] = [
-  "posts",
-  "books",
-  "projects",
-  "garage_sale",
-];
-
-/** Categories with a public page to browse them on -- everything except
- *  `garage_sale`. Cross-category views (the Posts page's "all categories"
- *  filter) filter to this list so they never link to the now-removed Garage
- *  Sale page. */
-export const VISIBLE_CATEGORIES: PostCategory[] = ["posts", "books", "projects"];
-
-/** Whether a post belongs to any section with a page of its own. A post filed
- *  only under `garage_sale` has nowhere public to be linked from. */
-export function isVisible(post: Post): boolean {
-  return post.categories.some((category) =>
-    VISIBLE_CATEGORIES.includes(category),
-  );
+/** One row of `GET /api/posts/tags/`: a label and how many posts carry it. */
+export interface TagCount {
+  name: string;
+  count: number;
 }
-
-/**
- * Where a card links when the view it sits in is not itself a section page.
- *
- * Always `/posts/:slug`, because a post can be in several sections and none of
- * them outranks the others -- picking one would be inventing a primary
- * category. `PostDetail` looks posts up by slug alone and the route prefix only
- * supplies the "back" link, so this reaches exactly the same page that
- * `/books/:slug` would; a card *on* a section page still uses that section's
- * path, so "back" returns you where you came from.
- */
-export const CROSS_CATEGORY_BASE_PATH = "/posts";
 
 // Matches REST_FRAMEWORK.PAGE_SIZE in settings.py.
 export const PAGE_SIZE = 20;
@@ -153,28 +106,30 @@ export interface DateRange {
   before?: string;
 }
 
-/** Fetch one numbered page of posts, optionally filtered by category and by
- *  date -- for the Posts page's filters + Prev/Next pagination. `page` omitted
- *  or 1 asks for the first page: DRF's PageNumberPagination treats a `page`
- *  param of "1" the same as no param, so leaving it out for that case avoids a
- *  meaningless `?page=1` in the URL. */
+/** Fetch one numbered page of posts, optionally filtered by tag and by date --
+ *  for the Blog page's filters + numbered pagination. `page` omitted or 1 asks
+ *  for the first page: DRF's PageNumberPagination treats a `page` param of "1"
+ *  the same as no param, so leaving it out for that case avoids a meaningless
+ *  `?page=1` in the URL. */
 export async function fetchPostsPage(
   {
-    category,
+    tag,
     page,
     after,
     before,
-  }: { category?: PostCategory; page?: number } & DateRange,
+  }: { tag?: string; page?: number } & DateRange,
   signal?: AbortSignal,
 ): Promise<PostPage> {
   const params = new URLSearchParams();
-  // Matches the Home feed: the entries show their last-edited date, so that is
-  // what they are sorted by. Note the date *filter* below is
+  // The entries show their last-edited date, so that is what they are sorted
+  // by. Note the date *filter* below is
   // still on published_at (or created_at for a draft) -- "edited recently" and
   // "published in this range" are different questions, and the filter answers
   // the one its labels ask.
   params.set("ordering", "updated");
-  if (category) params.set("category", category);
+  // An empty value would be sent as `?tag=` and match nothing, so "no
+  // filter" has to mean "no parameter".
+  if (tag) params.set("tag", tag);
   if (page && page > 1) params.set("page", String(page));
   // An empty string would be sent as `?published_after=` and, unlike a bad
   // date, is simply ignored by the API -- but there is no reason to send it.
@@ -247,3 +202,19 @@ export async function recordPostView(
 }
 
 export { isAbort };
+
+/**
+ * Every tag in use, commonest first.
+ *
+ * Fetched rather than derived from the posts on screen: tags are free text, so
+ * there is no enum to read them off, and building the list from one page of
+ * results would offer only the tags that happened to land on page one. This is
+ * what the fixed `CATEGORY_ORDER` used to give the client for nothing.
+ */
+export async function fetchTags(signal?: AbortSignal): Promise<TagCount[]> {
+  const response = await publicRequest(`${API_BASE_URL}/posts/tags/`, signal);
+  if (!response.ok) {
+    throw new Error(`The API returned ${response.status} ${response.statusText}.`);
+  }
+  return (await response.json()) as TagCount[];
+}

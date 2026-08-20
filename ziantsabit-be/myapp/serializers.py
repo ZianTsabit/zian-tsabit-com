@@ -17,7 +17,6 @@ class PostSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "slug",
-            "categories",
             "excerpt",
             "body",
             "cover_image_url",
@@ -37,22 +36,20 @@ class PostSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "view_count", "created_at", "updated_at"]
         extra_kwargs = {
             "slug": {"required": False},
-            # A post has to live somewhere: filed under nothing it appears on no
-            # page at all, which is a mistake every time and an invisible one.
-            #
-            # Both flags are needed and they catch different mistakes.
-            # `allow_empty` rejects an explicit []; `required` rejects leaving
-            # the key out, which the model's `default=list` would otherwise
-            # make a silent success -- the default exists so the column could
-            # be added to existing rows, not as a value any client should get.
-            "categories": {"allow_empty": False, "required": True},
         }
 
-    def validate_categories(self, value):
-        # Deduplicated and ordered in Post.save() so the admin and the shell get
-        # it too; doing it again here is what makes the *response* to this write
-        # match, since DRF renders the serializer's own validated data.
-        return Post.clean_categories(value)
+    def validate_tags(self, value):
+        # Trimmed and deduped in Post.save() so the admin and the shell get it
+        # too; doing it again here is what makes the *response* to this write
+        # match what was stored, since DRF renders the serializer's own
+        # validated data.
+        #
+        # Deliberately no `allow_empty=False`, unlike the `categories` field
+        # this replaced: an untagged post is a perfectly good post. Filing under
+        # nothing used to mean appearing on no page at all, which is why that
+        # was an error; the feed at `/` lists every post regardless of its tags,
+        # so an untagged one is simply one nobody has labelled yet.
+        return Post.clean_tags(value)
 
     def validate_slug(self, value):
         # A blank slug would otherwise pass the unique check and then collide in
@@ -221,8 +218,14 @@ class BookSerializer(serializers.ModelSerializer):
         return value
 
 
-class GenreSerializer(serializers.Serializer):
-    """One row of `GET /api/books/genres/`."""
+class LabelCountSerializer(serializers.Serializer):
+    """One row of a vocabulary endpoint: `/api/posts/tags/` or
+    `/api/books/genres/`.
+
+    One serializer for both, because they are the same answer to the same
+    question -- what labels exist here, and how many rows carry each -- asked of
+    two free-text arrays. See `label_counts` in views.py.
+    """
 
     name = serializers.CharField(read_only=True)
     count = serializers.IntegerField(read_only=True)

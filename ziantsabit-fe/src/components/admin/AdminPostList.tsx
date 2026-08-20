@@ -12,12 +12,10 @@ import {
 import ActionButton from "./ActionButton";
 import TagChip from "../TagChip";
 import { toPlainText } from "../markdownText";
-import { CATEGORIES } from "../../services/adminPosts";
 import type { Post } from "../../services/posts";
 import { MONO_FONT } from "../../theme";
 
-/** Rows rather than a table: a five-column table is unusable on a phone. */
-const CATEGORY_LABELS = new Map(CATEGORIES.map((c) => [c.value, c.label]));
+/* Rows rather than a table: a five-column table is unusable on a phone. */
 
 /** Matches the public entries: last edit, not publication. The time of day is
  *  kept, which they drop -- editing twice in an afternoon is exactly the case
@@ -131,12 +129,8 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
             direction="row"
             sx={{ gap: 1, mt: 1, alignItems: "center", flexWrap: "wrap" }}
           >
-            {post.categories.map((category) => (
-              <TagChip
-                key={category}
-                label={CATEGORY_LABELS.get(category) ?? category}
-              />
-            ))}
+            {/* Status leads, so the post's own tags do not get lost beside
+                the one admin-only label. */}
             <TagChip label={published ? "Published" : "Draft"} emphasis={published} />
             {post.tags.map((tag) => (
               <TagChip key={tag} label={tag} />

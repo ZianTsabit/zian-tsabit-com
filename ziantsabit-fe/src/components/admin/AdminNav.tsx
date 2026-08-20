@@ -9,7 +9,9 @@ import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
  *  and the phone row alike, so a new page is one entry rather than two. */
 const items = [
   { to: "/admin", label: "Overview", icon: <DashboardOutlinedIcon fontSize="small" /> },
-  { to: "/admin/posts", label: "Posts", icon: <ArticleOutlinedIcon fontSize="small" /> },
+  // "Blog" names the section, matching the public nav. The *items* in it are
+  // still posts, which is why "New post" further in stays as it is.
+  { to: "/admin/posts", label: "Blog", icon: <ArticleOutlinedIcon fontSize="small" /> },
   { to: "/admin/books", label: "Books", icon: <MenuBookOutlinedIcon fontSize="small" /> },
   { to: "/admin/stats", label: "Statistics", icon: <InsightsOutlinedIcon fontSize="small" /> },
 ];

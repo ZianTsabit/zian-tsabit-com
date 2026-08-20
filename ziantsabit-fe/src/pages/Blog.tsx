@@ -14,20 +14,14 @@ import {
 
 import Centered from "../components/Centered";
 import { HEADER_HEIGHT } from "../constants/layout";
-import { PostCard } from "../components/PostList";
+import PostCard from "../components/PostCard";
 import Typewriter from "../components/Typewriter";
-import {
-  CROSS_CATEGORY_BASE_PATH,
-  CATEGORY_LABELS,
-  VISIBLE_CATEGORIES,
-  type PostCategory,
-} from "../services/posts";
-import { usePaginatedPosts } from "../services/usePaginatedPosts";
+import { usePaginatedPosts, useTags } from "../services/usePaginatedPosts";
 
 const ALL = "";
 
 // The two date fields share a line on a phone: each takes half of whatever the
-// category select left over. `minWidth: 0` is what makes that possible -- a
+// tag select left over. `minWidth: 0` is what makes that possible -- a
 // flex item defaults to `min-width: auto`, and a native date input's intrinsic
 // width is wide enough that two of them side by side would overflow a narrow
 // screen rather than shrink. At `sm`+ they sit inline with the select at their
@@ -37,15 +31,29 @@ const dateFieldSx = {
   minWidth: { xs: 0, sm: 160 },
 };
 
-function Posts() {
-  const [category, setCategory] = useState<string>(ALL);
+/**
+ * The blog: every post, newest edit first, filterable by tag and by date.
+ *
+ * Rendered at `/` -- there is no separate landing page. It was called Posts
+ * until the section enum went away; "Blog" is what a feed of writing is, and
+ * "Posts" only ever made sense as the name of one of four categories.
+ *
+ * **The tag filter replaced a category select**, and the difference is more
+ * than a label: the old one offered a hardcoded three (`VISIBLE_CATEGORIES`),
+ * while this one offers whatever tags actually exist, fetched from
+ * `/api/posts/tags/`. Writing a post about Postgres is now all it takes for
+ * "Postgres" to become a way to browse.
+ */
+function Blog() {
+  const [tag, setTag] = useState<string>(ALL);
   // YYYY-MM-DD, or "" for "no bound on this end". Both ends are inclusive.
   const [after, setAfter] = useState("");
   const [before, setBefore] = useState("");
   const [page, setPage] = useState(1);
 
+  const tags = useTags();
   const { posts, phase, error, totalPages, retry } = usePaginatedPosts(
-    category === ALL ? undefined : (category as PostCategory),
+    tag,
     page,
     after,
     before,
@@ -53,8 +61,8 @@ function Posts() {
 
   // A filter change can easily land page 3 past the end of a smaller result
   // set, so every one of them resets back to the first page.
-  const handleCategoryChange = (value: string) => {
-    setCategory(value);
+  const handleTagChange = (value: string) => {
+    setTag(value);
     setPage(1);
   };
 
@@ -105,7 +113,7 @@ function Posts() {
           sx={{
             gap: 2,
             // Row + wrap at every size, rather than a column on `xs`: the
-            // category select is given a full-width basis below so it takes a
+            // tag select is given a full-width basis below so it takes a
             // line of its own, which pushes From/To onto a second line where
             // they share the width. Stacking all three would cost a third of
             // the screen above the first post.
@@ -120,25 +128,35 @@ function Posts() {
             py: 1.5,
           }}
         >
-          {/* `displayEmpty` is what makes the "All categories" row show as the
+          {/* Only rendered once there is a vocabulary to offer: a select whose
+              single option is "All tags" is a control that does nothing. The
+              old category select could always be shown because its four values
+              were hardcoded; these come from the posts that exist.
+
+              `displayEmpty` is what makes the "All tags" row show as the
               current value: without it a Select whose value is "" renders as an
               empty box, and the label has to be pinned shrunk to match. */}
-          <TextField
-            select
-            size="small"
-            label="Category"
-            value={category}
-            onChange={(event) => handleCategoryChange(event.target.value)}
-            slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
-            sx={{ width: { xs: "100%", sm: "auto" }, minWidth: { sm: 180 } }}
-          >
-            <MenuItem value={ALL}>All categories</MenuItem>
-            {VISIBLE_CATEGORIES.map((value) => (
-              <MenuItem key={value} value={value}>
-                {CATEGORY_LABELS[value]}
-              </MenuItem>
-            ))}
-          </TextField>
+          {tags.length > 0 && (
+            <TextField
+              select
+              size="small"
+              label="Tag"
+              value={tag}
+              onChange={(event) => handleTagChange(event.target.value)}
+              slotProps={{
+                select: { displayEmpty: true },
+                inputLabel: { shrink: true },
+              }}
+              sx={{ width: { xs: "100%", sm: "auto" }, minWidth: { sm: 180 } }}
+            >
+              <MenuItem value={ALL}>All tags</MenuItem>
+              {tags.map((option) => (
+                <MenuItem key={option.name} value={option.name}>
+                  {option.name} ({option.count})
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
 
           {/* Native date inputs: they bring their own calendar and their own
               locale formatting, and always hand back a YYYY-MM-DD string --
@@ -196,17 +214,21 @@ function Posts() {
 
         {phase === "ready" && posts.length > 0 && (
           <>
-            {/* Same divided list as PostList; the gap is per side, since the
-                divider sits between the entries as a flex child of its own. */}
+            {/* The gap is per side, since the divider sits between the entries
+                as a flex child of its own. */}
             <Stack
               divider={<Divider />}
               sx={{ gap: { xs: 2.5, sm: 3 }, width: "100%" }}
             >
+              {/* One path for every post now. `CROSS_CATEGORY_BASE_PATH`
+                  existed because a post could be in several sections and none
+                  outranked the others; with one feed there is nothing to
+                  choose between. */}
               {posts.map((post) => (
                 <PostCard
                   key={post.slug}
                   post={post}
-                  to={`${CROSS_CATEGORY_BASE_PATH}/${encodeURIComponent(post.slug)}`}
+                  to={`/posts/${encodeURIComponent(post.slug)}`}
                 />
               ))}
             </Stack>
@@ -226,4 +248,4 @@ function Posts() {
   );
 }
 
-export default Posts;
+export default Blog;

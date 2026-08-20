@@ -7,16 +7,9 @@
  */
 
 import { apiRequest } from "./api";
-import type { Post, PostCategory, PostPage } from "./posts";
+import type { Post, PostPage } from "./posts";
 
 export type PostStatus = Post["status"];
-
-export const CATEGORIES: { value: PostCategory; label: string }[] = [
-  { value: "posts", label: "Posts" },
-  { value: "books", label: "Books" },
-  { value: "projects", label: "Projects" },
-  { value: "garage_sale", label: "Garage Sale" },
-];
 
 export const STATUSES: { value: PostStatus; label: string }[] = [
   { value: "draft", label: "Draft" },
@@ -38,9 +31,6 @@ export interface PostDraft {
   title: string;
   /** Blank means "generate from the title" on create, "leave alone" on update. */
   slug: string;
-  /** Every section the post appears on. The API rejects an empty list, so the
-   *  form has to keep at least one ticked. */
-  categories: PostCategory[];
   status: PostStatus;
   excerpt: string;
   body: string;
@@ -59,7 +49,6 @@ export function draftFrom(post: Post): PostDraft {
   return {
     title: post.title,
     slug: post.slug,
-    categories: post.categories,
     status: post.status,
     excerpt: post.excerpt,
     body: post.body,
@@ -70,19 +59,19 @@ export function draftFrom(post: Post): PostDraft {
   };
 }
 
-export function emptyDraft(category: PostCategory = "posts"): PostDraft {
+export function emptyDraft(tags: string[] = []): PostDraft {
   return {
     title: "",
     slug: "",
-    // One to start with rather than none: an empty list is a 400, and the
-    // section the author was looking at is the likeliest answer anyway.
-    categories: [category],
+    // Whatever tag the author was browsing when they pressed New post, if any.
+    // Empty is fine now -- an untagged post is a perfectly good post, where an
+    // empty `categories` list used to be a 400.
+    tags,
     status: "draft",
     excerpt: "",
     body: "",
     cover_image_url: "",
     cover_image_alt: "",
-    tags: [],
     published_at: null,
   };
 }
@@ -128,7 +117,7 @@ export function deriveSlug(title: string): string {
 }
 
 export interface AdminFilters {
-  category?: string;
+  tag?: string;
   status?: string;
   /** "" or omitted means the API's default ordering. */
   ordering?: string;
@@ -143,9 +132,9 @@ export interface AdminFilters {
 
 function query(filters: AdminFilters): string {
   const params = new URLSearchParams();
-  // An empty value would be sent as `?category=` and rejected as an unknown
-  // category, so "no filter" has to mean "no parameter".
-  if (filters.category) params.set("category", filters.category);
+  // An empty value would be sent as `?tag=` and match nothing, so "no filter"
+  // has to mean "no parameter".
+  if (filters.tag) params.set("tag", filters.tag);
   if (filters.status) params.set("status", filters.status);
   if (filters.ordering) params.set("ordering", filters.ordering);
   if (filters.page && filters.page > 1) params.set("page", String(filters.page));

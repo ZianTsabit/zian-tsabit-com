@@ -104,18 +104,19 @@ def isbn_is_valid(compact):
 
 
 class Post(models.Model):
-    """A single piece of content, filed under one or more of the site's sections.
+    """A single piece of writing, labelled with free-form tags.
 
     Replaces the earlier Book / Project / GarageSale / Update models: those were
-    four near-identical title-plus-fields tables, and the site renders them as
-    three feeds that differ only by which section you are looking at.
-    """
+    four near-identical title-plus-fields tables for what is one feed.
 
-    class Category(models.TextChoices):
-        POSTS = "posts", "Posts"
-        BOOKS = "books", "Books"
-        PROJECTS = "projects", "Projects"
-        GARAGE_SALE = "garage_sale", "Garage Sale"
+    **There is no `categories` column any more** -- `0009` dropped it and copied
+    every post's sections into `tags`. The fixed enum was doing the same job as
+    the free-form list beside it, badly: adding a section meant a migration, a
+    post could only ever be filed under one of four things, and every consumer
+    had to know both mechanisms. One list of labels, filtered case-insensitively
+    by `?tag=`, does everything the enum did and does not need a code change to
+    grow.
+    """
 
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
@@ -125,20 +126,6 @@ class Post(models.Model):
     # Left blank on create and derived from the title in save(); it is the URL
     # key the API looks posts up by, so it has to stay unique.
     slug = models.SlugField(max_length=220, unique=True, blank=True)
-    # A post can sit in more than one section -- a write-up of a book that is
-    # also a project belongs on both feeds, and duplicating the post to achieve
-    # that would mean two slugs, two view counts and two things to keep in step.
-    #
-    # An ArrayField for the same reasons as `tags` below: the sections are a
-    # fixed enum declared right here, so a Category table would carry no column
-    # this does not, and nothing ever reads a category without its post.
-    # Membership is a set -- stored order carries no meaning, and nothing may
-    # read it as ranking -- but it is deduplicated and kept in the order
-    # declared above so two equal posts cannot differ by row order alone.
-    categories = ArrayField(
-        models.CharField(max_length=20, choices=Category.choices),
-        default=list,
-    )
     excerpt = models.TextField(blank=True)
     body = models.TextField(blank=True)
     # The post's lead image, shown on its card and above the body. A URL rather
@@ -173,11 +160,12 @@ class Post(models.Model):
         # sensibly because created_at breaks the tie.
         ordering = ["-published_at", "-created_at"]
         indexes = [
-            # GIN, because the section filter is now a containment test
-            # (categories @> ['books']) and a btree cannot answer that. The
-            # composite ("category", "status") index this replaces has no array
-            # equivalent, so status keeps its own.
-            GinIndex(fields=["categories"]),
+            # GIN, because browsing is now a containment test over `tags`
+            # (tags @> ['Django']) and a btree cannot answer that. It moved
+            # here from `categories` when that column was dropped in `0009`:
+            # tags are what the site filters by now, so tags are what needs the
+            # index. `status` keeps its own, having no array equivalent.
+            GinIndex(fields=["tags"]),
             models.Index(fields=["status"]),
         ]
 
@@ -194,27 +182,8 @@ class Post(models.Model):
         """
         return clean_labels(tags)
 
-    @classmethod
-    def clean_categories(cls, categories):
-        """Drop repeats and return the rest in the order `Category` declares.
-
-        Membership is a set, so ["books", "posts"] and ["posts", "books"] have
-        to be the same post -- otherwise the order someone happened to tick the
-        boxes in would leak into the API, and every consumer would have to sort
-        it themselves before comparing or displaying. Declaration order rather
-        than alphabetical, so the badges on a card come out in the same order as
-        the sections in the site's nav.
-
-        Unknown values are left alone for the serializer's ChoiceField to
-        reject: silently dropping a typo would answer a bad write with a 201.
-        """
-        rank = {value: index for index, value in enumerate(cls.Category.values)}
-        unique = dict.fromkeys(categories or [])
-        return sorted(unique, key=lambda value: rank.get(value, len(rank)))
-
     def save(self, *args, **kwargs):
         self.tags = self.clean_tags(self.tags)
-        self.categories = self.clean_categories(self.categories)
         if not self.slug:
             self.slug = self._unique_slug(slugify(self.title) or "post")
         # Publishing without an explicit date stamps it now, so an ordered feed

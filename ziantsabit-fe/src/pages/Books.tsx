@@ -31,11 +31,12 @@ const SEARCH_DEBOUNCE_MS = 300;
 /**
  * The book catalogue.
  *
- * **Not the posts feed filtered to `category=books`** -- that was what this
- * page used to be, and the two are different things. A post filed under
- * "books" is writing *about* reading and still appears in the feed at `/`;
- * this page is the shelf itself, backed by `/api/books/`, where an entry has an
- * author, a year, an ISBN and a review.
+ * **Not a filtered view of the posts feed** -- that was what this page used to
+ * be, back when posts had categories and one of them was "books". The two are
+ * different things: a post about a book is writing, and lives in the feed at
+ * `/` (tagged however its author likes); this page is the shelf itself, backed
+ * by `/api/books/`, where an entry has an author, a year, an ISBN and a
+ * review.
  *
  * A grid rather than the divided column the post lists use: entries here are
  * scanned by cover, and twenty of them stacked one per row would be a very long
@@ -73,7 +74,7 @@ function Books() {
 
   /** Every filter change goes back to page 1: page 3 of the whole catalogue is
    *  usually past the end of a filtered one, and landing on an empty page
-   *  looks like the filter matched nothing. Same rule as the Posts page. */
+   *  looks like the filter matched nothing. Same rule as the Blog page. */
   const changeFilter = (set: (value: string) => void, value: string) => {
     set(value);
     setPage(1);
@@ -129,7 +130,7 @@ function Books() {
           - Umberto Eco
         </Typography>
 
-        {/* Sticky under the fixed header, like the Posts page's filter row.
+        {/* Sticky under the fixed header, like the Blog page's filter row.
             The negative margins let the background run to the container's
             gutters, so entries scrolling underneath do not show through at the
             edges; `background.default` is named explicitly because the page

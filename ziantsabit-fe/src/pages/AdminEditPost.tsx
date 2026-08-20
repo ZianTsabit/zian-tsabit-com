@@ -16,6 +16,7 @@ import {
   type WriteOptions,
 } from "../services/adminPosts";
 import { useAutosave } from "../services/useAutosave";
+import { useTags } from "../services/usePaginatedPosts";
 import { useWriteQueue } from "../services/useWriteQueue";
 import { isAbort, type Post } from "../services/posts";
 
@@ -77,6 +78,7 @@ function AdminEditPost() {
     address.current = slug;
   }, [slug]);
 
+  const tags = useTags();
   const enqueue = useWriteQueue();
 
   const persist = async (
@@ -262,6 +264,7 @@ function AdminEditPost() {
               fieldErrors={fieldErrors}
               onChange={set}
               slugHelperText="The post's URL. Changing it breaks any existing link."
+              tagOptions={tags.map((tag) => tag.name)}
               // The copy below is covered while the body is full screen, and
               // Ctrl+S works in there.
               fullscreenStatus={<AutosaveStatus state={autosave} duplicate />}

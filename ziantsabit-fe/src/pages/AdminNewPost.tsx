@@ -17,8 +17,9 @@ import {
   type WriteOptions,
 } from "../services/adminPosts";
 import { useAutosave } from "../services/useAutosave";
+import { useTags } from "../services/usePaginatedPosts";
 import { useWriteQueue } from "../services/useWriteQueue";
-import type { Post, PostCategory } from "../services/posts";
+import type { Post } from "../services/posts";
 
 /**
  * The slug an autosave should send for a post that already exists, or "" to
@@ -55,12 +56,11 @@ function AdminNewPost() {
   const location = useLocation();
   const { onSessionSuspect } = useOutletContext<AdminOutletContext>();
 
-  // Set by AdminConsole's "New post" button, so a post created while looking
-  // at a filtered list lands back in that same section.
-  const presetCategory = (location.state as { category?: PostCategory } | null)
-    ?.category;
+  // Set by AdminConsole's "New post" button, so a post started while looking
+  // at a filtered list arrives already carrying that tag.
+  const presetTags = (location.state as { tags?: string[] } | null)?.tags ?? [];
 
-  const [draft, setDraft] = useState<PostDraft>(() => emptyDraft(presetCategory));
+  const [draft, setDraft] = useState<PostDraft>(() => emptyDraft(presetTags));
   // Which button is in flight, or null. A plain boolean would not say which of
   // the two to relabel while the request runs.
   const [saving, setSaving] = useState<PostStatus | null>(null);
@@ -74,6 +74,7 @@ function AdminNewPost() {
   const savedSlug = useRef<string | null>(null);
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
 
+  const tags = useTags();
   const enqueue = useWriteQueue();
 
   const set = <K extends keyof PostDraft>(key: K, value: PostDraft[K]) =>
@@ -212,6 +213,7 @@ function AdminNewPost() {
             onChange={set}
             slugHelperText="Leave blank to generate it from the title."
             showPublishedAt={false}
+            tagOptions={tags.map((tag) => tag.name)}
             // The copy below is covered while the body is full screen, and
             // Ctrl+S works in there.
             fullscreenStatus={
