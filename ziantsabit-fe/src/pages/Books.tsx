@@ -100,35 +100,85 @@ function Books() {
         maxWidth="md"
         sx={{ flex: 1, display: "flex", flexDirection: "column" }}
       >
-        <Typography
-          variant="h5"
-          component="div"
-          sx={{
-            textAlign: { xs: "left", sm: "justify" },
-            marginBottom: "20px",
-            fontStyle: "italic",
-            color: "text.primary",
-            fontSize: { xs: "12px", sm: "14px", md: "16px", lg: "22px" },
-          }}
-        >
-          It is foolish to think that you have to read all the books you buy,
-          as it is foolish to criticize those who buy more books than they
-          will ever be able to read ...
-        </Typography>
+        {/* A pull quote, not two loose paragraphs: `figure` + `blockquote` +
+            `figcaption` is what this always was semantically, and the box is
+            what makes it look like one thing rather than stray italics above
+            the filters.
 
-        <Typography
-          variant="h5"
-          component="div"
+            The opening “ is a real element rather than a `::before`, so it is a
+            flex item the text lays out beside -- an absolutely positioned glyph
+            would overlap the first line at some font size, and there are four
+            of those here. `aria-hidden` because it is ornament: the quotation
+            is already marked up as one, and a screen reader announcing a
+            stray double-quote before it is noise. */}
+        <Box
+          component="figure"
           sx={{
-            textAlign: "right",
-            fontStyle: "italic",
-            color: "text.primary",
-            fontSize: { xs: "12px", sm: "14px", md: "16px", lg: "22px" },
+            // `figure` carries a default margin in every browser.
+            m: 0,
             mb: 3,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: { xs: 1.5, sm: 2 },
+            px: { xs: 2, sm: 3 },
+            py: { xs: 2, sm: 2.5 },
+            bgcolor: "background.paper",
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: 1,
           }}
         >
-          - Umberto Eco
-        </Typography>
+          <Box
+            aria-hidden="true"
+            sx={{
+              flexShrink: 0,
+              fontSize: { xs: "36px", sm: "48px", md: "60px" },
+              // The glyph sits high in its em box, so a line box of its own
+              // height would push it well below the first line of the quote.
+              lineHeight: 0.75,
+              // Serif, because Ubuntu draws a straight, unremarkable quote mark
+              // and the whole point of this one is that it is decorative.
+              fontFamily: "Georgia, 'Times New Roman', serif",
+              color: "primary.main",
+              // Ornament, not emphasis -- full-strength primary at this size
+              // reads as a link that lost its text.
+              opacity: 0.55,
+              userSelect: "none",
+            }}
+          >
+            “
+          </Box>
+
+          <Box sx={{ minWidth: 0 }}>
+            <Typography
+              component="blockquote"
+              sx={{
+                m: 0,
+                textAlign: { xs: "left", sm: "justify" },
+                fontStyle: "italic",
+                color: "text.primary",
+                fontSize: { xs: "12px", sm: "14px", md: "16px", lg: "22px" },
+              }}
+            >
+              It is foolish to think that you have to read all the books you
+              buy, as it is foolish to criticize those who buy more books than
+              they will ever be able to read ...
+            </Typography>
+
+            <Typography
+              component="figcaption"
+              sx={{
+                mt: 1,
+                textAlign: "right",
+                fontStyle: "italic",
+                color: "text.secondary",
+                fontSize: { xs: "12px", sm: "13px", md: "14px", lg: "16px" },
+              }}
+            >
+              — Umberto Eco
+            </Typography>
+          </Box>
+        </Box>
 
         {/* Sticky under the fixed header, like the Blog page's filter row.
             The negative margins let the background run to the container's
