@@ -1,6 +1,7 @@
 import { Box, Button, Divider, Stack, Typography } from "@mui/material";
 import { NavLink } from "react-router-dom";
 import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
+import MenuBookOutlinedIcon from "@mui/icons-material/MenuBookOutlined";
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 
@@ -9,6 +10,7 @@ import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 const items = [
   { to: "/admin", label: "Overview", icon: <DashboardOutlinedIcon fontSize="small" /> },
   { to: "/admin/posts", label: "Posts", icon: <ArticleOutlinedIcon fontSize="small" /> },
+  { to: "/admin/books", label: "Books", icon: <MenuBookOutlinedIcon fontSize="small" /> },
   { to: "/admin/stats", label: "Statistics", icon: <InsightsOutlinedIcon fontSize="small" /> },
 ];
 
@@ -22,12 +24,13 @@ interface Props {
  *
  * A left column from `md` up and a scrolling row of the same links below it --
  * a 180px column on a phone would leave the post list about forty characters
- * wide. Deliberately not a `Drawer`: there are three destinations, and hiding
- * them behind a button costs a tap to answer "where am I".
+ * wide. Deliberately not a `Drawer`: there are a handful of destinations, and
+ * hiding them behind a button costs a tap to answer "where am I".
  *
  * Signing out lives here rather than on the post list, where it used to sit:
  * it is chrome for the whole admin, and leaving it on one page would mean
- * either repeating it on the other two or having it vanish when you navigate.
+ * either repeating it on every other one or having it vanish when you
+ * navigate.
  */
 function AdminNav({ username, onSignOut }: Props) {
   return (
@@ -49,7 +52,7 @@ function AdminNav({ username, onSignOut }: Props) {
         direction={{ xs: "row", md: "column" }}
         sx={{
           gap: 0.5,
-          // On a phone the three links scroll sideways inside their own box
+          // On a phone the links scroll sideways inside their own box
           // rather than widening the document -- see "nothing may widen the
           // page" in CLAUDE.md.
           overflowX: { xs: "auto", md: "visible" },

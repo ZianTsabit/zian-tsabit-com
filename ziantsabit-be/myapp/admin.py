@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Post
+from .models import Book, Post
 
 
 class CategoryFilter(admin.SimpleListFilter):
@@ -42,3 +42,45 @@ class PostAdmin(admin.ModelAdmin):
         # column shows. Post.save() has already put them in declaration order.
         labels = dict(Post.Category.choices)
         return ", ".join(labels.get(value, value) for value in post.categories)
+
+
+class GenreFilter(admin.SimpleListFilter):
+    """Sidebar filter over `genres`.
+
+    Hand-written for the same reason `CategoryFilter` is: `list_filter =
+    ("genres",)` on an ArrayField builds an exact-match filter, so the sidebar
+    would offer whole combinations ("fiction, sci-fi") as single values. The
+    options come from the rows themselves rather than from an enum, since a
+    genre is free text.
+    """
+
+    title = "genre"
+    parameter_name = "genre"
+
+    def lookups(self, request, model_admin):
+        labels = sorted(
+            {genre for row in Book.objects.values_list("genres", flat=True) for genre in row},
+            key=str.casefold,
+        )
+        return [(label, label) for label in labels]
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if not value:
+            return queryset
+        return queryset.filter(genres__contains=[value])
+
+
+@admin.register(Book)
+class BookAdmin(admin.ModelAdmin):
+    list_display = ("title", "author", "release_year", "genre_list", "status", "updated_at")
+    list_filter = (GenreFilter, "status")
+    search_fields = ("title", "author", "isbn", "review")
+    # Blank is allowed: Book.save() derives it, falling back to the author when
+    # the title alone is already taken.
+    prepopulated_fields = {"slug": ("title",)}
+    date_hierarchy = "created_at"
+
+    @admin.display(description="Genres")
+    def genre_list(self, book):
+        return ", ".join(book.genres)

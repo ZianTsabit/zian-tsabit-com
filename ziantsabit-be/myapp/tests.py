@@ -11,7 +11,7 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-from .models import Post, PostViewDay
+from .models import Book, Post, PostViewDay, isbn_is_valid, normalise_isbn
 from .views import DAILY_VIEWS_DAYS
 
 # The CORS tests below pin this rather than relying on settings.py's default,
@@ -1238,3 +1238,355 @@ class PostStatsTests(APITestCase):
         data = self.get().data
         self.assertEqual(data["total_views"], 12)
         self.assertEqual(data["views_per_day"], 0)
+
+
+class BookModelTests(APITestCase):
+    def test_slug_is_derived_from_title(self):
+        book = Book.objects.create(title="The Dispossessed", author="Ursula K. Le Guin")
+        self.assertEqual(book.slug, "the-dispossessed")
+
+    def test_a_second_book_with_the_same_title_is_slugged_by_author(self):
+        # Two books called "Ulysses" is ordinary; "/ulysses-2" says nothing
+        # about which one it is, and "/ulysses-james-joyce" does.
+        Book.objects.create(title="Ulysses", author="James Joyce")
+        second = Book.objects.create(title="Ulysses", author="Alfred Tennyson")
+        self.assertEqual(second.slug, "ulysses-alfred-tennyson")
+
+    def test_a_third_book_with_the_same_title_and_author_falls_back_to_a_number(self):
+        Book.objects.create(title="Ulysses", author="James Joyce")
+        second = Book.objects.create(title="Ulysses", author="James Joyce")
+        self.assertEqual(second.slug, "ulysses-james-joyce")
+        third = Book.objects.create(title="Ulysses", author="James Joyce")
+        self.assertEqual(third.slug, "ulysses-james-joyce-2")
+
+    def test_explicit_slug_is_kept(self):
+        book = Book.objects.create(title="Dune", author="Frank Herbert", slug="the-one")
+        self.assertEqual(book.slug, "the-one")
+
+    def test_a_book_and_a_post_may_share_a_slug(self):
+        # Separate tables, so each dedupes only against its own -- a book and an
+        # essay about it should not push one another to a stuttered URL.
+        Post.objects.create(title="Dune", categories=[Post.Category.POSTS])
+        book = Book.objects.create(title="Dune", author="Frank Herbert")
+        self.assertEqual(book.slug, "dune")
+
+    def test_genres_are_trimmed_deduped_and_case_folded(self):
+        book = Book.objects.create(
+            title="Neuromancer",
+            author="William Gibson",
+            genres=["  Sci-Fi ", "sci-fi", "", "Cyberpunk", "SCI-FI"],
+        )
+        # First spelling seen is the one kept, since that is the one the author
+        # chose to display.
+        self.assertEqual(book.genres, ["Sci-Fi", "Cyberpunk"])
+
+    def test_isbn_separators_are_stripped_on_save(self):
+        book = Book.objects.create(
+            title="Clean Code", author="Robert C. Martin", isbn="978-0-13-235088-4"
+        )
+        self.assertEqual(book.isbn, "9780132350884")
+
+    def test_isbn_10_check_digit(self):
+        self.assertTrue(isbn_is_valid("0306406152"))
+        self.assertTrue(isbn_is_valid("080442957X"))
+        # A transposed pair -- the typo that leaves an ISBN looking right.
+        self.assertFalse(isbn_is_valid("0306406125"))
+        self.assertFalse(isbn_is_valid("030640615"))
+
+    def test_isbn_13_check_digit(self):
+        self.assertTrue(isbn_is_valid("9780132350884"))
+        self.assertFalse(isbn_is_valid("9780132350885"))
+
+    def test_normalise_isbn_handles_spaces_dashes_and_lowercase_x(self):
+        self.assertEqual(normalise_isbn(" 0-8044 2957 x "), "080442957X")
+
+    def test_status_defaults_to_draft(self):
+        book = Book.objects.create(title="Dune", author="Frank Herbert")
+        self.assertEqual(book.status, Book.Status.DRAFT)
+
+
+class BookAPITests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("book-list")
+        cls.genres_url = reverse("book-genres")
+        cls.dune = Book.objects.create(
+            title="Dune",
+            author="Frank Herbert",
+            genres=["Sci-Fi", "Classic"],
+            isbn="9780441013593",
+            release_year=1965,
+            status=Book.Status.PUBLISHED,
+        )
+        cls.neuromancer = Book.objects.create(
+            title="Neuromancer",
+            author="William Gibson",
+            genres=["sci-fi", "Cyberpunk"],
+            release_year=1984,
+            status=Book.Status.PUBLISHED,
+        )
+        cls.unshelved = Book.objects.create(
+            title="Half-Read Thing", author="Nobody", genres=["Unfinished"]
+        )
+
+    def detail_url(self, book):
+        return reverse("book-detail", kwargs={"slug": book.slug})
+
+    def payload(self, **overrides):
+        body = {"title": "The Dispossessed", "author": "Ursula K. Le Guin"}
+        body.update(overrides)
+        return body
+
+    # --- read ---------------------------------------------------------------
+
+    def test_anonymous_list_shows_only_published(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        slugs = {row["slug"] for row in response.data["results"]}
+        self.assertEqual(slugs, {self.dune.slug, self.neuromancer.slug})
+
+    def test_anonymous_cannot_retrieve_a_draft_by_slug(self):
+        response = self.client.get(self.detail_url(self.unshelved))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_authenticated_list_includes_drafts(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.list_url)
+        self.assertEqual(len(response.data["results"]), 3)
+
+    def test_detail_carries_every_catalogued_field(self):
+        response = self.client.get(self.detail_url(self.dune))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["author"], "Frank Herbert")
+        self.assertEqual(response.data["genres"], ["Sci-Fi", "Classic"])
+        self.assertEqual(response.data["isbn"], "9780441013593")
+        self.assertEqual(response.data["release_year"], 1965)
+
+    def test_filter_by_genre_ignores_case(self):
+        # Dune stores "Sci-Fi" and Neuromancer stores "sci-fi"; both are the
+        # same genre and one query has to find both.
+        response = self.client.get(self.list_url, {"genre": "SCI-FI"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            {row["slug"] for row in response.data["results"]},
+            {self.dune.slug, self.neuromancer.slug},
+        )
+
+    def test_filter_by_unused_genre_returns_nothing_rather_than_erroring(self):
+        # Genres are free text, so there is no list to be wrong about.
+        response = self.client.get(self.list_url, {"genre": "westerns"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["results"], [])
+
+    def test_genre_filter_does_not_leak_drafts(self):
+        response = self.client.get(self.list_url, {"genre": "Unfinished"})
+        self.assertEqual(response.data["results"], [])
+
+    def test_search_matches_title_and_author(self):
+        by_title = self.client.get(self.list_url, {"search": "neuro"})
+        self.assertEqual(
+            [row["slug"] for row in by_title.data["results"]], [self.neuromancer.slug]
+        )
+        by_author = self.client.get(self.list_url, {"search": "herbert"})
+        self.assertEqual([row["slug"] for row in by_author.data["results"]], [self.dune.slug])
+
+    def test_search_matches_a_hyphenated_isbn(self):
+        # Stored without separators, so a number pasted off a back cover has to
+        # be stripped the same way before it is compared.
+        response = self.client.get(self.list_url, {"search": "978-0-441-01359-3"})
+        self.assertEqual([row["slug"] for row in response.data["results"]], [self.dune.slug])
+
+    def test_ordering_by_title(self):
+        response = self.client.get(self.list_url, {"ordering": "title"})
+        self.assertEqual(
+            [row["title"] for row in response.data["results"]], ["Dune", "Neuromancer"]
+        )
+
+    def test_ordering_by_year_puts_undated_books_last(self):
+        undated = Book.objects.create(
+            title="Anonymous Chapbook", author="Unknown", status=Book.Status.PUBLISHED
+        )
+        response = self.client.get(self.list_url, {"ordering": "year"})
+        self.assertEqual(
+            [row["slug"] for row in response.data["results"]],
+            [self.neuromancer.slug, self.dune.slug, undated.slug],
+        )
+
+    def test_unknown_ordering_is_rejected(self):
+        response = self.client.get(self.list_url, {"ordering": "titel"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("ordering", response.data)
+
+    def test_unknown_status_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.list_url, {"status": "pubished"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_anonymous_status_filter_cannot_surface_drafts(self):
+        response = self.client.get(self.list_url, {"status": "draft"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 2)
+
+    # --- genres action ------------------------------------------------------
+
+    def test_genres_are_counted_across_books(self):
+        response = self.client.get(self.genres_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        counts = {row["name"]: row["count"] for row in response.data}
+        self.assertEqual(counts["Cyberpunk"], 1)
+        # Dune stores "Sci-Fi" and Neuromancer stores "sci-fi". One filter
+        # option, not two: `?genre=` matches either way round, so offering both
+        # would be the same filter twice with its count split between them.
+        self.assertNotIn("sci-fi", counts)
+        self.assertEqual(counts["Sci-Fi"], 2)
+
+    def test_the_commonest_spelling_of_a_genre_is_the_one_offered(self):
+        for title in ("A", "B"):
+            Book.objects.create(
+                title=title,
+                author="Someone",
+                genres=["cyberpunk"],
+                status=Book.Status.PUBLISHED,
+            )
+        response = self.client.get(self.genres_url)
+        counts = {row["name"]: row["count"] for row in response.data}
+        # "cyberpunk" now outnumbers Neuromancer's "Cyberpunk" two to one.
+        self.assertEqual(counts["cyberpunk"], 3)
+        self.assertNotIn("Cyberpunk", counts)
+
+    def test_genres_are_ordered_commonest_first(self):
+        response = self.client.get(self.genres_url)
+        names = [row["name"] for row in response.data]
+        self.assertEqual(names[0], "Sci-Fi")
+        # Then alphabetically, so the order does not depend on row order.
+        self.assertEqual(names[1:], ["Classic", "Cyberpunk"])
+
+    def test_genres_exclude_drafts_for_anonymous_callers(self):
+        response = self.client.get(self.genres_url)
+        self.assertNotIn("Unfinished", {row["name"] for row in response.data})
+
+    def test_genres_include_drafts_for_the_owner(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.genres_url)
+        self.assertIn("Unfinished", {row["name"] for row in response.data})
+
+    # --- write --------------------------------------------------------------
+
+    def test_anonymous_cannot_create(self):
+        response = self.client.post(self.list_url, self.payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_authenticated_create(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            self.payload(genres=["Sci-Fi", "sci-fi "], isbn="0-06-051280-6"),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["slug"], "the-dispossessed")
+        # The response reflects what was stored, not what was sent.
+        self.assertEqual(response.data["genres"], ["Sci-Fi"])
+        self.assertEqual(response.data["isbn"], "0060512806")
+        self.assertEqual(response.data["status"], "draft")
+
+    def test_basic_auth_create(self):
+        credentials = base64.b64encode(b"zian:pw-for-tests").decode()
+        response = self.client.post(
+            self.list_url,
+            self.payload(),
+            format="json",
+            HTTP_AUTHORIZATION=f"Basic {credentials}",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_author_is_required(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url, {"title": "Untitled"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("author", response.data)
+
+    def test_blank_author_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(self.list_url, self.payload(author=""), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("author", response.data)
+
+    def test_bad_isbn_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url, self.payload(isbn="978-0-13-235088-5"), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("isbn", response.data)
+
+    def test_blank_isbn_is_accepted(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(self.list_url, self.payload(isbn=""), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["isbn"], "")
+
+    def test_impossible_release_years_are_rejected(self):
+        self.client.force_authenticate(self.user)
+        for year in (19, 1200, timezone.localdate().year + 5):
+            with self.subTest(year=year):
+                response = self.client.post(
+                    self.list_url, self.payload(release_year=year), format="json"
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn("release_year", response.data)
+
+    def test_next_year_is_accepted(self):
+        # A book bought in December can carry the next year on its title page.
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            self.payload(release_year=timezone.localdate().year + 1),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_blank_slug_is_rejected_rather_than_colliding(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(self.list_url, self.payload(slug="   "), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("slug", response.data)
+
+    def test_patch_keeps_the_url_when_slug_is_omitted(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.dune), {"review": "Still holds up."}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["slug"], "dune")
+        self.assertEqual(response.data["review"], "Still holds up.")
+
+    def test_publishing_is_a_status_change(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.unshelved), {"status": "published"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "published")
+        self.assertEqual(self.client.get(self.list_url).data["count"], 3)
+
+    def test_anonymous_cannot_delete(self):
+        response = self.client.delete(self.detail_url(self.dune))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_authenticated_delete(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.delete(self.detail_url(self.dune))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Book.objects.filter(pk=self.dune.pk).exists())
+
+    def test_deleting_a_book_leaves_posts_alone(self):
+        # Separate tables now, and a post filed under the `books` category is
+        # writing *about* reading rather than a shelf entry.
+        post = Post.objects.create(title="On Dune", categories=[Post.Category.BOOKS])
+        self.client.force_authenticate(self.user)
+        self.client.delete(self.detail_url(self.dune))
+        self.assertTrue(Post.objects.filter(pk=post.pk).exists())

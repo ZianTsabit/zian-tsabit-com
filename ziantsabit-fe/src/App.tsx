@@ -11,6 +11,7 @@ import { HEADER_HEIGHT } from "./constants/layout";
 import Posts from "./pages/Posts";
 import Projects from "./pages/Projects";
 import Books from "./pages/Books";
+import BookDetail from "./pages/BookDetail";
 import About from "./pages/About";
 import CV from "./pages/CV";
 import Admin from "./pages/Admin";
@@ -19,6 +20,9 @@ import AdminOverview from "./pages/AdminOverview";
 import AdminStats from "./pages/AdminStats";
 import AdminNewPost from "./pages/AdminNewPost";
 import AdminEditPost from "./pages/AdminEditPost";
+import AdminBookConsole from "./components/admin/AdminBookConsole";
+import AdminNewBook from "./pages/AdminNewBook";
+import AdminEditBook from "./pages/AdminEditBook";
 import PostDetail from "./pages/PostDetail";
 import NotFound from "./pages/NotFound";
 import './App.css'
@@ -68,11 +72,13 @@ function App() {
               path="/projects/:slug"
               element={<PostDetail backTo="/projects" backLabel="Projects" />}
             />
+            {/* The catalogue, not the feed filtered to `category=books`.
+                `/books/:slug` is a `Book`, so it renders `BookDetail` rather
+                than `PostDetail`; a post filed under the books category is
+                writing *about* reading and still reaches its page through
+                CROSS_CATEGORY_BASE_PATH, at /posts/:slug. */}
             <Route path="/books" element={<Books />} />
-            <Route
-              path="/books/:slug"
-              element={<PostDetail backTo="/books" backLabel="Books" />}
-            />
+            <Route path="/books/:slug" element={<BookDetail />} />
             {/* Not in Header's navItems: the owner's page, not a visitor's.
                 Nested so `Admin` checks the session exactly once and hands it
                 down via `<Outlet context>` to whichever of these is active. */}
@@ -82,6 +88,13 @@ function App() {
               <Route path="stats" element={<AdminStats />} />
               <Route path="new" element={<AdminNewPost />} />
               <Route path="edit/:slug" element={<AdminEditPost />} />
+              {/* The catalogue's own section, nested under the same shell so
+                  the session is checked once for it too. Its editors sit under
+                  `books/` rather than beside the post ones, since `edit/:slug`
+                  at the top level is already the post editor's. */}
+              <Route path="books" element={<AdminBookConsole />} />
+              <Route path="books/new" element={<AdminNewBook />} />
+              <Route path="books/edit/:slug" element={<AdminEditBook />} />
             </Route>
             {/* Must stay last: `*` matches anything, and the routes above are
                 only reached because a more specific match wins. `/admin/typo`

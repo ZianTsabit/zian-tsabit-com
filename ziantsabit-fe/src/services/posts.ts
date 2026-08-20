@@ -115,8 +115,16 @@ export class PostNotFoundError extends Error {
   }
 }
 
-/** Shared by every call below: turns a dead backend/CORS failure into one message. */
-async function request(
+/**
+ * Shared by every call below: turns a dead backend/CORS failure into one
+ * message.
+ *
+ * Exported because `books.ts` is the same kind of client against the same API
+ * -- a credential-free GET whose only two failure modes are "the server said
+ * no" and "the server said nothing" -- and a second copy of this would be a
+ * second place for that message to be worded differently.
+ */
+export async function publicRequest(
   url: string,
   signal?: AbortSignal,
   init: RequestInit = {},
@@ -184,7 +192,7 @@ export async function fetchPostPage(
   url: string,
   signal?: AbortSignal,
 ): Promise<PostPage> {
-  const response = await request(url, signal);
+  const response = await publicRequest(url, signal);
 
   if (!response.ok) {
     throw new Error(
@@ -200,7 +208,7 @@ export async function fetchPostPage(
  *  draft exists. */
 export async function fetchPost(slug: string, signal?: AbortSignal): Promise<Post> {
   const url = `${API_BASE_URL}/posts/${encodeURIComponent(slug)}/`;
-  const response = await request(url, signal);
+  const response = await publicRequest(url, signal);
 
   if (response.status === 404) throw new PostNotFoundError(slug);
   if (!response.ok) {
@@ -225,7 +233,7 @@ export async function recordPostView(
   signal?: AbortSignal,
 ): Promise<number> {
   const url = `${API_BASE_URL}/posts/${encodeURIComponent(slug)}/view/`;
-  const response = await request(url, signal, { method: "POST" });
+  const response = await publicRequest(url, signal, { method: "POST" });
 
   if (response.status === 404) throw new PostNotFoundError(slug);
   if (!response.ok) {

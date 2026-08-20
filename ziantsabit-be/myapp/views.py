@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Count, F, Min, Q, Sum
+from django.db.models import Avg, CharField, Count, F, Func, Min, Q, Sum
 from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -17,8 +17,33 @@ from rest_framework.permissions import (
 )
 from rest_framework.response import Response
 
-from .models import Post, PostViewDay
-from .serializers import PostSerializer, PostStatsSerializer, ViewCountSerializer
+from .models import Book, Post, PostViewDay, normalise_isbn
+from .serializers import (
+    BookSerializer,
+    GenreSerializer,
+    PostSerializer,
+    PostStatsSerializer,
+    ViewCountSerializer,
+)
+
+def reject_unknown(value, allowed, field):
+    """Turn an unrecognised query-param value into a 400 with the valid ones.
+
+    Shared by both viewsets. Dropping an unrecognised filter silently would
+    answer a typo'd `?category=book` with every post on the site, and a typo'd
+    `?ordering=titel` with the default order -- both of which look like the
+    filter worked.
+    """
+    if value not in allowed:
+        raise ValidationError(
+            {
+                field: [
+                    f"'{value}' is not a valid {field}. "
+                    f"Choose from: {', '.join(allowed)}."
+                ]
+            }
+        )
+
 
 # How many rows the statistics page's "most read" table asks for. Enough to
 # show a ranking rather than a podium, short enough to stay one glance.
@@ -184,15 +209,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _reject_unknown(value, allowed, field):
-        if value not in allowed:
-            raise ValidationError(
-                {
-                    field: [
-                        f"'{value}' is not a valid {field}. "
-                        f"Choose from: {', '.join(allowed)}."
-                    ]
-                }
-            )
+        reject_unknown(value, allowed, field)
 
     @extend_schema(responses={200: PostStatsSerializer})
     @action(
@@ -359,3 +376,206 @@ class PostViewSet(viewsets.ModelViewSet):
                 PostViewDay.objects.create(post=post, date=today, count=1)
         except IntegrityError:
             rows.update(count=F("count") + 1)
+
+
+# What ?ordering= accepts on the book catalogue, and the order_by() each means.
+# Every one of them ends in a total tie-breaker, so a page boundary cannot fall
+# between two rows the database is free to return in either order -- which on a
+# catalogue sorted by author (where a dozen rows share a value) would otherwise
+# show one book twice and drop another entirely.
+BOOK_ORDERINGS = {
+    "recent": ["-created_at", "-id"],
+    "title": ["title", "-id"],
+    "author": ["author", "title", "-id"],
+    # Newest release first, and the books with no year sit at the end rather
+    # than leading the list: `-release_year` alone puts NULLs first in Postgres,
+    # which reads as "these are the newest" when it means "these are unknown".
+    "year": [F("release_year").desc(nulls_last=True), "title", "-id"],
+}
+
+# How many genres `GET /api/books/genres/` returns. Long enough to be the whole
+# vocabulary of a personal shelf, short enough that a runaway list of typo'd
+# labels cannot become the page's biggest response.
+GENRE_LIMIT = 100
+
+
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="genre",
+                description=(
+                    "Only books carrying this genre. A book may have several, "
+                    "and is returned by each of them. Matched case-insensitively."
+                ),
+            ),
+            OpenApiParameter(
+                name="search",
+                description="Match against title, author or ISBN.",
+            ),
+            OpenApiParameter(
+                name="status",
+                description=(
+                    "Only books with this status. Authenticated callers only: "
+                    "anonymous requests always see published books and nothing else."
+                ),
+                enum=Book.Status.values,
+            ),
+            OpenApiParameter(
+                name="ordering",
+                description=(
+                    "Sort order. 'recent' (the default) is most-recently added "
+                    "first; 'title' and 'author' are A-Z; 'year' is newest "
+                    "release first, with undated books last."
+                ),
+                enum=sorted(BOOK_ORDERINGS),
+            ),
+        ],
+    ),
+)
+class BookViewSet(viewsets.ModelViewSet):
+    """CRUD for the book catalogue, addressed by slug rather than id.
+
+    Reads are open, writes need an authenticated user -- the same arrangement
+    `PostViewSet` has, and for the same reason.
+
+    Query params on list:
+      ?genre=<label>            (containment, case-insensitive)
+      ?search=<text>            (title, author or ISBN)
+      ?status=draft|published   (authenticated only)
+      ?ordering=recent|title|author|year   (default recent)
+    """
+
+    serializer_class = BookSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    lookup_field = "slug"
+
+    def get_queryset(self):
+        queryset = self._order(self._search(self._filter_genre(Book.objects.all())))
+
+        # Unpublished entries are hidden on the detail route too, not just on
+        # the list: filtering only the list would still hand a draft to anyone
+        # who guessed its slug.
+        user = self.request.user
+        if not (user and user.is_authenticated):
+            return queryset.filter(status=Book.Status.PUBLISHED)
+
+        status_value = self.request.query_params.get("status")
+        if status_value:
+            reject_unknown(status_value, Book.Status.values, "status")
+            queryset = queryset.filter(status=status_value)
+        return queryset
+
+    def _filter_genre(self, queryset):
+        label = (self.request.query_params.get("genre") or "").strip()
+        if not label:
+            return queryset
+
+        # Unlike `?category=` on posts, an unrecognised value is *not* an error
+        # here: genres are free text, so there is no list to be wrong about and
+        # an unused label legitimately matches nothing.
+        #
+        # Matched without regard to case, which takes two steps because an
+        # ArrayField has no `icontains` -- `__contains` is exact, so a filter
+        # naming "Sci-Fi" would miss a book filed under "sci-fi". `clean_labels`
+        # dedupes case-insensitively but keeps the first spelling *per book*, so
+        # both spellings genuinely do exist across rows. So: find the stored
+        # spellings that match, then ask for books carrying any of them.
+        spellings = [
+            name
+            for name in self._stored_genres()
+            if name.casefold() == label.casefold()
+        ]
+        if not spellings:
+            return queryset.none()
+        return queryset.filter(genres__overlap=spellings)
+
+    @staticmethod
+    def _stored_genres():
+        """Every distinct genre label in the table, however it was spelled.
+
+        `unnest` flattens the arrays into one row per label; `output_field` is
+        required because Django cannot infer the element type of a
+        set-returning function on its own.
+        """
+        return (
+            Book.objects.annotate(
+                name=Func(F("genres"), function="unnest", output_field=CharField())
+            )
+            .values_list("name", flat=True)
+            .distinct()
+        )
+
+    def _search(self, queryset):
+        term = (self.request.query_params.get("search") or "").strip()
+        if not term:
+            return queryset
+        # ISBNs are stored without separators, so the term is stripped of them
+        # too -- otherwise pasting "978-0-13-235088-4" off a back cover would
+        # match nothing at all.
+        compact = normalise_isbn(term)
+        matches = Q(title__icontains=term) | Q(author__icontains=term)
+        if compact:
+            matches |= Q(isbn__icontains=compact)
+        return queryset.filter(matches)
+
+    def _order(self, queryset):
+        ordering = self.request.query_params.get("ordering")
+        if not ordering:
+            # Meta.ordering already applies.
+            return queryset
+        reject_unknown(ordering, sorted(BOOK_ORDERINGS), "ordering")
+        return queryset.order_by(*BOOK_ORDERINGS[ordering])
+
+    @extend_schema(responses={200: GenreSerializer(many=True)})
+    @action(detail=False, methods=["get"], url_path="genres")
+    def genres(self, request):
+        """Every genre in the catalogue, with how many books carry it.
+
+        The catalogue's filter control needs a list of genres to offer, and
+        genres are free text -- so there is no enum to read them off, and the
+        only place they exist is the rows themselves. Counted here rather than
+        derived on the client from a page of results, which would offer only
+        the genres that happened to be on page one.
+
+        **Spellings are folded together, which the stored values are not.**
+        `clean_labels` dedupes a single book's genres case-insensitively but
+        keeps what was typed, so "Sci-Fi" on one book and "sci-fi" on another
+        are two distinct stored strings. Offering both as filter options would
+        be offering the same filter twice -- `?genre=` matches either way round
+        -- with the count split between them. The commonest spelling wins, ties
+        broken alphabetically so the answer does not depend on row order.
+
+        Scoped by `get_queryset()`, so an anonymous caller is told about the
+        genres of published books and nothing else -- a draft's genre would
+        otherwise be a filter option that returns nothing.
+        """
+        rows = (
+            self.get_queryset()
+            .annotate(
+                name=Func(F("genres"), function="unnest", output_field=CharField())
+            )
+            .values("name")
+            .annotate(count=Count("id"))
+        )
+
+        folded = {}
+        for row in rows:
+            entry = folded.setdefault(
+                row["name"].casefold(), {"spellings": {}, "count": 0}
+            )
+            entry["spellings"][row["name"]] = row["count"]
+            entry["count"] += row["count"]
+
+        genres = [
+            {
+                "name": max(sorted(entry["spellings"]), key=entry["spellings"].get),
+                "count": entry["count"],
+            }
+            for entry in folded.values()
+        ]
+        # Commonest first, then alphabetical: useful at the top, predictable
+        # further down. Sorted here rather than in SQL because the counts are
+        # only final once the spellings have been folded together.
+        genres.sort(key=lambda genre: (-genre["count"], genre["name"].casefold()))
+        return Response(GenreSerializer(genres[:GENRE_LIMIT], many=True).data)

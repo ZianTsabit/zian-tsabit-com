@@ -1,8 +1,106 @@
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
+
+# The earliest year worth accepting as a publication date. Gutenberg's press is
+# the floor rather than 0: a catalogue of printed books has no use for a year in
+# three digits, and a bare typo ("19" for "1985") is far likelier than a
+# genuinely medieval entry.
+EARLIEST_RELEASE_YEAR = 1450
+
+
+def max_release_year():
+    """The latest year a book may claim, one ahead of the server's own.
+
+    A callable rather than a constant because a hardcoded ceiling starts
+    rejecting valid entries the moment the year turns. One ahead of now, since
+    a book bought in December can carry the next year on its title page.
+
+    Referenced by name from a migration, so it has to stay a module-level
+    function -- inlining it as a lambda would make the field unserialisable.
+    """
+    return timezone.localdate().year + 1
+
+
+def clean_labels(labels):
+    """Trim, drop blanks, and drop repeats without regard to case.
+
+    Shared by a post's tags and a book's genres, which are the same idea twice:
+    a short list of free-form labels the author typed, where "Sci-Fi", " sci-fi "
+    and "SCI-FI" have to be one label rather than three. The first spelling seen
+    is the one kept, since that is the one the author chose to display.
+
+    Called from `save()` on both models rather than from a serializer, so the
+    Django admin and the shell get the same tidying the API path does.
+    """
+    seen = set()
+    cleaned = []
+    for label in labels or []:
+        # split()/join() also collapses runs of spaces inside a label.
+        text = " ".join(str(label).split())
+        key = text.casefold()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+    return cleaned
+
+
+def unique_slug(model, instance, base):
+    """Return `base`, suffixed with -2, -3, ... if that slug is already taken.
+
+    Takes the model explicitly because both content models generate slugs and
+    each has to dedupe against its own table only: a book and a post may share
+    a title without either having to live at a stuttered URL.
+    """
+    max_length = model._meta.get_field("slug").max_length
+    slug = base[:max_length]
+    siblings = model.objects.exclude(pk=instance.pk) if instance.pk else model.objects
+    suffix = 2
+    while siblings.filter(slug=slug).exists():
+        tail = f"-{suffix}"
+        slug = f"{base[:max_length - len(tail)]}{tail}"
+        suffix += 1
+    return slug
+
+
+def normalise_isbn(value):
+    """An ISBN as it is stored: no separators, an upper-case check digit.
+
+    ISBNs are written with hyphens in some places and spaces in others, and the
+    grouping is not fixed, so two people copying the same number off the same
+    book produce different strings. Stripping the separators makes the stored
+    value the number itself, which is what a search for one has to match.
+    """
+    return "".join(str(value or "").split()).replace("-", "").replace("\u2013", "").upper()
+
+
+def isbn_is_valid(compact):
+    """Whether a separator-free ISBN passes its own check digit.
+
+    Length alone would accept a transposed pair of digits, which is the typo
+    that makes an ISBN useless for a lookup while still looking right. Both
+    schemes are checked because both are in print: ISBN-10 on anything before
+    2007, ISBN-13 on everything since.
+    """
+    if len(compact) == 10:
+        if not (compact[:9].isdigit() and (compact[9].isdigit() or compact[9] == "X")):
+            return False
+        total = sum((10 - index) * int(digit) for index, digit in enumerate(compact[:9]))
+        total += 10 if compact[9] == "X" else int(compact[9])
+        return total % 11 == 0
+    if len(compact) == 13:
+        if not compact.isdigit():
+            return False
+        total = sum(
+            int(digit) * (1 if index % 2 == 0 else 3)
+            for index, digit in enumerate(compact)
+        )
+        return total % 10 == 0
+    return False
 
 
 class Post(models.Model):
@@ -90,23 +188,11 @@ class Post(models.Model):
     def clean_tags(tags):
         """Trim, drop blanks, and drop repeats without regard to case.
 
-        Here rather than in the serializer, for the same reason slug generation
-        is: the admin and the shell write posts too, and a tag list that is
-        only tidied on the API path would be tidy only some of the time.
-        "Django", " django " and "DJANGO" are one tag; the first spelling seen
-        is the one kept, since that is the one the author chose to display.
+        Delegates to `clean_labels`, which a book's genres share: they are the
+        same idea, and one of the two silently growing a different notion of
+        what counts as a duplicate is exactly the drift worth preventing.
         """
-        seen = set()
-        cleaned = []
-        for tag in tags or []:
-            # split()/join() also collapses runs of spaces inside a tag.
-            label = " ".join(str(tag).split())
-            key = label.casefold()
-            if not label or key in seen:
-                continue
-            seen.add(key)
-            cleaned.append(label)
-        return cleaned
+        return clean_labels(tags)
 
     @classmethod
     def clean_categories(cls, categories):
@@ -139,14 +225,7 @@ class Post(models.Model):
 
     def _unique_slug(self, base):
         """Return `base`, suffixed with -2, -3, ... if it is already taken."""
-        slug = base[:220]
-        siblings = Post.objects.exclude(pk=self.pk) if self.pk else Post.objects
-        suffix = 2
-        while siblings.filter(slug=slug).exists():
-            tail = f"-{suffix}"
-            slug = f"{base[:220 - len(tail)]}{tail}"
-            suffix += 1
-        return slug
+        return unique_slug(Post, self, base)
 
 
 class PostViewDay(models.Model):
@@ -195,3 +274,120 @@ class PostViewDay(models.Model):
 
     def __str__(self):
         return f"{self.post.slug} on {self.date}: {self.count}"
+
+
+class Book(models.Model):
+    """One book in the owner's catalogue.
+
+    Deliberately its own table rather than another `Post.Category`. A post is a
+    piece of writing with a title, a body and a publication date; a book is a
+    *thing that exists in the world* -- it has an author who is not the site's
+    owner, a year it was released, an ISBN that identifies it globally, and a
+    review that is the owner's writing *about* it rather than the entry itself.
+    Filing those on `Post` would mean five columns that every non-book post
+    leaves null, and a `/books` page that could not sort by author or year
+    because neither is a thing a post has.
+
+    The `books` category on `Post` still exists and still means something
+    different: an essay that happens to be about reading. This is the shelf.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        PUBLISHED = "published", "Published"
+
+    title = models.CharField(max_length=200)
+    # Derived from title (and author, when the title alone is taken) in save().
+    # Writable, so an entry's URL can be pinned by hand.
+    slug = models.SlugField(max_length=220, unique=True, blank=True)
+    # One free-text field rather than an Author table and a join. A catalogue
+    # this size never needs to hang anything off an author -- no biography, no
+    # count that a filter cannot produce -- and "Le Guin, Ursula K." vs "Ursula
+    # K. Le Guin" would immediately become two rows in a table that promised to
+    # prevent exactly that. Several authors go in as one string, as they read
+    # on the cover.
+    author = models.CharField(max_length=200)
+    # Free-form labels, not an enum: genre is argued about rather than agreed
+    # on, and a fixed list would be wrong for the first book that needed a term
+    # nobody thought of. An ArrayField for the same reasons as `Post.tags` --
+    # nothing reads a genre without its book, and Postgres is the only database
+    # this project supports.
+    genres = ArrayField(models.CharField(max_length=50), default=list, blank=True)
+    # Stored without separators (see `normalise_isbn`), so a search for the
+    # number matches however it was written on the copy in hand.
+    #
+    # Deliberately *not* unique: two editions of one book are two catalogue
+    # entries with two ISBNs, but a re-read noted twice, or a book held in both
+    # paperback and hardback, are cases where the same number legitimately
+    # appears again -- and a unique constraint over a field that is usually
+    # blank is a trap in any case.
+    isbn = models.CharField(max_length=17, blank=True)
+    # A year, not a date: what a catalogue records is the edition's year, which
+    # is what the copyright page gives you. Nullable because plenty of books
+    # arrive without one and refusing the entry over it would be absurd.
+    release_year = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[
+            MinValueValidator(EARLIEST_RELEASE_YEAR),
+            # A callable, so the ceiling follows the calendar. See above.
+            MaxValueValidator(max_release_year),
+        ],
+    )
+    # The owner's writing about the book. Markdown, rendered by the same
+    # `Markdown` component a post body goes through -- there is one renderer on
+    # the site and this is not the place to grow a second.
+    review = models.TextField(blank=True)
+    # The jacket. A URL rather than an ImageField for exactly the reasons
+    # `Post.cover_image_url` is one: the bytes are uploaded separately through
+    # /api/uploads/images/, so a cover can be attached before the entry exists,
+    # and a cover from a bookseller's own site is a URL somebody already has.
+    cover_image_url = models.URLField(max_length=500, blank=True)
+    cover_image_alt = models.CharField(max_length=200, blank=True)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.DRAFT
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Most recently added first: a catalogue is added to over time, and the
+        # last thing shelved is the thing the owner is likeliest to be looking
+        # for. `-id` breaks the tie, so a page boundary cannot land in the
+        # middle of two rows created in the same instant and show one twice.
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            # Containment (`genres @> ['fiction']`), which a btree cannot answer.
+            GinIndex(fields=["genres"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.title} by {self.author}"
+
+    @staticmethod
+    def clean_genres(genres):
+        """Trim, drop blanks and drop case-insensitive repeats."""
+        return clean_labels(genres)
+
+    def save(self, *args, **kwargs):
+        self.genres = self.clean_genres(self.genres)
+        self.isbn = normalise_isbn(self.isbn)
+        if not self.slug:
+            self.slug = unique_slug(Book, self, self._slug_base())
+        super().save(*args, **kwargs)
+
+    def _slug_base(self):
+        """The slug to derive, title first and author as the tie-breaker.
+
+        Two different books sharing a title is ordinary -- there are a dozen
+        called "Ulysses" -- and `/dune-2` says nothing about which one it is
+        while `/dune-frank-herbert` does. The author is only reached for when
+        the plain title is already taken, so the common case stays short.
+        """
+        base = slugify(self.title) or "book"
+        taken = Book.objects.exclude(pk=self.pk) if self.pk else Book.objects
+        if not taken.filter(slug=base).exists():
+            return base
+        author = slugify(self.author)
+        return f"{base}-{author}" if author else base

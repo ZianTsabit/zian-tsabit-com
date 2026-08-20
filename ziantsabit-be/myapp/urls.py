@@ -8,10 +8,11 @@ from rest_framework.routers import DefaultRouter
 
 from .auth import LoginView, LogoutView, SessionView
 from .uploads import ImageUploadView
-from .views import PostViewSet
+from .views import BookViewSet, PostViewSet
 
 router = DefaultRouter()
 router.register(r"posts", PostViewSet, basename="post")
+router.register(r"books", BookViewSet, basename="book")
 
 urlpatterns = [
     # Docs and auth first: the router's own index lives at "" and would
