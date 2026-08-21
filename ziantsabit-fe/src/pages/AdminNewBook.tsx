@@ -1,148 +1,142 @@
 import { useRef, useState, type FormEvent } from "react";
-import { Link as RouterLink, useLocation, useNavigate, useOutletContext } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useOutletContext } from "react-router-dom";
 import { Alert, Box, Link, Stack, Typography } from "@mui/material";
 
 import ActionButton from "../components/admin/ActionButton";
 import type { AdminOutletContext } from "../components/admin/AdminOutletContext";
 import AutosaveStatus from "../components/admin/AutosaveStatus";
-import PostFormFields from "../components/admin/PostFormFields";
+import BookFormFields from "../components/admin/BookFormFields";
 import { ApiError, type FieldErrors } from "../services/api";
 import {
-  createPost,
+  createBook,
   deriveSlug,
   emptyDraft,
-  updatePost,
-  type PostDraft,
-  type PostStatus,
+  updateBook,
+  type BookDraft,
+  type BookStatus,
   type WriteOptions,
-} from "../services/adminPosts";
+} from "../services/adminBooks";
+import type { Book } from "../services/books";
 import { useAutosave } from "../services/useAutosave";
-import { useTags } from "../services/usePaginatedPosts";
+import { useGenres } from "../services/useBooks";
 import { useWriteQueue } from "../services/useWriteQueue";
-import type { Post } from "../services/posts";
 
 /**
- * The slug an autosave should send for a post that already exists, or "" to
+ * The slug an autosave should send for a book that already exists, or "" to
  * leave the URL alone -- which is how `payload()` reads a blank one.
  *
- * A slug is generated once, by `Post.save()`, and never regenerated, so a post
- * created by autosave from a half-typed title would keep the half-typed URL
- * forever. Re-deriving it from the title on each save is what lets the URL
+ * A slug is generated once, by `Book.save()`, and never regenerated, so an
+ * entry created by autosave from a half-typed title would keep the half-typed
+ * URL forever. Re-deriving it from the title on each save is what lets the URL
  * catch up, until the author pins one by hand.
  */
-function slugToSend(source: PostDraft, currentSlug: string): string {
+function slugToSend(source: BookDraft, currentSlug: string): string {
   const typed = source.slug.trim();
   if (typed) return typed;
 
   const base = deriveSlug(source.title);
   if (!base) return "";
 
-  // `Post.save()` appends -2, -3... when the derived slug is taken, so a post
-  // sitting at "notes-2" whose title derives "notes" is already as close to its
-  // title as it can get. Asking for "notes" again would just be refused by the
-  // serializer's unique check, every three seconds. (`base` is only ever
-  // [a-z0-9_-], so it carries no regex metacharacters into this.)
-  const inSync = new RegExp(`^${base}(-\\d+)?$`).test(currentSlug);
+  // `Book.save()` disambiguates a taken title with the author, then with -2,
+  // -3..., so an entry sitting at "ulysses-james-joyce" whose title derives
+  // "ulysses" is already as close to its title as it can get. Asking for
+  // "ulysses" again would just be refused by the serializer's unique check,
+  // every three seconds. (`base` is only ever [a-z0-9_-], so it carries no
+  // regex metacharacters into this.)
+  const inSync = new RegExp(`^${base}(-.+)?$`).test(currentSlug);
   return inSync ? "" : base;
 }
 
 /**
- * Dedicated page for creating a post, reached from the "New post" button on
- * `/admin`. Deliberately a page and not a dialog -- a title, an excerpt and a
- * body are more to write than a fixed-height card comfortably holds.
+ * Dedicated page for adding a book, reached from "New book" on `/admin/books`.
+ *
+ * Mirrors `AdminNewPost` down to the autosave rules, deliberately: the two
+ * editors are the same problem, and a books form that saved differently would
+ * be a second set of the same bugs to find.
  */
-function AdminNewPost() {
+function AdminNewBook() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { onSessionSuspect } = useOutletContext<AdminOutletContext>();
 
-  // Set by AdminConsole's "New post" button, so a post started while looking
-  // at a filtered list arrives already carrying that tag.
-  const presetTags = (location.state as { tags?: string[] } | null)?.tags ?? [];
-
-  const [draft, setDraft] = useState<PostDraft>(() => emptyDraft(presetTags));
+  const [draft, setDraft] = useState<BookDraft>(emptyDraft);
   // Which button is in flight, or null. A plain boolean would not say which of
   // the two to relabel while the request runs.
-  const [saving, setSaving] = useState<PostStatus | null>(null);
+  const [saving, setSaving] = useState<BookStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
-  // Where the post lives once anything -- autosave or a button -- has written
+  // Where the entry lives once anything -- autosave or a button -- has written
   // it. A ref because `persist` reads it inside a queued task, long after the
   // render that would have handed it a state value; a second copy in state
-  // only exists so the page can say the draft is now in the posts list.
+  // only exists so the page can say the draft is now in the catalogue.
   const savedSlug = useRef<string | null>(null);
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
 
-  const tags = useTags();
+  const genres = useGenres();
   const enqueue = useWriteQueue();
 
-  const set = <K extends keyof PostDraft>(key: K, value: PostDraft[K]) =>
+  const set = <K extends keyof BookDraft>(key: K, value: BookDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  /** Update the post, letting its URL keep following the title. */
+  /** Update the entry, letting its URL keep following the title. */
   const update = async (
     target: string,
-    source: PostDraft,
-    status: PostStatus,
+    source: BookDraft,
+    status: BookStatus,
     options: WriteOptions,
-  ): Promise<Post> => {
+  ): Promise<Book> => {
     const wanted = slugToSend(source, target);
     try {
-      return await updatePost(target, { ...source, slug: wanted, status }, options);
+      return await updateBook(target, { ...source, slug: wanted }, status, options);
     } catch (failure: unknown) {
-      // A slug we derived ourselves can collide with another post's, and the
-      // serializer refuses it outright -- Post.save()'s -2 dedupe never gets a
-      // say. Keep the URL the server already chose rather than losing the
-      // writing over a URL nobody has seen yet. A slug the author typed is
-      // theirs, so that error stays theirs to see.
+      // A slug we derived ourselves can collide with another entry's, and the
+      // serializer refuses it outright -- Book.save()'s own disambiguation
+      // never gets a say. Keep the URL the server already chose rather than
+      // losing the writing over a URL nobody has seen yet. A slug the author
+      // typed is theirs, so that error stays theirs to see.
       const derived = wanted !== "" && source.slug.trim() === "";
-      if (
-        derived &&
-        failure instanceof ApiError &&
-        Boolean(failure.fieldErrors.slug)
-      ) {
-        return await updatePost(target, { ...source, slug: "", status }, options);
+      if (derived && failure instanceof ApiError && Boolean(failure.fieldErrors.slug)) {
+        return await updateBook(target, { ...source, slug: "" }, status, options);
       }
       throw failure;
     }
   };
 
   /**
-   * Create the post the first time, update it every time after.
+   * Create the entry the first time, update it every time after.
    *
-   * Autosave means the post usually already exists by the time a button is
-   * pressed, so "save" here is not a synonym for "create" any more -- without
-   * this, pressing Publish after an autosave would create a second copy.
+   * Autosave means the book usually already exists by the time a button is
+   * pressed, so "save" here is not a synonym for "create" -- without this,
+   * pressing Publish after an autosave would create a second copy.
    */
   const persist = async (
-    source: PostDraft,
-    status: PostStatus,
+    source: BookDraft,
+    status: BookStatus,
     // Autosave's, when it has any: on the way out of the page it asks for a
     // write that outlives the document. A button never passes one -- it is
     // followed by a navigation this page controls.
     options: WriteOptions = {},
-  ): Promise<Post> => {
+  ): Promise<Book> => {
     const target = savedSlug.current;
-    const post = target
+    const book = target
       ? await update(target, source, status, options)
-      : await createPost({ ...source, status }, options);
+      : await createBook(source, status, options);
 
-    savedSlug.current = post.slug;
-    setCreatedSlug(post.slug);
-    return post;
+    savedSlug.current = book.slug;
+    setCreatedSlug(book.slug);
+    return book;
   };
 
   // Status comes from the button, not from a field: the form has no status
-  // control any more, so "Save as draft" and "Publish" are the same save with
-  // a different value for it.
-  const save = async (status: PostStatus) => {
+  // control, so "Save as draft" and "Publish" are the same save with a
+  // different value for it.
+  const save = async (status: BookStatus) => {
     setSaving(status);
     setError(null);
     setFieldErrors({});
     try {
       await enqueue(() => persist(draft, status));
-      navigate("/admin/posts");
+      navigate("/admin/books");
     } catch (failure: unknown) {
       if (failure instanceof ApiError) {
         setError(failure.message);
@@ -157,13 +151,17 @@ function AdminNewPost() {
     }
   };
 
-  // Autosave always writes a draft, never a published post: publishing is a
+  // Autosave always writes a draft, never a published entry: publishing is a
   // decision, and it is the one thing on this page that must stay deliberate.
-  // Off until there is a title, because a post without one is a 400 rather
-  // than a draft, and off during a manual save so the two do not both write.
+  //
+  // Off until there is both a title and an author, because the API requires
+  // both -- a book with only a title is a 400 rather than a draft, and
+  // retrying that every three seconds would be an error banner for a form
+  // that is merely half-filled.
   const autosave = useAutosave({
     value: draft,
-    enabled: saving === null && draft.title.trim() !== "",
+    enabled:
+      saving === null && draft.title.trim() !== "" && draft.author.trim() !== "",
     save: (snapshot, options) => enqueue(() => persist(snapshot, "draft", options)),
     onError: (failure) => {
       if (failure instanceof ApiError && failure.status === 403) onSessionSuspect();
@@ -173,7 +171,7 @@ function AdminNewPost() {
   // Neither button is type="submit" -- each has to name its own status -- so
   // with this many fields the browser will not submit implicitly either. This
   // is the guard for the case where it does: it saves the safer of the two (a
-  // new post is a draft until its author says otherwise) and, more to the
+  // new entry is a draft until its author says otherwise) and, more to the
   // point, stops a default submission from reloading the page and taking an
   // unsaved draft with it.
   const handleSubmit = (event: FormEvent) => {
@@ -187,34 +185,32 @@ function AdminNewPost() {
         component="h1"
         sx={{ fontWeight: "bold", fontSize: { xs: "20px", sm: "24px" }, mb: 3 }}
       >
-        New post
+        New book
       </Typography>
 
       <form onSubmit={handleSubmit}>
         <Stack sx={{ gap: 2 }}>
           {error && <Alert severity="error">{error}</Alert>}
 
-          {/* Autosave creates a real post, so say so once it has: leaving this
-              page is no longer the same as discarding what is on it, and the
-              draft it left behind is now sitting in the posts list. */}
+          {/* Autosave creates a real entry, so say so once it has: leaving this
+              page is no longer the same as discarding what is on it. */}
           {createdSlug && (
             <Alert severity="info">
               Saved as a draft in{" "}
-              <Link component={RouterLink} to="/admin/posts" color="inherit">
-                your posts
+              <Link component={RouterLink} to="/admin/books" color="inherit">
+                your catalogue
               </Link>
               . Leaving this page keeps it; delete it there if you change your mind.
             </Alert>
           )}
 
-          <PostFormFields
+          <BookFormFields
             draft={draft}
             fieldErrors={fieldErrors}
             onChange={set}
             slugHelperText="Leave blank to generate it from the title."
-            showPublishedAt={false}
-            tagOptions={tags.map((tag) => tag.name)}
-            // The copy below is covered while the body is full screen, and
+            genreOptions={genres.map((genre) => genre.name)}
+            // The copy below is covered while the review is full screen, and
             // Ctrl+S works in there.
             fullscreenStatus={
               <AutosaveStatus state={autosave} savedLabel="Draft saved" duplicate />
@@ -243,7 +239,7 @@ function AdminNewPost() {
               <AutosaveStatus state={autosave} savedLabel="Draft saved" />
             </Box>
             {/* Publish sits last because it is the page's primary action, and
-                position is the only emphasis these carry now. */}
+                position is the only emphasis these carry. */}
             <ActionButton
               tone="neutral"
               disabled={saving !== null}
@@ -264,4 +260,4 @@ function AdminNewPost() {
   );
 }
 
-export default AdminNewPost;
+export default AdminNewBook;

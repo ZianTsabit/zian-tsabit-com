@@ -12,16 +12,13 @@ import {
 import ActionButton from "./ActionButton";
 import TagChip from "../TagChip";
 import { toPlainText } from "../markdownText";
-import type { Post } from "../../services/posts";
+import { formatIsbn, formatYear, type Book } from "../../services/books";
 import { MONO_FONT } from "../../theme";
 
-/* Rows rather than a table: a five-column table is unusable on a phone. */
-
-/** Matches the public entries: last edit, not publication. The time of day is
- *  kept, which they drop -- editing twice in an afternoon is exactly the case
- *  this list is for, and a bare date could not tell those two apart. */
-function formatDate(post: Post): string {
-  const date = new Date(post.updated_at);
+/** Matches the admin post list: last edit, with the time of day kept, since
+ *  editing twice in an afternoon is exactly the case this list is for. */
+function formatEdited(book: Book): string {
+  const date = new Date(book.updated_at);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString(undefined, {
     year: "numeric",
@@ -32,32 +29,25 @@ function formatDate(post: Post): string {
   });
 }
 
-function formatViews(count: number): string {
-  return `${count.toLocaleString()} ${count === 1 ? "view" : "views"}`;
-}
-
 interface RowProps {
-  post: Post;
+  book: Book;
   busy: boolean;
-  onEdit: (post: Post) => void;
-  onToggleStatus: (post: Post) => void;
-  onDelete: (post: Post) => void;
+  onEdit: (book: Book) => void;
+  onToggleStatus: (book: Book) => void;
+  onDelete: (book: Book) => void;
 }
 
-function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
-  const published = post.status === "published";
-  // Excerpt when there is one, the flattened body otherwise -- the same
-  // fallback the public entries use, so a row previews what a visitor sees.
-  const text = post.excerpt || toPlainText(post.body);
+function BookRow({ book, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
+  const published = book.status === "published";
+  const text = toPlainText(book.review);
 
   return (
     <Box
       component="article"
       sx={{
-        // No border, no surface -- the same divided list the public pages use
-        // (see PostCard). The rule between rows comes from the Stack below.
-        // Dimmed while its own request is in flight, so a slow publish is
-        // visibly doing something rather than looking ignored.
+        // No border, no surface -- the same divided list the rest of the site
+        // uses. Dimmed while its own request is in flight, so a slow publish
+        // is visibly doing something rather than looking ignored.
         opacity: busy ? 0.5 : 1,
         transition: "opacity 0.2s ease",
       }}
@@ -70,12 +60,30 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
           alignItems: { xs: "stretch", md: "center" },
         }}
       >
-        {/* Same running order as the public entries (see PostCard): title,
-            then updated | views, then the excerpt, then the chips. The slug
-            sits under the title because it identifies the row, and the two
-            admin-only chips lead the chip row so the post's own tags do not
-            get lost among them. */}
-        <Box sx={{ minWidth: 0 }}>
+        {/* A thumbnail rather than the public grid's full jacket: this list
+            runs 20 rows to a page and is scanned by title, with the cover only
+            confirming which edition a row is. */}
+        {book.cover_image_url && (
+          <Box
+            component="img"
+            src={book.cover_image_url}
+            alt=""
+            loading="lazy"
+            sx={{
+              width: 44,
+              height: 66,
+              flexShrink: 0,
+              objectFit: "cover",
+              borderRadius: 0.5,
+              border: "1px solid",
+              borderColor: "divider",
+              bgcolor: "background.paper",
+              alignSelf: "flex-start",
+            }}
+          />
+        )}
+
+        <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography
             component="h2"
             sx={{
@@ -84,8 +92,13 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
               color: "text.primary",
             }}
           >
-            {post.title}
+            {book.title}
           </Typography>
+
+          <Typography sx={{ fontSize: "13px", color: "text.primary" }}>
+            {book.author}
+          </Typography>
+
           <Typography
             sx={{
               fontFamily: MONO_FONT,
@@ -95,15 +108,16 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
               overflowWrap: "anywhere",
             }}
           >
-            /{post.slug}
+            /{book.slug}
           </Typography>
 
           <Typography sx={{ fontSize: "12px", color: "text.secondary", mt: 0.5 }}>
-            <Box component="time" dateTime={post.updated_at}>
-              Updated {formatDate(post)}
-            </Box>
+            {formatYear(book.release_year)}
+            {book.isbn && ` | ISBN ${formatIsbn(book.isbn)}`}
             {" | "}
-            {formatViews(post.view_count)}
+            <Box component="time" dateTime={book.updated_at}>
+              Updated {formatEdited(book)}
+            </Box>
           </Typography>
 
           {text && (
@@ -113,8 +127,6 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
                 color: "text.primary",
                 mt: 0.5,
                 whiteSpace: "pre-line",
-                // Two lines, not the public entries' three: this list runs 20
-                // rows to a page and is read by scanning titles.
                 display: "-webkit-box",
                 WebkitBoxOrient: "vertical",
                 WebkitLineClamp: 2,
@@ -129,33 +141,37 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
             direction="row"
             sx={{ gap: 1, mt: 1, alignItems: "center", flexWrap: "wrap" }}
           >
-            {/* Status leads, so the post's own tags do not get lost beside
-                the one admin-only label. */}
+            {/* The status chip leads, so the entry's own genres do not get
+                lost among the admin-only labels. */}
             <TagChip label={published ? "Published" : "Draft"} emphasis={published} />
-            {post.tags.map((tag) => (
-              <TagChip key={tag} label={tag} />
+            {book.genres.map((genre) => (
+              <TagChip key={genre} label={genre} />
             ))}
           </Stack>
         </Box>
 
         <Stack
           direction="row"
-          sx={{ gap: 1, flexShrink: 0, justifyContent: { xs: "flex-end", md: "initial" } }}
+          sx={{
+            gap: 1,
+            flexShrink: 0,
+            justifyContent: { xs: "flex-end", md: "initial" },
+          }}
         >
-          <ActionButton onClick={() => onEdit(post)} disabled={busy}>
+          <ActionButton onClick={() => onEdit(book)} disabled={busy}>
             Edit
           </ActionButton>
-          {/* One button, two actions, so the tone follows the label: taking a
-              post down is the page's ink, putting one up is the same primary
+          {/* One button, two actions, so the tone follows the label -- taking
+              an entry down is the page's ink, putting one up is the primary
               colour Publish carries in the editor. */}
           <ActionButton
             tone={published ? "neutral" : "primary"}
-            onClick={() => onToggleStatus(post)}
+            onClick={() => onToggleStatus(book)}
             disabled={busy}
           >
             {published ? "Unpublish" : "Publish"}
           </ActionButton>
-          <ActionButton tone="danger" onClick={() => onDelete(post)} disabled={busy}>
+          <ActionButton tone="danger" onClick={() => onDelete(book)} disabled={busy}>
             Delete
           </ActionButton>
         </Stack>
@@ -164,11 +180,11 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
   );
 }
 
-interface Props extends Omit<RowProps, "post" | "busy"> {
-  posts: Post[];
+interface Props extends Omit<RowProps, "book" | "busy"> {
+  books: Book[];
   phase: "loading" | "ready" | "error";
   error: string | null;
-  /** Slug of the post whose own request is in flight, if any. */
+  /** Slug of the book whose own request is in flight, if any. */
   busySlug: string | null;
   page: number;
   totalPages: number;
@@ -177,8 +193,8 @@ interface Props extends Omit<RowProps, "post" | "busy"> {
 }
 
 /** Renders the four states the list can be in: loading, error, empty, populated. */
-function AdminPostList({
-  posts,
+function AdminBookList({
+  books,
   phase,
   error,
   busySlug,
@@ -193,7 +209,7 @@ function AdminPostList({
   if (phase === "loading") {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
-        <CircularProgress aria-label="Loading posts" />
+        <CircularProgress aria-label="Loading books" />
       </Box>
     );
   }
@@ -214,10 +230,10 @@ function AdminPostList({
     );
   }
 
-  if (posts.length === 0) {
+  if (books.length === 0) {
     return (
       <Typography sx={{ color: "text.secondary", py: 6, textAlign: "center" }}>
-        No posts match this filter.
+        No books match this filter.
       </Typography>
     );
   }
@@ -225,23 +241,19 @@ function AdminPostList({
   return (
     <Stack sx={{ gap: 3, width: "100%" }}>
       {/* Its own Stack so the rule falls only between rows, not above the
-          error alert or the pagination. The gap is per side, since a
-          divider is a flex child of its own -- tighter than the public lists'
-          2.5/3 because these rows are denser and there are up to 20 of them. */}
+          pagination. The gap is per side, since a divider is a flex child. */}
       <Stack divider={<Divider />} sx={{ gap: { xs: 2, sm: 2.5 } }}>
-        {posts.map((post) => (
-          <PostRow
-            key={post.slug}
-            post={post}
-            busy={busySlug === post.slug}
+        {books.map((book) => (
+          <BookRow
+            key={book.slug}
+            book={book}
+            busy={busySlug === book.slug}
             onEdit={onEdit}
             onToggleStatus={onToggleStatus}
             onDelete={onDelete}
           />
         ))}
       </Stack>
-
-      {error && <Alert severity="error">{error}</Alert>}
 
       {totalPages > 1 && (
         <Pagination
@@ -255,4 +267,4 @@ function AdminPostList({
   );
 }
 
-export default AdminPostList;
+export default AdminBookList;

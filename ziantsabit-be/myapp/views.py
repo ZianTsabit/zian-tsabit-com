@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Count, F, Min, Q, Sum
+from django.db.models import Avg, CharField, Count, F, Func, Min, Q, Sum
 from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -17,8 +17,118 @@ from rest_framework.permissions import (
 )
 from rest_framework.response import Response
 
-from .models import Post, PostViewDay
-from .serializers import PostSerializer, PostStatsSerializer, ViewCountSerializer
+from .models import Book, Post, PostViewDay, normalise_isbn
+from .serializers import (
+    BookSerializer,
+    LabelCountSerializer,
+    PostSerializer,
+    PostStatsSerializer,
+    ViewCountSerializer,
+)
+
+def stored_labels(model, field):
+    """Every distinct label in one `ArrayField`, however it was spelled.
+
+    `unnest` flattens the arrays into one row per label; `output_field` is
+    required because Django cannot infer the element type of a set-returning
+    function on its own.
+    """
+    return (
+        model.objects.annotate(
+            name=Func(F(field), function="unnest", output_field=CharField())
+        )
+        .values_list("name", flat=True)
+        .distinct()
+    )
+
+
+def filter_by_label(queryset, model, field, label):
+    """Rows whose `ArrayField` carries `label`, ignoring case.
+
+    Shared by `?tag=` on posts and `?genre=` on books, which are the same
+    question asked of two free-text arrays.
+
+    Two steps, because an `ArrayField` has no `icontains` lookup and
+    `__contains` is exact: a filter naming "Sci-Fi" would miss a row labelled
+    "sci-fi". `clean_labels` dedupes case-insensitively but keeps the first
+    spelling *per row*, so both spellings genuinely do exist across a table.
+    So: find the stored spellings that match, then ask for rows carrying any
+    of them.
+
+    An unmatched label is an empty result, never an error -- these are free
+    text, so there is no list to be wrong about and an unused label
+    legitimately matches nothing.
+    """
+    spellings = [
+        name
+        for name in stored_labels(model, field)
+        if name.casefold() == label.casefold()
+    ]
+    if not spellings:
+        return queryset.none()
+    return queryset.filter(**{f"{field}__overlap": spellings})
+
+
+def label_counts(queryset, field, limit):
+    """`[{name, count}]` for one `ArrayField`, commonest first.
+
+    Backs the two vocabulary endpoints -- `/api/posts/tags/` and
+    `/api/books/genres/` -- which exist because a filter control needs a list of
+    labels to offer and free text has no enum to read one off. Counted over a
+    whole queryset rather than derived on the client from a page of results,
+    which would offer only the labels that happened to land on page one.
+
+    **Spellings are folded together, which the stored values are not.** Offering
+    "Sci-Fi" and "sci-fi" as separate options would be offering the same filter
+    twice -- `filter_by_label` matches either way round -- with the count split
+    between them. The commonest spelling wins; ties break alphabetically, so the
+    answer does not depend on row order.
+    """
+    rows = (
+        queryset.annotate(
+            name=Func(F(field), function="unnest", output_field=CharField())
+        )
+        .values("name")
+        .annotate(count=Count("id"))
+    )
+
+    folded = {}
+    for row in rows:
+        entry = folded.setdefault(row["name"].casefold(), {"spellings": {}, "count": 0})
+        entry["spellings"][row["name"]] = row["count"]
+        entry["count"] += row["count"]
+
+    labels = [
+        {
+            "name": max(sorted(entry["spellings"]), key=entry["spellings"].get),
+            "count": entry["count"],
+        }
+        for entry in folded.values()
+    ]
+    # Sorted here rather than in SQL, because the counts are only final once the
+    # spellings have been folded together.
+    labels.sort(key=lambda label: (-label["count"], label["name"].casefold()))
+    return labels[:limit]
+
+
+def reject_unknown(value, allowed, field):
+    """Turn an unrecognised query-param value into a 400 with the valid ones.
+
+    Shared by both viewsets. Dropping an unrecognised filter silently would
+    answer a typo'd `?category=book` with every post on the site, and a typo'd
+    `?ordering=titel` with the default order -- both of which look like the
+    filter worked.
+    """
+    if value not in allowed:
+        raise ValidationError(
+            {
+                field: [
+                    f"'{value}' is not a valid {field}. "
+                    f"Choose from: {', '.join(allowed)}."
+                ]
+            }
+        )
+
 
 # How many rows the statistics page's "most read" table asks for. Enough to
 # show a ranking rather than a podium, short enough to stay one glance.
@@ -50,12 +160,12 @@ ORDERINGS = {
     list=extend_schema(
         parameters=[
             OpenApiParameter(
-                name="category",
+                name="tag",
                 description=(
-                    "Only posts in this section. A post may be in several, and "
-                    "is returned by each of them."
+                    "Only posts carrying this tag. A post may have several, and "
+                    "is returned by each of them. Matched case-insensitively; "
+                    "an unused tag is an empty result, not an error."
                 ),
-                enum=Post.Category.values,
             ),
             OpenApiParameter(
                 name="status",
@@ -98,7 +208,7 @@ class PostViewSet(viewsets.ModelViewSet):
     can be exposed to the site without handing anyone a public delete button.
 
     Query params on list:
-      ?category=posts|books|projects|garage_sale
+      ?tag=<label>              (containment, case-insensitive)
       ?status=draft|published   (authenticated only; anonymous never sees drafts)
       ?ordering=recent|updated|views    (default recent)
       ?published_after=YYYY-MM-DD, ?published_before=YYYY-MM-DD (both inclusive)
@@ -110,7 +220,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = self._order(
-            self._filter_dates(self._filter_category(Post.objects.all()))
+            self._filter_dates(self._filter_tag(Post.objects.all()))
         )
 
         # Drafts are invisible to the public on detail routes too -- filtering
@@ -126,17 +236,18 @@ class PostViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(status=status)
         return queryset
 
-    def _filter_category(self, queryset):
-        category = self.request.query_params.get("category")
-        if not category:
+    def _filter_tag(self, queryset):
+        label = (self.request.query_params.get("tag") or "").strip()
+        if not label:
             return queryset
-        # An unrecognised value has to be an error: filtering it out silently
-        # would answer a typo'd ?category=book with every post on the site.
-        self._reject_unknown(category, Post.Category.values, "category")
-        # Containment, not equality: a post filed under several sections belongs
-        # on each of their pages. Still singular as a parameter -- it asks
-        # "which section am I looking at", which has one answer per page.
-        return queryset.filter(categories__contains=[category])
+        # Containment, not equality: a post carrying several tags belongs to
+        # each of their listings. Still singular as a parameter -- it asks
+        # "which tag am I browsing", which has one answer per page.
+        #
+        # Unlike the `?category=` param this replaced, an unrecognised value is
+        # *not* an error: tags are free text, so there is no enum to typo
+        # relative to. See `filter_by_label`.
+        return filter_by_label(queryset, Post, "tags", label)
 
     def _filter_dates(self, queryset):
         after = self._date_param("published_after")
@@ -184,15 +295,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _reject_unknown(value, allowed, field):
-        if value not in allowed:
-            raise ValidationError(
-                {
-                    field: [
-                        f"'{value}' is not a valid {field}. "
-                        f"Choose from: {', '.join(allowed)}."
-                    ]
-                }
-            )
+        reject_unknown(value, allowed, field)
 
     @extend_schema(responses={200: PostStatsSerializer})
     @action(
@@ -306,6 +409,32 @@ class PostViewSet(viewsets.ModelViewSet):
             ).data
         )
 
+    @extend_schema(responses={200: LabelCountSerializer(many=True)})
+    @action(detail=False, methods=["get"], url_path="tags")
+    def tags(self, request):
+        """Every tag in use, with how many posts carry it.
+
+        The feed's filter control needs a list of tags to offer, and tags are
+        free text -- so there is no enum to read them off, and building the list
+        from one page of results would offer only the tags that happened to be
+        on page one. This is what `?category=`'s fixed four values used to give
+        the client for nothing.
+
+        Scoped by `get_queryset()` rather than `Post.objects.all()`, so an
+        anonymous caller is told about the tags of published posts and nothing
+        else -- a draft's tag would otherwise be a filter option that returns
+        nothing, and would disclose what is being written about.
+
+        Read-open, unlike `stats`: a tag on a published post is already visible
+        on the post itself.
+        """
+        return Response(
+            LabelCountSerializer(
+                label_counts(self.get_queryset(), "tags", LABEL_LIMIT),
+                many=True,
+            ).data
+        )
+
     @extend_schema(
         request=None,
         responses={200: ViewCountSerializer},
@@ -359,3 +488,141 @@ class PostViewSet(viewsets.ModelViewSet):
                 PostViewDay.objects.create(post=post, date=today, count=1)
         except IntegrityError:
             rows.update(count=F("count") + 1)
+
+
+# What ?ordering= accepts on the book catalogue, and the order_by() each means.
+# Every one of them ends in a total tie-breaker, so a page boundary cannot fall
+# between two rows the database is free to return in either order -- which on a
+# catalogue sorted by author (where a dozen rows share a value) would otherwise
+# show one book twice and drop another entirely.
+BOOK_ORDERINGS = {
+    "recent": ["-created_at", "-id"],
+    "title": ["title", "-id"],
+    "author": ["author", "title", "-id"],
+    # Newest release first, and the books with no year sit at the end rather
+    # than leading the list: `-release_year` alone puts NULLs first in Postgres,
+    # which reads as "these are the newest" when it means "these are unknown".
+    "year": [F("release_year").desc(nulls_last=True), "title", "-id"],
+}
+
+# How many labels the two vocabulary endpoints return -- `/api/posts/tags/` and
+# `/api/books/genres/`. Long enough to be the whole vocabulary of a personal
+# site, short enough that a runaway list of typo'd labels cannot become the
+# page's biggest response.
+LABEL_LIMIT = 100
+
+
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="genre",
+                description=(
+                    "Only books carrying this genre. A book may have several, "
+                    "and is returned by each of them. Matched case-insensitively."
+                ),
+            ),
+            OpenApiParameter(
+                name="search",
+                description="Match against title, author or ISBN.",
+            ),
+            OpenApiParameter(
+                name="status",
+                description=(
+                    "Only books with this status. Authenticated callers only: "
+                    "anonymous requests always see published books and nothing else."
+                ),
+                enum=Book.Status.values,
+            ),
+            OpenApiParameter(
+                name="ordering",
+                description=(
+                    "Sort order. 'recent' (the default) is most-recently added "
+                    "first; 'title' and 'author' are A-Z; 'year' is newest "
+                    "release first, with undated books last."
+                ),
+                enum=sorted(BOOK_ORDERINGS),
+            ),
+        ],
+    ),
+)
+class BookViewSet(viewsets.ModelViewSet):
+    """CRUD for the book catalogue, addressed by slug rather than id.
+
+    Reads are open, writes need an authenticated user -- the same arrangement
+    `PostViewSet` has, and for the same reason.
+
+    Query params on list:
+      ?genre=<label>            (containment, case-insensitive)
+      ?search=<text>            (title, author or ISBN)
+      ?status=draft|published   (authenticated only)
+      ?ordering=recent|title|author|year   (default recent)
+    """
+
+    serializer_class = BookSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    lookup_field = "slug"
+
+    def get_queryset(self):
+        queryset = self._order(self._search(self._filter_genre(Book.objects.all())))
+
+        # Unpublished entries are hidden on the detail route too, not just on
+        # the list: filtering only the list would still hand a draft to anyone
+        # who guessed its slug.
+        user = self.request.user
+        if not (user and user.is_authenticated):
+            return queryset.filter(status=Book.Status.PUBLISHED)
+
+        status_value = self.request.query_params.get("status")
+        if status_value:
+            reject_unknown(status_value, Book.Status.values, "status")
+            queryset = queryset.filter(status=status_value)
+        return queryset
+
+    def _filter_genre(self, queryset):
+        label = (self.request.query_params.get("genre") or "").strip()
+        if not label:
+            return queryset
+        # Case-insensitive containment, exactly as `?tag=` is on posts -- see
+        # `filter_by_label` for why an ArrayField needs two steps for this, and
+        # why an unused label is an empty result rather than a 400.
+        return filter_by_label(queryset, Book, "genres", label)
+
+    def _search(self, queryset):
+        term = (self.request.query_params.get("search") or "").strip()
+        if not term:
+            return queryset
+        # ISBNs are stored without separators, so the term is stripped of them
+        # too -- otherwise pasting "978-0-13-235088-4" off a back cover would
+        # match nothing at all.
+        compact = normalise_isbn(term)
+        matches = Q(title__icontains=term) | Q(author__icontains=term)
+        if compact:
+            matches |= Q(isbn__icontains=compact)
+        return queryset.filter(matches)
+
+    def _order(self, queryset):
+        ordering = self.request.query_params.get("ordering")
+        if not ordering:
+            # Meta.ordering already applies.
+            return queryset
+        reject_unknown(ordering, sorted(BOOK_ORDERINGS), "ordering")
+        return queryset.order_by(*BOOK_ORDERINGS[ordering])
+
+    @extend_schema(responses={200: LabelCountSerializer(many=True)})
+    @action(detail=False, methods=["get"], url_path="genres")
+    def genres(self, request):
+        """Every genre in the catalogue, with how many books carry it.
+
+        Scoped by `get_queryset()`, so an anonymous caller is told about the
+        genres of published books and nothing else -- a draft's genre would
+        otherwise be a filter option that returns nothing. The folding of
+        spellings and the ordering are `label_counts`'s; see it for why both
+        matter.
+        """
+        return Response(
+            LabelCountSerializer(
+                label_counts(self.get_queryset(), "genres", LABEL_LIMIT),
+                many=True,
+            ).data
+        )

@@ -11,7 +11,7 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-from .models import Post, PostViewDay
+from .models import Book, Post, PostViewDay, isbn_is_valid, normalise_isbn
 from .views import DAILY_VIEWS_DAYS
 
 # The CORS tests below pin this rather than relying on settings.py's default,
@@ -23,13 +23,13 @@ SPA_ORIGIN = "http://spa.test"
 
 class PostModelTests(APITestCase):
     def test_slug_is_derived_from_title(self):
-        post = Post.objects.create(title="Clean Code", categories=[Post.Category.BOOKS])
+        post = Post.objects.create(title="Clean Code")
         self.assertEqual(post.slug, "clean-code")
 
     def test_duplicate_titles_get_distinct_slugs(self):
-        first = Post.objects.create(title="Clean Code", categories=[Post.Category.BOOKS])
-        second = Post.objects.create(title="Clean Code", categories=[Post.Category.BOOKS])
-        third = Post.objects.create(title="Clean Code", categories=[Post.Category.BOOKS])
+        first = Post.objects.create(title="Clean Code")
+        second = Post.objects.create(title="Clean Code")
+        third = Post.objects.create(title="Clean Code")
         self.assertEqual(
             [first.slug, second.slug, third.slug],
             ["clean-code", "clean-code-2", "clean-code-3"],
@@ -37,24 +37,23 @@ class PostModelTests(APITestCase):
 
     def test_explicit_slug_is_kept(self):
         post = Post.objects.create(
-            title="Clean Code", slug="the-one", categories=[Post.Category.BOOKS]
+            title="Clean Code", slug="the-one"
         )
         self.assertEqual(post.slug, "the-one")
 
     def test_publishing_stamps_published_at(self):
         post = Post.objects.create(
             title="Shipped",
-            categories=[Post.Category.PROJECTS],
             status=Post.Status.PUBLISHED,
         )
         self.assertIsNotNone(post.published_at)
 
     def test_draft_has_no_published_at(self):
-        post = Post.objects.create(title="Draft", categories=[Post.Category.BOOKS])
+        post = Post.objects.create(title="Draft")
         self.assertIsNone(post.published_at)
 
     def test_title_of_only_punctuation_still_gets_a_slug(self):
-        post = Post.objects.create(title="!!!", categories=[Post.Category.BOOKS])
+        post = Post.objects.create(title="!!!")
         self.assertEqual(post.slug, "post")
 
 
@@ -65,15 +64,14 @@ class PostAPITests(APITestCase):
         cls.list_url = reverse("post-list")
         cls.published = Post.objects.create(
             title="Published Book",
-            categories=[Post.Category.BOOKS],
             status=Post.Status.PUBLISHED,
         )
         cls.draft = Post.objects.create(
-            title="Draft Project", categories=[Post.Category.PROJECTS]
+            title="Draft Project"
         )
         cls.sale = Post.objects.create(
             title="Old Desk",
-            categories=[Post.Category.GARAGE_SALE],
+            tags=["Furniture"],
             status=Post.Status.PUBLISHED,
         )
 
@@ -97,46 +95,59 @@ class PostAPITests(APITestCase):
         response = self.client.get(self.list_url)
         self.assertEqual(len(response.data["results"]), 3)
 
-    def test_filter_by_category(self):
-        response = self.client.get(self.list_url, {"category": "garage_sale"})
+    def test_filter_by_tag(self):
+        response = self.client.get(self.list_url, {"tag": "Furniture"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual([r["slug"] for r in response.data["results"]], ["old-desk"])
 
-    def test_filter_by_posts_category(self):
-        ordinary = Post.objects.create(
-            title="Just a Post",
-            categories=[Post.Category.POSTS],
+    def test_filter_by_tag_ignores_case(self):
+        response = self.client.get(self.list_url, {"tag": "fUrNiTuRe"})
+        self.assertEqual([r["slug"] for r in response.data["results"]], ["old-desk"])
+
+    def test_filter_by_tag_matches_a_second_spelling_on_another_post(self):
+        # clean_tags dedupes case-insensitively *per post*, so two posts can
+        # legitimately hold two spellings of one tag; a filter naming either
+        # has to find both.
+        other = Post.objects.create(
+            title="Another Desk",
+            tags=["furniture"],
             status=Post.Status.PUBLISHED,
         )
-        response = self.client.get(self.list_url, {"category": "posts"})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        response = self.client.get(self.list_url, {"tag": "Furniture"})
         self.assertEqual(
-            [r["slug"] for r in response.data["results"]], [ordinary.slug]
+            {r["slug"] for r in response.data["results"]}, {"old-desk", other.slug}
         )
 
-    def test_unknown_category_is_rejected(self):
-        response = self.client.get(self.list_url, {"category": "book"})
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("category", response.data)
+    def test_unused_tag_returns_nothing_rather_than_erroring(self):
+        # The opposite of the ?category= param this replaced: tags are free
+        # text, so there is no enum to be wrong about.
+        response = self.client.get(self.list_url, {"tag": "recipes"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["results"], [])
 
-    def test_a_post_in_two_sections_is_returned_by_both(self):
+    def test_tag_filter_does_not_leak_drafts(self):
+        Post.objects.create(title="Secret", tags=["Furniture"])
+        response = self.client.get(self.list_url, {"tag": "Furniture"})
+        self.assertEqual([r["slug"] for r in response.data["results"]], ["old-desk"])
+
+    def test_a_post_with_two_tags_is_returned_by_both(self):
         both = Post.objects.create(
             title="Building a Bookshelf",
-            categories=[Post.Category.BOOKS, Post.Category.PROJECTS],
+            tags=["Books", "Projects"],
             status=Post.Status.PUBLISHED,
         )
-        for section in ("books", "projects"):
-            with self.subTest(section=section):
-                response = self.client.get(self.list_url, {"category": section})
+        for label in ("books", "projects"):
+            with self.subTest(tag=label):
+                response = self.client.get(self.list_url, {"tag": label})
                 slugs = [r["slug"] for r in response.data["results"]]
                 self.assertIn(both.slug, slugs)
 
     def test_a_post_appears_once_in_an_unfiltered_list(self):
-        # Containment, not a join: the multi-section post must not arrive twice
+        # Containment, not a join: the multi-tag post must not arrive twice
         # just because it matches on two counts.
         Post.objects.create(
             title="Building a Bookshelf",
-            categories=[Post.Category.BOOKS, Post.Category.PROJECTS],
+            tags=["Books", "Projects"],
             status=Post.Status.PUBLISHED,
         )
         response = self.client.get(self.list_url)
@@ -157,7 +168,7 @@ class PostAPITests(APITestCase):
 
     def test_anonymous_cannot_create(self):
         response = self.client.post(
-            self.list_url, {"title": "Nope", "categories": ["books"]}, format="json"
+            self.list_url, {"title": "Nope"}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(Post.objects.count(), 3)
@@ -166,7 +177,7 @@ class PostAPITests(APITestCase):
         self.client.force_authenticate(self.user)
         response = self.client.post(
             self.list_url,
-            {"title": "A New Post", "categories": ["books"], "body": "hello"},
+            {"title": "A New Post", "body": "hello"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -179,71 +190,39 @@ class PostAPITests(APITestCase):
         token = base64.b64encode(b"zian:pw-for-tests").decode()
         response = self.client.post(
             self.list_url,
-            {"title": "Via Curl", "categories": ["books"]},
+            {"title": "Via Curl"},
             format="json",
             HTTP_AUTHORIZATION=f"Basic {token}",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_create_rejects_unknown_category(self):
+    def test_create_accepts_any_tag(self):
+        # No enum to be rejected against any more -- a tag is whatever the
+        # author typed.
         self.client.force_authenticate(self.user)
         response = self.client.post(
-            self.list_url, {"title": "X", "categories": ["recipes"]}, format="json"
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("categories", response.data)
-
-    def test_create_rejects_empty_categories(self):
-        # A post filed under nothing appears on no page: invisible, and only
-        # discoverable by going looking for it in the admin list.
-        self.client.force_authenticate(self.user)
-        response = self.client.post(
-            self.list_url, {"title": "Homeless", "categories": []}, format="json"
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("categories", response.data)
-
-    def test_create_rejects_missing_categories(self):
-        self.client.force_authenticate(self.user)
-        response = self.client.post(
-            self.list_url, {"title": "Homeless"}, format="json"
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("categories", response.data)
-
-    def test_categories_are_deduplicated_and_ordered_on_write(self):
-        # Membership is a set, so the order the boxes were ticked in must not
-        # survive into the API -- two identical posts would otherwise compare
-        # unequal on nothing but row order.
-        self.client.force_authenticate(self.user)
-        response = self.client.post(
-            self.list_url,
-            {
-                "title": "Tidied",
-                "categories": ["projects", "books", "projects"],
-            },
-            format="json",
+            self.list_url, {"title": "X", "tags": ["recipes"]}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["categories"], ["books", "projects"])
-        self.assertEqual(
-            Post.objects.get(slug=response.data["slug"]).categories,
-            ["books", "projects"],
-        )
+        self.assertEqual(response.data["tags"], ["recipes"])
 
-    def test_model_save_orders_categories_for_the_shell_too(self):
-        post = Post.objects.create(
-            title="Shell Written",
-            categories=[Post.Category.GARAGE_SALE, Post.Category.POSTS],
-        )
-        post.refresh_from_db()
-        self.assertEqual(post.categories, ["posts", "garage_sale"])
+    def test_create_accepts_an_untagged_post(self):
+        # An empty list and a missing key were both 400s when this was
+        # `categories`, because a post filed under nothing appeared on no page.
+        # The feed lists every post regardless of its tags, so an untagged post
+        # is simply one nobody has labelled yet.
+        self.client.force_authenticate(self.user)
+        for body in ({"title": "Bare", "tags": []}, {"title": "Barer"}):
+            with self.subTest(body=body):
+                response = self.client.post(self.list_url, body, format="json")
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+                self.assertEqual(response.data["tags"], [])
 
     def test_create_rejects_blank_slug(self):
         self.client.force_authenticate(self.user)
         response = self.client.post(
             self.list_url,
-            {"title": "X", "categories": ["books"], "slug": "   "},
+            {"title": "X", "slug": "   "},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -274,7 +253,6 @@ class PostAPITests(APITestCase):
             {
                 "title": "Renamed",
                 "slug": self.published.slug,
-                "categories": ["books"],
                 "excerpt": "",
                 "body": "",
                 "status": "published",
@@ -357,7 +335,7 @@ class SessionAuthTests(APITestCase):
     def create_post(self, token, title="Written By The Admin Page"):
         return self.client.post(
             self.posts_url,
-            {"title": title, "categories": ["books"]},
+            {"title": title},
             format="json",
             HTTP_X_CSRFTOKEN=token,
         )
@@ -416,7 +394,7 @@ class SessionAuthTests(APITestCase):
     def test_write_with_a_session_but_no_csrf_token_is_rejected(self):
         self.log_in()
         response = self.client.post(
-            self.posts_url, {"title": "No Token", "categories": ["books"]}, format="json"
+            self.posts_url, {"title": "No Token"}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(Post.objects.filter(title="No Token").exists())
@@ -437,7 +415,7 @@ class SessionAuthTests(APITestCase):
     def test_session_write_can_see_and_publish_a_draft(self):
         # The admin page's whole job: drafts are invisible anonymously.
         token = self.log_in()
-        draft = Post.objects.create(title="Hidden", categories=[Post.Category.BOOKS])
+        draft = Post.objects.create(title="Hidden")
         detail = reverse("post-detail", kwargs={"slug": draft.slug})
 
         self.assertEqual(
@@ -558,7 +536,7 @@ class CoverImageTests(APITestCase):
         cls.list_url = reverse("post-list")
 
     def test_cover_fields_default_to_blank(self):
-        post = Post.objects.create(title="No Cover", categories=[Post.Category.BOOKS])
+        post = Post.objects.create(title="No Cover")
         self.assertEqual(post.cover_image_url, "")
         self.assertEqual(post.cover_image_alt, "")
 
@@ -568,7 +546,6 @@ class CoverImageTests(APITestCase):
             self.list_url,
             {
                 "title": "With Cover",
-                "categories": ["books"],
                 "cover_image_url": "http://localhost:9000/ziantsabit-media/a.png",
                 "cover_image_alt": "A blue square",
             },
@@ -585,7 +562,7 @@ class CoverImageTests(APITestCase):
         self.client.force_authenticate(self.user)
         response = self.client.post(
             self.list_url,
-            {"title": "Bad", "categories": ["books"], "cover_image_url": "not a url"},
+            {"title": "Bad", "cover_image_url": "not a url"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -594,7 +571,6 @@ class CoverImageTests(APITestCase):
     def test_cover_is_exposed_to_anonymous_readers(self):
         Post.objects.create(
             title="Public",
-            categories=[Post.Category.BOOKS],
             status=Post.Status.PUBLISHED,
             cover_image_url="http://localhost:9000/ziantsabit-media/b.png",
         )
@@ -607,7 +583,6 @@ class CoverImageTests(APITestCase):
     def test_cover_can_be_cleared(self):
         post = Post.objects.create(
             title="Clear Me",
-            categories=[Post.Category.BOOKS],
             cover_image_url="http://localhost:9000/ziantsabit-media/c.png",
         )
         self.client.force_authenticate(self.user)
@@ -629,15 +604,13 @@ class ViewCountTests(APITestCase):
         cls.list_url = reverse("post-list")
         cls.popular = Post.objects.create(
             title="Popular",
-            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
         cls.quiet = Post.objects.create(
             title="Quiet",
-            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
-        cls.draft = Post.objects.create(title="Hidden", categories=[Post.Category.POSTS])
+        cls.draft = Post.objects.create(title="Hidden")
 
     def view_url(self, post):
         return reverse("post-record-view", kwargs={"slug": post.slug})
@@ -710,15 +683,15 @@ class ViewCountTests(APITestCase):
             [self.quiet.slug, self.popular.slug],
         )
 
-    def test_ordering_combines_with_a_category_filter(self):
+    def test_ordering_combines_with_a_tag_filter(self):
         book = Post.objects.create(
             title="A Book",
-            categories=[Post.Category.BOOKS],
+            tags=["Books"],
             status=Post.Status.PUBLISHED,
         )
         Post.objects.filter(pk=self.popular.pk).update(view_count=9)
         response = self.client.get(
-            self.list_url, {"ordering": "views", "category": "books"}
+            self.list_url, {"ordering": "views", "tag": "books"}
         )
         self.assertEqual(
             [row["slug"] for row in response.data["results"]], [book.slug]
@@ -737,15 +710,13 @@ class ViewDayTests(APITestCase):
     def setUpTestData(cls):
         cls.post = Post.objects.create(
             title="Popular",
-            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
         cls.other = Post.objects.create(
             title="Also Read",
-            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
-        cls.draft = Post.objects.create(title="Hidden", categories=[Post.Category.POSTS])
+        cls.draft = Post.objects.create(title="Hidden")
 
     def view_url(self, post):
         return reverse("post-record-view", kwargs={"slug": post.slug})
@@ -800,13 +771,12 @@ class TagTests(APITestCase):
         return reverse("post-detail", kwargs={"slug": post.slug})
 
     def test_a_post_starts_with_no_tags(self):
-        post = Post.objects.create(title="Untagged", categories=[Post.Category.POSTS])
+        post = Post.objects.create(title="Untagged")
         self.assertEqual(post.tags, [])
 
     def test_tags_are_trimmed_and_blanks_dropped(self):
         post = Post.objects.create(
             title="Tagged",
-            categories=[Post.Category.POSTS],
             tags=["  django ", "", "   ", "postgres"],
         )
         self.assertEqual(post.tags, ["django", "postgres"])
@@ -814,7 +784,6 @@ class TagTests(APITestCase):
     def test_repeats_are_dropped_case_insensitively_keeping_the_first_spelling(self):
         post = Post.objects.create(
             title="Repeats",
-            categories=[Post.Category.POSTS],
             tags=["Django", "django", "DJANGO"],
         )
         self.assertEqual(post.tags, ["Django"])
@@ -822,7 +791,6 @@ class TagTests(APITestCase):
     def test_order_is_preserved(self):
         post = Post.objects.create(
             title="Ordered",
-            categories=[Post.Category.POSTS],
             tags=["zebra", "apple", "mango"],
         )
         self.assertEqual(post.tags, ["zebra", "apple", "mango"])
@@ -830,7 +798,6 @@ class TagTests(APITestCase):
     def test_tags_are_serialised(self):
         post = Post.objects.create(
             title="Serialised",
-            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
             tags=["django", "rest"],
         )
@@ -844,7 +811,6 @@ class TagTests(APITestCase):
             self.list_url,
             {
                 "title": "Created",
-                "categories": [Post.Category.POSTS],
                 "tags": ["Django", " django ", "postgres"],
             },
             format="json",
@@ -855,7 +821,7 @@ class TagTests(APITestCase):
 
     def test_patch_replaces_the_whole_list(self):
         post = Post.objects.create(
-            title="Replaced", categories=[Post.Category.POSTS], tags=["one", "two"]
+            title="Replaced", tags=["one", "two"]
         )
         self.client.force_authenticate(self.user)
         response = self.client.patch(
@@ -867,7 +833,7 @@ class TagTests(APITestCase):
 
     def test_an_unrelated_patch_leaves_tags_alone(self):
         post = Post.objects.create(
-            title="Kept", categories=[Post.Category.POSTS], tags=["one", "two"]
+            title="Kept", tags=["one", "two"]
         )
         self.client.force_authenticate(self.user)
         response = self.client.patch(
@@ -879,7 +845,7 @@ class TagTests(APITestCase):
 
     def test_tags_can_be_cleared(self):
         post = Post.objects.create(
-            title="Cleared", categories=[Post.Category.POSTS], tags=["one"]
+            title="Cleared", tags=["one"]
         )
         self.client.force_authenticate(self.user)
         response = self.client.patch(self.detail_url(post), {"tags": []}, format="json")
@@ -893,7 +859,6 @@ class TagTests(APITestCase):
             self.list_url,
             {
                 "title": "Too long",
-                "categories": [Post.Category.POSTS],
                 "tags": ["x" * 51],
             },
             format="json",
@@ -902,7 +867,7 @@ class TagTests(APITestCase):
         self.assertIn("tags", response.data)
 
     def test_anonymous_callers_cannot_write_tags(self):
-        post = Post.objects.create(title="Guarded", categories=[Post.Category.POSTS])
+        post = Post.objects.create(title="Guarded")
         response = self.client.patch(
             self.detail_url(post), {"tags": ["sneaky"]}, format="json"
         )
@@ -929,12 +894,10 @@ class UpdatedOrderingTests(APITestCase):
         # therefore disagree about it, which is the whole point of the option.
         cls.revised = Post.objects.create(
             title="Revised",
-            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
         cls.newer = Post.objects.create(
             title="Newer",
-            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
         Post.objects.filter(pk=cls.revised.pk).update(
@@ -984,19 +947,17 @@ class UpdatedOrderingTests(APITestCase):
         )
 
     def test_drafts_stay_hidden_from_anonymous_callers(self):
-        draft = Post.objects.create(title="Hidden", categories=[Post.Category.POSTS])
+        draft = Post.objects.create(title="Hidden")
         Post.objects.filter(pk=draft.pk).update(updated_at=timezone.now())
         self.assertNotIn(draft.slug, self.slugs(ordering="updated"))
 
-    def test_it_combines_with_a_category_filter(self):
+    def test_it_combines_with_a_tag_filter(self):
         book = Post.objects.create(
             title="A Book",
-            categories=[Post.Category.BOOKS],
+            tags=["Books"],
             status=Post.Status.PUBLISHED,
         )
-        self.assertEqual(
-            self.slugs(ordering="updated", category="books"), [book.slug]
-        )
+        self.assertEqual(self.slugs(ordering="updated", tag="books"), [book.slug])
 
 
 class DateFilterTests(APITestCase):
@@ -1011,13 +972,12 @@ class DateFilterTests(APITestCase):
         cls.recent = cls._post("Recent", "2026-08-01")
         # No published_at at all: it is filtered by created_at instead, which
         # is what the admin list shows for a draft.
-        cls.draft = Post.objects.create(title="Draft", categories=[Post.Category.POSTS])
+        cls.draft = Post.objects.create(title="Draft")
 
     @staticmethod
     def _post(title, day):
         post = Post.objects.create(
             title=title,
-            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
         )
         # save() stamped published_at with now(); pin it to the day under test.
@@ -1070,12 +1030,12 @@ class DateFilterTests(APITestCase):
         )
         self.assertNotIn(self.draft.slug, self.slugs(response))
 
-    def test_date_filter_combines_with_category(self):
+    def test_date_filter_combines_with_tag(self):
         book = self._post("A Book", "2026-05-21")
-        book.categories = [Post.Category.BOOKS]
+        book.tags = ["Books"]
         book.save()
         response = self.client.get(
-            self.list_url, {"category": "books", "published_after": "2026-05-01"}
+            self.list_url, {"tag": "books", "published_after": "2026-05-01"}
         )
         self.assertEqual(self.slugs(response), {book.slug})
 
@@ -1106,7 +1066,6 @@ class PostStatsTests(APITestCase):
         def published(title, when, views):
             post = Post.objects.create(
                 title=title,
-                categories=[Post.Category.POSTS],
                 status=Post.Status.PUBLISHED,
                 published_at=datetime.datetime(
                     *when, tzinfo=datetime.timezone.utc
@@ -1121,7 +1080,7 @@ class PostStatsTests(APITestCase):
         published("Middling", (2026, 3, 20), 100)
         published("Quiet", (2026, 5, 9), 0)
         cls.draft = Post.objects.create(
-            title="Unfinished", categories=[Post.Category.POSTS]
+            title="Unfinished"
         )
 
     def get(self):
@@ -1164,10 +1123,10 @@ class PostStatsTests(APITestCase):
         self.assertEqual(sum(row["count"] for row in months), 3)
 
     def test_list_filters_do_not_narrow_it(self):
-        # An overview of everything: ?category= belongs to the list route, and
+        # An overview of everything: ?tag= belongs to the list route, and
         # letting it through here would quietly answer a different question.
         self.client.force_authenticate(self.user)
-        response = self.client.get(self.url, {"category": "books"})
+        response = self.client.get(self.url, {"tag": "books"})
         self.assertEqual(response.data["total"], 4)
 
     def test_an_empty_site_reports_zeroes_rather_than_failing(self):
@@ -1221,7 +1180,6 @@ class PostStatsTests(APITestCase):
         Post.objects.all().delete()
         post = Post.objects.create(
             title="Only One",
-            categories=[Post.Category.POSTS],
             status=Post.Status.PUBLISHED,
             published_at=timezone.now() - datetime.timedelta(days=9),
         )
@@ -1233,8 +1191,422 @@ class PostStatsTests(APITestCase):
         # The denominator is the site's public lifetime, so a site with nothing
         # published has no rate at all rather than a divide by zero.
         Post.objects.all().delete()
-        draft = Post.objects.create(title="Unfinished", categories=[Post.Category.POSTS])
+        draft = Post.objects.create(title="Unfinished")
         Post.objects.filter(pk=draft.pk).update(view_count=12)
         data = self.get().data
         self.assertEqual(data["total_views"], 12)
         self.assertEqual(data["views_per_day"], 0)
+
+
+class BookModelTests(APITestCase):
+    def test_slug_is_derived_from_title(self):
+        book = Book.objects.create(title="The Dispossessed", author="Ursula K. Le Guin")
+        self.assertEqual(book.slug, "the-dispossessed")
+
+    def test_a_second_book_with_the_same_title_is_slugged_by_author(self):
+        # Two books called "Ulysses" is ordinary; "/ulysses-2" says nothing
+        # about which one it is, and "/ulysses-james-joyce" does.
+        Book.objects.create(title="Ulysses", author="James Joyce")
+        second = Book.objects.create(title="Ulysses", author="Alfred Tennyson")
+        self.assertEqual(second.slug, "ulysses-alfred-tennyson")
+
+    def test_a_third_book_with_the_same_title_and_author_falls_back_to_a_number(self):
+        Book.objects.create(title="Ulysses", author="James Joyce")
+        second = Book.objects.create(title="Ulysses", author="James Joyce")
+        self.assertEqual(second.slug, "ulysses-james-joyce")
+        third = Book.objects.create(title="Ulysses", author="James Joyce")
+        self.assertEqual(third.slug, "ulysses-james-joyce-2")
+
+    def test_explicit_slug_is_kept(self):
+        book = Book.objects.create(title="Dune", author="Frank Herbert", slug="the-one")
+        self.assertEqual(book.slug, "the-one")
+
+    def test_a_book_and_a_post_may_share_a_slug(self):
+        # Separate tables, so each dedupes only against its own -- a book and an
+        # essay about it should not push one another to a stuttered URL.
+        Post.objects.create(title="Dune")
+        book = Book.objects.create(title="Dune", author="Frank Herbert")
+        self.assertEqual(book.slug, "dune")
+
+    def test_genres_are_trimmed_deduped_and_case_folded(self):
+        book = Book.objects.create(
+            title="Neuromancer",
+            author="William Gibson",
+            genres=["  Sci-Fi ", "sci-fi", "", "Cyberpunk", "SCI-FI"],
+        )
+        # First spelling seen is the one kept, since that is the one the author
+        # chose to display.
+        self.assertEqual(book.genres, ["Sci-Fi", "Cyberpunk"])
+
+    def test_isbn_separators_are_stripped_on_save(self):
+        book = Book.objects.create(
+            title="Clean Code", author="Robert C. Martin", isbn="978-0-13-235088-4"
+        )
+        self.assertEqual(book.isbn, "9780132350884")
+
+    def test_isbn_10_check_digit(self):
+        self.assertTrue(isbn_is_valid("0306406152"))
+        self.assertTrue(isbn_is_valid("080442957X"))
+        # A transposed pair -- the typo that leaves an ISBN looking right.
+        self.assertFalse(isbn_is_valid("0306406125"))
+        self.assertFalse(isbn_is_valid("030640615"))
+
+    def test_isbn_13_check_digit(self):
+        self.assertTrue(isbn_is_valid("9780132350884"))
+        self.assertFalse(isbn_is_valid("9780132350885"))
+
+    def test_normalise_isbn_handles_spaces_dashes_and_lowercase_x(self):
+        self.assertEqual(normalise_isbn(" 0-8044 2957 x "), "080442957X")
+
+    def test_status_defaults_to_draft(self):
+        book = Book.objects.create(title="Dune", author="Frank Herbert")
+        self.assertEqual(book.status, Book.Status.DRAFT)
+
+
+class BookAPITests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("book-list")
+        cls.genres_url = reverse("book-genres")
+        cls.dune = Book.objects.create(
+            title="Dune",
+            author="Frank Herbert",
+            genres=["Sci-Fi", "Classic"],
+            isbn="9780441013593",
+            release_year=1965,
+            status=Book.Status.PUBLISHED,
+        )
+        cls.neuromancer = Book.objects.create(
+            title="Neuromancer",
+            author="William Gibson",
+            genres=["sci-fi", "Cyberpunk"],
+            release_year=1984,
+            status=Book.Status.PUBLISHED,
+        )
+        cls.unshelved = Book.objects.create(
+            title="Half-Read Thing", author="Nobody", genres=["Unfinished"]
+        )
+
+    def detail_url(self, book):
+        return reverse("book-detail", kwargs={"slug": book.slug})
+
+    def payload(self, **overrides):
+        body = {"title": "The Dispossessed", "author": "Ursula K. Le Guin"}
+        body.update(overrides)
+        return body
+
+    # --- read ---------------------------------------------------------------
+
+    def test_anonymous_list_shows_only_published(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        slugs = {row["slug"] for row in response.data["results"]}
+        self.assertEqual(slugs, {self.dune.slug, self.neuromancer.slug})
+
+    def test_anonymous_cannot_retrieve_a_draft_by_slug(self):
+        response = self.client.get(self.detail_url(self.unshelved))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_authenticated_list_includes_drafts(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.list_url)
+        self.assertEqual(len(response.data["results"]), 3)
+
+    def test_detail_carries_every_catalogued_field(self):
+        response = self.client.get(self.detail_url(self.dune))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["author"], "Frank Herbert")
+        self.assertEqual(response.data["genres"], ["Sci-Fi", "Classic"])
+        self.assertEqual(response.data["isbn"], "9780441013593")
+        self.assertEqual(response.data["release_year"], 1965)
+
+    def test_filter_by_genre_ignores_case(self):
+        # Dune stores "Sci-Fi" and Neuromancer stores "sci-fi"; both are the
+        # same genre and one query has to find both.
+        response = self.client.get(self.list_url, {"genre": "SCI-FI"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            {row["slug"] for row in response.data["results"]},
+            {self.dune.slug, self.neuromancer.slug},
+        )
+
+    def test_filter_by_unused_genre_returns_nothing_rather_than_erroring(self):
+        # Genres are free text, so there is no list to be wrong about.
+        response = self.client.get(self.list_url, {"genre": "westerns"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["results"], [])
+
+    def test_genre_filter_does_not_leak_drafts(self):
+        response = self.client.get(self.list_url, {"genre": "Unfinished"})
+        self.assertEqual(response.data["results"], [])
+
+    def test_search_matches_title_and_author(self):
+        by_title = self.client.get(self.list_url, {"search": "neuro"})
+        self.assertEqual(
+            [row["slug"] for row in by_title.data["results"]], [self.neuromancer.slug]
+        )
+        by_author = self.client.get(self.list_url, {"search": "herbert"})
+        self.assertEqual([row["slug"] for row in by_author.data["results"]], [self.dune.slug])
+
+    def test_search_matches_a_hyphenated_isbn(self):
+        # Stored without separators, so a number pasted off a back cover has to
+        # be stripped the same way before it is compared.
+        response = self.client.get(self.list_url, {"search": "978-0-441-01359-3"})
+        self.assertEqual([row["slug"] for row in response.data["results"]], [self.dune.slug])
+
+    def test_ordering_by_title(self):
+        response = self.client.get(self.list_url, {"ordering": "title"})
+        self.assertEqual(
+            [row["title"] for row in response.data["results"]], ["Dune", "Neuromancer"]
+        )
+
+    def test_ordering_by_year_puts_undated_books_last(self):
+        undated = Book.objects.create(
+            title="Anonymous Chapbook", author="Unknown", status=Book.Status.PUBLISHED
+        )
+        response = self.client.get(self.list_url, {"ordering": "year"})
+        self.assertEqual(
+            [row["slug"] for row in response.data["results"]],
+            [self.neuromancer.slug, self.dune.slug, undated.slug],
+        )
+
+    def test_unknown_ordering_is_rejected(self):
+        response = self.client.get(self.list_url, {"ordering": "titel"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("ordering", response.data)
+
+    def test_unknown_status_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.list_url, {"status": "pubished"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_anonymous_status_filter_cannot_surface_drafts(self):
+        response = self.client.get(self.list_url, {"status": "draft"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 2)
+
+    # --- genres action ------------------------------------------------------
+
+    def test_genres_are_counted_across_books(self):
+        response = self.client.get(self.genres_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        counts = {row["name"]: row["count"] for row in response.data}
+        self.assertEqual(counts["Cyberpunk"], 1)
+        # Dune stores "Sci-Fi" and Neuromancer stores "sci-fi". One filter
+        # option, not two: `?genre=` matches either way round, so offering both
+        # would be the same filter twice with its count split between them.
+        self.assertNotIn("sci-fi", counts)
+        self.assertEqual(counts["Sci-Fi"], 2)
+
+    def test_the_commonest_spelling_of_a_genre_is_the_one_offered(self):
+        for title in ("A", "B"):
+            Book.objects.create(
+                title=title,
+                author="Someone",
+                genres=["cyberpunk"],
+                status=Book.Status.PUBLISHED,
+            )
+        response = self.client.get(self.genres_url)
+        counts = {row["name"]: row["count"] for row in response.data}
+        # "cyberpunk" now outnumbers Neuromancer's "Cyberpunk" two to one.
+        self.assertEqual(counts["cyberpunk"], 3)
+        self.assertNotIn("Cyberpunk", counts)
+
+    def test_genres_are_ordered_commonest_first(self):
+        response = self.client.get(self.genres_url)
+        names = [row["name"] for row in response.data]
+        self.assertEqual(names[0], "Sci-Fi")
+        # Then alphabetically, so the order does not depend on row order.
+        self.assertEqual(names[1:], ["Classic", "Cyberpunk"])
+
+    def test_genres_exclude_drafts_for_anonymous_callers(self):
+        response = self.client.get(self.genres_url)
+        self.assertNotIn("Unfinished", {row["name"] for row in response.data})
+
+    def test_genres_include_drafts_for_the_owner(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.genres_url)
+        self.assertIn("Unfinished", {row["name"] for row in response.data})
+
+    # --- write --------------------------------------------------------------
+
+    def test_anonymous_cannot_create(self):
+        response = self.client.post(self.list_url, self.payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_authenticated_create(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            self.payload(genres=["Sci-Fi", "sci-fi "], isbn="0-06-051280-6"),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["slug"], "the-dispossessed")
+        # The response reflects what was stored, not what was sent.
+        self.assertEqual(response.data["genres"], ["Sci-Fi"])
+        self.assertEqual(response.data["isbn"], "0060512806")
+        self.assertEqual(response.data["status"], "draft")
+
+    def test_basic_auth_create(self):
+        credentials = base64.b64encode(b"zian:pw-for-tests").decode()
+        response = self.client.post(
+            self.list_url,
+            self.payload(),
+            format="json",
+            HTTP_AUTHORIZATION=f"Basic {credentials}",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_author_is_required(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url, {"title": "Untitled"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("author", response.data)
+
+    def test_blank_author_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(self.list_url, self.payload(author=""), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("author", response.data)
+
+    def test_bad_isbn_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url, self.payload(isbn="978-0-13-235088-5"), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("isbn", response.data)
+
+    def test_blank_isbn_is_accepted(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(self.list_url, self.payload(isbn=""), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["isbn"], "")
+
+    def test_impossible_release_years_are_rejected(self):
+        self.client.force_authenticate(self.user)
+        for year in (19, 1200, timezone.localdate().year + 5):
+            with self.subTest(year=year):
+                response = self.client.post(
+                    self.list_url, self.payload(release_year=year), format="json"
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn("release_year", response.data)
+
+    def test_next_year_is_accepted(self):
+        # A book bought in December can carry the next year on its title page.
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            self.payload(release_year=timezone.localdate().year + 1),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_blank_slug_is_rejected_rather_than_colliding(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(self.list_url, self.payload(slug="   "), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("slug", response.data)
+
+    def test_patch_keeps_the_url_when_slug_is_omitted(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.dune), {"review": "Still holds up."}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["slug"], "dune")
+        self.assertEqual(response.data["review"], "Still holds up.")
+
+    def test_publishing_is_a_status_change(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.unshelved), {"status": "published"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "published")
+        self.assertEqual(self.client.get(self.list_url).data["count"], 3)
+
+    def test_anonymous_cannot_delete(self):
+        response = self.client.delete(self.detail_url(self.dune))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_authenticated_delete(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.delete(self.detail_url(self.dune))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Book.objects.filter(pk=self.dune.pk).exists())
+
+    def test_deleting_a_book_leaves_posts_alone(self):
+        # Separate tables, and a post tagged "Books" is writing *about*
+        # reading rather than a shelf entry.
+        post = Post.objects.create(title="On Dune", tags=["Books"])
+        self.client.force_authenticate(self.user)
+        self.client.delete(self.detail_url(self.dune))
+        self.assertTrue(Post.objects.filter(pk=post.pk).exists())
+
+
+class TagVocabularyTests(APITestCase):
+    """GET /api/posts/tags/ -- what the feed's filter control offers."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.url = reverse("post-tags")
+        Post.objects.create(
+            title="First", tags=["Django", "Postgres"], status=Post.Status.PUBLISHED
+        )
+        Post.objects.create(
+            title="Second", tags=["django"], status=Post.Status.PUBLISHED
+        )
+        Post.objects.create(title="Draft", tags=["Unpublished Thing"])
+
+    def test_tags_are_counted_across_posts(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        counts = {row["name"]: row["count"] for row in response.data}
+        self.assertEqual(counts["Postgres"], 1)
+
+    def test_spellings_are_folded_into_one_option(self):
+        # "Django" on one post and "django" on another are the same filter --
+        # ?tag= matches either way round -- so offering both would be offering
+        # it twice with the count split between them.
+        response = self.client.get(self.url)
+        counts = {row["name"]: row["count"] for row in response.data}
+        self.assertEqual(counts["Django"], 2)
+        self.assertNotIn("django", counts)
+
+    def test_the_commonest_spelling_wins(self):
+        for title in ("Third", "Fourth"):
+            Post.objects.create(
+                title=title, tags=["postgres"], status=Post.Status.PUBLISHED
+            )
+        response = self.client.get(self.url)
+        counts = {row["name"]: row["count"] for row in response.data}
+        self.assertEqual(counts["postgres"], 3)
+        self.assertNotIn("Postgres", counts)
+
+    def test_ordered_commonest_first_then_alphabetically(self):
+        response = self.client.get(self.url)
+        self.assertEqual([row["name"] for row in response.data], ["Django", "Postgres"])
+
+    def test_a_drafts_tags_are_not_offered_to_anonymous_callers(self):
+        # Otherwise the filter offers an option that returns nothing, and
+        # discloses what is being written about.
+        response = self.client.get(self.url)
+        self.assertNotIn("Unpublished Thing", {row["name"] for row in response.data})
+
+    def test_a_drafts_tags_are_offered_to_the_owner(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.url)
+        self.assertIn("Unpublished Thing", {row["name"] for row in response.data})
+
+    def test_an_untagged_site_reports_an_empty_list(self):
+        Post.objects.all().delete()
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])

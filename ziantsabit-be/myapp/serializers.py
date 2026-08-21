@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
-from .models import Post
+from .models import (
+    EARLIEST_RELEASE_YEAR,
+    Book,
+    Post,
+    isbn_is_valid,
+    max_release_year,
+    normalise_isbn,
+)
 
 
 class PostSerializer(serializers.ModelSerializer):
@@ -10,7 +17,6 @@ class PostSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "slug",
-            "categories",
             "excerpt",
             "body",
             "cover_image_url",
@@ -30,22 +36,20 @@ class PostSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "view_count", "created_at", "updated_at"]
         extra_kwargs = {
             "slug": {"required": False},
-            # A post has to live somewhere: filed under nothing it appears on no
-            # page at all, which is a mistake every time and an invisible one.
-            #
-            # Both flags are needed and they catch different mistakes.
-            # `allow_empty` rejects an explicit []; `required` rejects leaving
-            # the key out, which the model's `default=list` would otherwise
-            # make a silent success -- the default exists so the column could
-            # be added to existing rows, not as a value any client should get.
-            "categories": {"allow_empty": False, "required": True},
         }
 
-    def validate_categories(self, value):
-        # Deduplicated and ordered in Post.save() so the admin and the shell get
-        # it too; doing it again here is what makes the *response* to this write
-        # match, since DRF renders the serializer's own validated data.
-        return Post.clean_categories(value)
+    def validate_tags(self, value):
+        # Trimmed and deduped in Post.save() so the admin and the shell get it
+        # too; doing it again here is what makes the *response* to this write
+        # match what was stored, since DRF renders the serializer's own
+        # validated data.
+        #
+        # Deliberately no `allow_empty=False`, unlike the `categories` field
+        # this replaced: an untagged post is a perfectly good post. Filing under
+        # nothing used to mean appearing on no page at all, which is why that
+        # was an error; the feed at `/` lists every post regardless of its tags,
+        # so an untagged one is simply one nobody has labelled yet.
+        return Post.clean_tags(value)
 
     def validate_slug(self, value):
         # A blank slug would otherwise pass the unique check and then collide in
@@ -122,3 +126,106 @@ class ViewCountSerializer(serializers.Serializer):
 
     slug = serializers.SlugField(read_only=True)
     view_count = serializers.IntegerField(read_only=True)
+
+
+class BookSerializer(serializers.ModelSerializer):
+    # Declared rather than inferred from the model field, because that field's
+    # ceiling is a *callable* -- `max_release_year`, so it follows the calendar
+    # -- and drf-spectacular cannot put a function into an OpenAPI `maximum`.
+    # The floor is a constant and worth publishing in the schema; the moving
+    # ceiling is enforced in `validate_release_year` below, which is also the
+    # only place that can name the year currently allowed in its message.
+    release_year = serializers.IntegerField(
+        required=False, allow_null=True, min_value=EARLIEST_RELEASE_YEAR
+    )
+
+    class Meta:
+        model = Book
+        fields = [
+            "id",
+            "title",
+            "slug",
+            "author",
+            "genres",
+            "isbn",
+            "release_year",
+            "review",
+            "cover_image_url",
+            "cover_image_alt",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+        extra_kwargs = {
+            # Generated in Book.save() when omitted, but writable so a URL can
+            # be pinned by hand -- the same arrangement Post has.
+            "slug": {"required": False},
+            # A catalogue entry with no author is not a catalogue entry. The
+            # model's CharField is `blank=False` already; naming it here is
+            # what turns "" into a 400 rather than a silently empty shelf line.
+            "author": {"allow_blank": False},
+        }
+
+    def validate_slug(self, value):
+        # A blank slug would pass the unique check and then collide inside
+        # save(), which surfaces as a 500 rather than a 400.
+        if value is not None and not value.strip():
+            raise serializers.ValidationError(
+                "Leave slug out entirely to have it generated from the title."
+            )
+        return value
+
+    def validate_genres(self, value):
+        # Tidied in Book.save() so the admin and the shell get it too; doing it
+        # again here is what makes the *response* to this write match what was
+        # stored, since DRF renders the serializer's own validated data.
+        return Book.clean_genres(value)
+
+    def validate_isbn(self, value):
+        """Normalise the separators away, then check the number's own digit.
+
+        Length alone would accept a transposed pair, which is the typo that
+        leaves an ISBN looking right and matching nothing. Rejected here rather
+        than on the model so it is a 400 with a message, and so an entry typed
+        into the Django admin or the shell is still saved -- a bad ISBN is worth
+        refusing at the form, not worth losing the rest of the record over.
+        """
+        compact = normalise_isbn(value)
+        if not compact:
+            return ""
+        if not isbn_is_valid(compact):
+            raise serializers.ValidationError(
+                "That is not a valid ISBN. Give 10 or 13 digits, hyphens optional."
+            )
+        return compact
+
+    def validate_release_year(self, value):
+        """Reject a year outside the range a printed book can carry.
+
+        The model carries the same validators, but a ModelSerializer does not
+        run a field's validators against `None`-able integers in every path --
+        and the ceiling moves with the calendar, so it is worth saying plainly
+        in the message which year is currently the last allowed one.
+        """
+        if value is None:
+            return None
+        latest = max_release_year()
+        if not EARLIEST_RELEASE_YEAR <= value <= latest:
+            raise serializers.ValidationError(
+                f"Give a year between {EARLIEST_RELEASE_YEAR} and {latest}."
+            )
+        return value
+
+
+class LabelCountSerializer(serializers.Serializer):
+    """One row of a vocabulary endpoint: `/api/posts/tags/` or
+    `/api/books/genres/`.
+
+    One serializer for both, because they are the same answer to the same
+    question -- what labels exist here, and how many rows carry each -- asked of
+    two free-text arrays. See `label_counts` in views.py.
+    """
+
+    name = serializers.CharField(read_only=True)
+    count = serializers.IntegerField(read_only=True)

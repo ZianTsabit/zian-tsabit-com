@@ -7,15 +7,14 @@ import CloseIcon from "@mui/icons-material/Close";
 import ColorModeToggle from "./ColorModeToggle";
 import { HEADER_HEIGHT } from "../constants/layout";
 
-// Feeds first, then the pages about their author. "Posts" is "/" because the
+// Feeds first, then the pages about their author. "Blog" is "/" because the
 // feed *is* the home page -- the "ZianTsabit" logo lands on the same place, and
 // naming it in the nav too means a visitor deep in the site can get back to the
 // list without knowing that. This one array feeds both the desktop nav and the
 // mobile Drawer, so the order set here holds for both.
 const navItems = [
-  { to: "/", label: "Posts" },
+  { to: "/", label: "Blog" },
   { to: "/books", label: "Books" },
-  { to: "/projects", label: "Projects" },
   { to: "/curriculum-vitae", label: "CV" },
   { to: "/about", label: "About" },
 ];
