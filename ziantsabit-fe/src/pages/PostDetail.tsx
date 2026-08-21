@@ -11,11 +11,10 @@ import {
 
 import Centered from "../components/Centered";
 import Markdown from "../components/Markdown";
-import TagChip, { TagChipRow } from "../components/TagChip";
+import { TagChipRow } from "../components/TagChip";
 import Typewriter from "../components/Typewriter";
 import { usePost } from "../services/usePost";
 import { useRecordView } from "../services/useRecordView";
-import { CATEGORY_LABELS } from "../services/posts";
 
 function formatDate(stamp: string): string {
   const date = new Date(stamp);
@@ -32,9 +31,11 @@ function formatViews(count: number): string {
 }
 
 /**
- * One post's full content, reached by clicking its card in a section's list.
- * `backTo`/`backLabel` point back at that section, since a slug alone doesn't
- * say which of the three it came from.
+ * One post's full content, reached from the feed.
+ *
+ * `backTo`/`backLabel` are still props rather than hardcoded even though every
+ * route now passes the same pair: they are what the "back" link says, and a
+ * post reached from somewhere new should be able to point back at it.
  */
 function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }) {
   const { slug = "" } = useParams<{ slug: string }>();
@@ -134,37 +135,23 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
               </Typography>
             </Stack>
 
-            <Stack
-              direction="row"
-              sx={{
-                alignSelf: "flex-start",
-                gap: 1.5,
-                alignItems: "center",
-                // A post can be in several sections, and on a phone three
-                // badges plus the view count overrun the line.
-                flexWrap: "wrap",
-              }}
-            >
-              {/* Already in CATEGORY_ORDER: the API sorts them, so the badges
-                  read the same way round on every post. */}
-              {post.categories.map((category) => (
-                <TagChip key={category} label={CATEGORY_LABELS[category]} />
-              ))}
-              {views !== null && (
-                <Typography
-                  sx={{
-                    fontSize: { xs: "12px", sm: "13px" },
-                    color: "text.secondary",
-                  }}
-                >
-                  {formatViews(views)}
-                </Typography>
-              )}
-            </Stack>
+            {views !== null && (
+              <Typography
+                sx={{
+                  alignSelf: "flex-start",
+                  fontSize: { xs: "12px", sm: "13px" },
+                  color: "text.secondary",
+                }}
+              >
+                {formatViews(views)}
+              </Typography>
+            )}
 
-            {/* Their own row rather than alongside the category chip: a post
-                with several tags would otherwise push the view count off the
-                end of the line on a phone. */}
+            {/* Their own row rather than sharing one with the view count: a
+                post with several tags would push the count off the end of the
+                line on a phone. The category badges that used to lead this row
+                are gone -- the tags were always the more specific of the two,
+                and showing both meant showing "Posts" on nearly every post. */}
             {post.tags.length > 0 && <TagChipRow labels={post.tags} />}
 
             {post.cover_image_url && (

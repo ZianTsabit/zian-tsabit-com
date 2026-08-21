@@ -1,44 +1,79 @@
 from django.contrib import admin
 
-from .models import Post
+from .models import Book, Post
 
 
-class CategoryFilter(admin.SimpleListFilter):
-    """Sidebar filter over `categories`.
+class ArrayFieldFilter(admin.SimpleListFilter):
+    """Sidebar filter over an `ArrayField` of free-text labels.
 
-    Hand-written because `list_filter = ("categories",)` cannot work on an
-    ArrayField: Django builds an exact-match filter from it, so the sidebar
-    would offer whole combinations ("books, projects") as if they were single
-    values and match nothing else. This asks the question that actually makes
-    sense -- is this section one of the post's -- which is the same containment
-    test `?category=` performs on the API.
+    Hand-written because `list_filter = ("tags",)` cannot work on one: Django
+    builds an exact-match filter from it, so the sidebar would offer whole
+    combinations ("django, postgres") as if they were single values and match
+    nothing else. This asks the question that actually makes sense -- is this
+    label one of the row's -- which is the same containment test the API's
+    `?tag=` and `?genre=` perform.
+
+    Subclasses set `field`, `title` and `parameter_name`; the options come from
+    the rows themselves, since there is no enum to read them off.
     """
 
-    title = "category"
-    parameter_name = "category"
+    field = None
 
     def lookups(self, request, model_admin):
-        return Post.Category.choices
+        labels = sorted(
+            {
+                label
+                for row in model_admin.model.objects.values_list(self.field, flat=True)
+                for label in row
+            },
+            key=str.casefold,
+        )
+        return [(label, label) for label in labels]
 
     def queryset(self, request, queryset):
         value = self.value()
         if not value:
             return queryset
-        return queryset.filter(categories__contains=[value])
+        return queryset.filter(**{f"{self.field}__contains": [value]})
+
+
+class TagFilter(ArrayFieldFilter):
+    field = "tags"
+    title = "tag"
+    parameter_name = "tag"
 
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ("title", "category_list", "status", "published_at", "updated_at")
-    list_filter = (CategoryFilter, "status")
+    list_display = ("title", "tag_list", "status", "published_at", "updated_at")
+    list_filter = (TagFilter, "status")
     search_fields = ("title", "excerpt", "body")
     # Blank is allowed here too: Post.save() fills it in from the title.
     prepopulated_fields = {"slug": ("title",)}
     date_hierarchy = "created_at"
 
-    @admin.display(description="Categories")
-    def category_list(self, post):
-        # Labels rather than the stored values, matching what every other
-        # column shows. Post.save() has already put them in declaration order.
-        labels = dict(Post.Category.choices)
-        return ", ".join(labels.get(value, value) for value in post.categories)
+    @admin.display(description="Tags")
+    def tag_list(self, post):
+        # In the order they were typed, which Post.save() preserves.
+        return ", ".join(post.tags)
+
+
+class GenreFilter(ArrayFieldFilter):
+    field = "genres"
+    title = "genre"
+    parameter_name = "genre"
+
+
+@admin.register(Book)
+class BookAdmin(admin.ModelAdmin):
+    list_display = ("title", "author", "release_year", "genre_list", "status", "updated_at")
+    list_filter = (GenreFilter, "status")
+    search_fields = ("title", "author", "isbn", "review")
+    # Blank is allowed: Book.save() derives it, falling back to the author when
+    # the title alone is already taken.
+    prepopulated_fields = {"slug": ("title",)}
+    date_hierarchy = "created_at"
+
+    @admin.display(description="Genres")
+    def genre_list(self, book):
+        return ", ".join(book.genres)

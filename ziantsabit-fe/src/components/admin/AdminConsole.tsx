@@ -19,15 +19,10 @@ import AdminPostList from "./AdminPostList";
 import NewPostButton from "./NewPostButton";
 import { HEADER_HEIGHT } from "../../constants/layout";
 import { ApiError } from "../../services/api";
-import {
-  CATEGORIES,
-  SORTS,
-  STATUSES,
-  deletePost,
-  setPostStatus,
-} from "../../services/adminPosts";
-import type { Post, PostCategory } from "../../services/posts";
+import { SORTS, STATUSES, deletePost, setPostStatus } from "../../services/adminPosts";
+import type { Post } from "../../services/posts";
 import { useAdminPosts } from "../../services/useAdminPosts";
+import { useTags } from "../../services/usePaginatedPosts";
 
 const ALL = "";
 
@@ -43,7 +38,7 @@ function AdminConsole() {
   const { onSessionSuspect } = useOutletContext<AdminOutletContext>();
   const navigate = useNavigate();
 
-  const [category, setCategory] = useState<string>(ALL);
+  const [tag, setTag] = useState<string>(ALL);
   const [status, setStatus] = useState<string>(ALL);
   // "" is the API's default ordering, newest first; "views" is most-read first.
   const [ordering, setOrdering] = useState<string>("");
@@ -51,7 +46,8 @@ function AdminConsole() {
   const [after, setAfter] = useState("");
   const [before, setBefore] = useState("");
   const [page, setPage] = useState(1);
-  const list = useAdminPosts(category, status, ordering, page, after, before);
+  const tags = useTags();
+  const list = useAdminPosts(tag, status, ordering, page, after, before);
   // Stable across renders, unlike `list` itself, so the callbacks below are too.
   const { reload } = list;
 
@@ -61,7 +57,7 @@ function AdminConsole() {
 
   /** Every filter change goes back to page 1: page 3 of an unfiltered list is
    *  usually past the end of a filtered one, and landing on an empty page
-   *  looks like the filter matched nothing. Same rule as the Posts page. */
+   *  looks like the filter matched nothing. Same rule as the Blog page. */
   const changeFilter = (set: (value: string) => void, value: string) => {
     set(value);
     setPage(1);
@@ -113,11 +109,9 @@ function AdminConsole() {
   };
 
   const handleNewPost = () => {
-    // A post created while looking at a filtered list lands back in that same
-    // section, unless the filter is "all".
-    navigate("/admin/new", {
-      state: { category: (category as PostCategory) || undefined },
-    });
+    // A post started while looking at a filtered list arrives already carrying
+    // that tag, unless the filter is "all".
+    navigate("/admin/new", { state: { tags: tag ? [tag] : [] } });
   };
 
   const handleToggleStatus = (post: Post) =>
@@ -142,11 +136,14 @@ function AdminConsole() {
           mb: 2,
         }}
       >
+        {/* The section is the Blog, the same name the public nav and
+            `AdminNav` use. What it holds is still posts -- hence "New post"
+            beside it, and "No posts match this filter" below. */}
         <Typography
           component="h1"
           sx={{ fontWeight: "bold", fontSize: { xs: "20px", sm: "24px" } }}
         >
-          Posts
+          Blog
         </Typography>
 
         {/* "Signed in as ..." and Sign out used to sit here. They are chrome
@@ -156,7 +153,7 @@ function AdminConsole() {
         <NewPostButton onClick={handleNewPost} />
       </Stack>
 
-      {/* Sticky for the same reason as the Posts page's filters -- see the
+      {/* Sticky for the same reason as the Blog page's filters -- see the
           comment there for why `top` is HEADER_HEIGHT and why the background
           and the negative margins are load-bearing. `background.default` and
           not `transparent`: Admin.tsx's own wrapper is transparent, so the
@@ -176,25 +173,31 @@ function AdminConsole() {
           mb: 2,
         }}
       >
-        {/* All three selects default to "", and `displayEmpty` is what makes
-            that show as "All categories" / "All statuses" / "Newest first"
-            rather than an empty box; the label is pinned shrunk to match. */}
-        <TextField
-          select
-          size="small"
-          label="Category"
-          value={category}
-          onChange={(event) => changeFilter(setCategory, event.target.value)}
-          slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
-          sx={{ minWidth: 160 }}
-        >
-          <MenuItem value={ALL}>All categories</MenuItem>
-          {CATEGORIES.map((option) => (
-            <MenuItem key={option.value} value={option.value}>
-              {option.label}
-            </MenuItem>
-          ))}
-        </TextField>
+        {/* Every select defaults to "", and `displayEmpty` is what makes that
+            show as "All tags" / "All statuses" / "Newest first" rather than an
+            empty box; the label is pinned shrunk to match.
+
+            The tag select is only rendered once there is a vocabulary to offer
+            -- unlike the category select it replaced, whose four values were
+            hardcoded and so could always be shown. */}
+        {tags.length > 0 && (
+          <TextField
+            select
+            size="small"
+            label="Tag"
+            value={tag}
+            onChange={(event) => changeFilter(setTag, event.target.value)}
+            slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+            sx={{ minWidth: 160 }}
+          >
+            <MenuItem value={ALL}>All tags</MenuItem>
+            {tags.map((option) => (
+              <MenuItem key={option.name} value={option.name}>
+                {option.name} ({option.count})
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
 
         <TextField
           select
@@ -229,7 +232,7 @@ function AdminConsole() {
           ))}
         </TextField>
 
-        {/* Native date inputs, as on the public Posts page: they hand back a
+        {/* Native date inputs, as on the public Blog page: they hand back a
             YYYY-MM-DD string, which is what the API takes. `shrink` is forced
             because the browser paints its own placeholder in an empty field,
             which a floating label would otherwise sit on top of. */}

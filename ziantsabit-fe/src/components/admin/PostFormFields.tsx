@@ -1,16 +1,10 @@
 import type { ReactNode } from "react";
-import { Autocomplete, Checkbox, MenuItem, Stack, TextField } from "@mui/material";
+import { Autocomplete, Stack, TextField } from "@mui/material";
 
 import CoverImageField from "./CoverImageField";
 import MarkdownEditor from "./MarkdownEditor";
-import { TagChipRow } from "../TagChip";
 import type { FieldErrors } from "../../services/api";
-import { CATEGORIES, type PostDraft } from "../../services/adminPosts";
-import {
-  CATEGORY_LABELS,
-  CATEGORY_ORDER,
-  type PostCategory,
-} from "../../services/posts";
+import type { PostDraft } from "../../services/adminPosts";
 
 /**
  * ISO timestamp -> the `YYYY-MM-DDTHH:mm` a `datetime-local` input wants.
@@ -53,6 +47,10 @@ interface Props {
   /** Passed straight to the body editor, which shows it while full screen --
    *  the one place the caller's own copy of it is behind the overlay. */
   fullscreenStatus?: ReactNode;
+  /** The tags already in use, offered as suggestions. Free text either way:
+   *  this only keeps a second spelling of an existing tag from being typed by
+   *  accident, now that tags are what the site browses by. */
+  tagOptions: string[];
 }
 
 /**
@@ -68,6 +66,7 @@ function PostFormFields({
   slugHelperText,
   showPublishedAt = true,
   fullscreenStatus,
+  tagOptions,
 }: Props) {
   return (
     <Stack sx={{ gap: 2 }}>
@@ -106,7 +105,7 @@ function PostFormFields({
         value={draft.excerpt}
         onChange={(event) => onChange("excerpt", event.target.value)}
         error={Boolean(fieldErrors.excerpt)}
-        helperText={fieldErrors.excerpt ?? "The summary shown on the section page."}
+        helperText={fieldErrors.excerpt ?? "The summary shown on the feed."}
         multiline
         minRows={2}
         fullWidth
@@ -128,78 +127,34 @@ function PostFormFields({
         fullscreenStatus={fullscreenStatus}
       />
 
-      {/* Filing and publishing come after the writing: the fields above are
+      {/* Tagging and publishing come after the writing: the fields above are
           what the post *is*, these are what happens to it.
 
           There is no Status field here. Status is chosen by which button ends
           the form -- "Save as draft" or "Publish" -- so a dropdown would be a
           second control for the same thing, and the two could disagree. The
-          admin list still flips it per row without opening the editor. */}
-      <TextField
-        select
-        label="Categories"
-        value={draft.categories}
-        onChange={(event) => {
-          // A multiple Select hands back the array as the event value, typed
-          // as a string because the DOM event says so.
-          const next = event.target.value as unknown as PostCategory[];
-          // Sorted into the site's one display order, so ticking Projects then
-          // Books produces the same draft as ticking them the other way round
-          // -- otherwise autosave would see a change where there is none. The
-          // server normalises too; this keeps the form agreeing with it before
-          // the round trip.
-          onChange(
-            "categories",
-            CATEGORY_ORDER.filter((value) => next.includes(value)),
-          );
-        }}
-        error={Boolean(fieldErrors.categories)}
-        helperText={
-          fieldErrors.categories ??
-          "A post can appear in more than one section. At least one is required."
-        }
-        fullWidth
-        slotProps={{
-          select: {
-            multiple: true,
-            // Without this the field renders the raw values, comma-joined
-            // ("garage_sale, posts"); the menu is where the labels live.
-            renderValue: (selected) => (
-              <TagChipRow
-                labels={(selected as PostCategory[]).map(
-                  (value) => CATEGORY_LABELS[value],
-                )}
-              />
-            ),
-          },
-        }}
-      >
-        {CATEGORIES.map((option) => {
-          const checked = draft.categories.includes(option.value);
-          // Unticking the last one would build a draft the API refuses, and
-          // autosave would then retry it every three seconds -- an error
-          // banner for what is really a missing control. Moving a post between
-          // sections stays possible: tick the new one first, then untick this.
-          const locked = checked && draft.categories.length === 1;
-          return (
-            <MenuItem key={option.value} value={option.value} disabled={locked}>
-              <Checkbox size="small" checked={checked} sx={{ mr: 1, p: 0.5 }} />
-              {option.label}
-            </MenuItem>
-          );
-        })}
-      </TextField>
+          admin list still flips it per row without opening the editor.
 
-      {/* freeSolo, because tags are typed rather than chosen: there is no
+          There is no Categories field either, any more: the enum it edited was
+          dropped in the backend's `0009`, and the tags box below now does that
+          job as well as its own.
+
+          freeSolo, because tags are typed rather than chosen: there is no
           canonical list of them on the backend either, just an array of
-          strings per post. `autoSelect` commits whatever is in the box when it
-          loses focus, so a tag typed but not confirmed with Enter is not
-          silently dropped on the way to Save. */}
+          strings per post. The options are the tags already in use, so the
+          common case is picking one rather than re-typing it slightly
+          differently -- which matters more now that a tag is how the feed is
+          browsed, and two spellings are two entries in the filter. Same
+          arrangement as the book form's genres.
+
+          `autoSelect` commits whatever is in the box when it loses focus, so a
+          tag typed but not confirmed with Enter is not silently dropped on the
+          way to Save. */}
       <Autocomplete
         multiple
         freeSolo
         autoSelect
-        options={[] as string[]}
+        options={tagOptions}
         value={draft.tags}
         onChange={(_event, next) =>
           // The API trims and dedupes too; this only keeps an empty chip from
@@ -212,7 +167,9 @@ function PostFormFields({
             label="Tags"
             error={Boolean(fieldErrors.tags)}
             helperText={
-              fieldErrors.tags ?? "Press Enter after each tag. 50 characters max."
+              fieldErrors.tags ??
+              "Press Enter after each. Tags are how the blog is browsed — " +
+                "pick an existing one where it fits. 50 characters max."
             }
           />
         )}
