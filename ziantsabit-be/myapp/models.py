@@ -148,6 +148,23 @@ class Post(models.Model):
         max_length=20, choices=Status.choices, default=Status.DRAFT
     )
     published_at = models.DateTimeField(null=True, blank=True)
+    # What visitors may leave on this post, decided per post rather than
+    # site-wide: a piece on something contentious can have its thread closed
+    # without turning comments off everywhere, and a short note nobody is meant
+    # to argue with can go up with neither.
+    #
+    # **Both default to True**, so nothing already published changes behaviour
+    # when this ships and a new post behaves like every existing one.
+    #
+    # **Turning either off is about what can be *added*, not about what is
+    # already there.** Closing a thread leaves its comments visible -- a switch
+    # that also hid them would be a bulk-hide with no way to see what it hid,
+    # and `Comment.status` is the control for that. Turning reactions off does
+    # hide the bar, since a row of counts nobody may change is furniture, but
+    # the rows stay in the table: a reaction someone left is a thing that
+    # happened, and flipping the switch back brings the counts with it.
+    comments_enabled = models.BooleanField(default=True)
+    reactions_enabled = models.BooleanField(default=True)
     # Bumped by POST /api/posts/{slug}/view/ with an F() expression, never by
     # save() -- a read must not touch updated_at, and two readers arriving at
     # once must not each write back the same stale number.
@@ -360,3 +377,159 @@ class Book(models.Model):
             return base
         author = slugify(self.author)
         return f"{base}-{author}" if author else base
+
+
+# The emoji a visitor may react with, in the order the bar shows them, each
+# with the name a screen reader reads out.
+#
+# **A fixed set, not free text**, which is the whole difference between this and
+# `tags`: a reaction is a one-tap gesture, so the vocabulary has to be small
+# enough to sit in a row and identical on every post -- otherwise the counts
+# fragment across a hundred spellings of "nice" and there is nothing to compare.
+# It lives here rather than on the client because the client is not the thing
+# that decides what may be stored; the API sends the list back with the counts
+# (see `PostViewSet.reactions`), so there is exactly one place either can drift
+# from.
+#
+# Adding one is a code change and no migration: `emoji` is a plain CharField
+# validated against this tuple, not a `choices` enum, precisely so that
+# extending the set does not mean a schema change for something with no schema.
+# Removing one leaves its rows in place, and they simply stop being offered --
+# which is the honest outcome, since a reaction someone left is a thing that
+# happened.
+REACTION_EMOJI = (
+    ("\N{THUMBS UP SIGN}", "Like"),
+    ("\N{PARTY POPPER}", "Celebrate"),
+    ("\N{FIRE}", "Fire"),
+    # The variation selector is load-bearing: U+2764 alone is a *text*
+    # character and renders as a small monochrome heart in the page font, while
+    # every other glyph here is emoji by default. Without it one button in the
+    # row looks like a typo.
+    ("\N{HEAVY BLACK HEART}\N{VARIATION SELECTOR-16}", "Love"),
+    ("\N{FACE WITH TEARS OF JOY}", "Funny"),
+    ("\N{ASTONISHED FACE}", "Surprising"),
+    ("\N{THINKING FACE}", "Thinking"),
+)
+
+# Just the glyphs, for the containment test a write does.
+REACTION_EMOJI_VALUES = tuple(emoji for emoji, _label in REACTION_EMOJI)
+
+
+class Comment(models.Model):
+    """One visitor's comment on one post.
+
+    **Comments are published on arrival and moderated afterwards.** A queue
+    would mean every comment sits invisible until the owner happens to look,
+    which on a personal site is days -- and a commenter who sees nothing appear
+    assumes it was lost and writes it again. The trade is that something
+    unpleasant is briefly visible; `status` is what takes it down, and it is a
+    hide rather than a delete so the row is still there to look at afterwards.
+
+    The rate limit that stops this being a spam target is not here but on the
+    endpoint -- see `CommentViewSet` and `DEFAULT_THROTTLE_RATES` in settings.
+
+    **There is deliberately no email field.** A comment box asking for one
+    collects personal data the site has no use for: nothing here sends mail, so
+    the address would exist only to be leaked. A name and the comment is the
+    whole record. (The same instinct that took the CV PDF down over a phone
+    number.)
+    """
+
+    class Status(models.TextChoices):
+        PUBLISHED = "published", "Published"
+        HIDDEN = "hidden", "Hidden"
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
+    # What the commenter typed as their name. Not a user account and not
+    # verified in any way -- there are no accounts on this site -- so it is
+    # display text, and the API never treats it as identity.
+    author_name = models.CharField(max_length=80)
+    # Plain text, deliberately **not** Markdown: the body of a post is the
+    # owner's and goes through the site's one renderer, but a comment is a
+    # stranger's and rendering their markup is how a comment box becomes an
+    # injection surface. It is displayed with `whiteSpace: pre-line`, so
+    # paragraphs survive and nothing else is interpreted.
+    body = models.TextField(max_length=2000)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PUBLISHED
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Oldest first, the opposite of every other list here: a comment thread
+        # is read top to bottom, and a reply above the thing it replies to is
+        # nonsense. `id` breaks the tie so two comments posted in the same
+        # instant cannot swap places between pages.
+        ordering = ["created_at", "id"]
+        indexes = [
+            # The one query the public page makes: this post's visible
+            # comments, in order.
+            models.Index(fields=["post", "status", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.author_name} on {self.post.slug}"
+
+
+class Reaction(models.Model):
+    """One visitor's one-tap reaction to one post.
+
+    A row per (post, emoji, visitor) rather than a counter per emoji, because
+    the bar has to answer two questions and a counter only answers one: how
+    many people reacted, *and* whether you are one of them -- which is what
+    makes the button a toggle rather than a thing you can press forever.
+
+    `visitor` is not a user. There are no accounts here, so it is an opaque
+    random token the browser generates once and keeps in `localStorage`; the
+    server never learns anything from it beyond "this is the same browser that
+    reacted before". That makes the uniqueness a convenience, not a guarantee:
+    clearing site data, or opening the post in another browser, buys another
+    reaction. Defeating that would need exactly the identification this feature
+    is not worth -- and the counter beside it has always had the same property
+    (see `useRecordView`).
+    """
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="reactions")
+    # A plain CharField validated against `REACTION_EMOJI_VALUES` in the view,
+    # rather than `choices`: extending the set is then a code change with no
+    # migration behind it. Long enough for a multi-codepoint emoji (a ZWJ
+    # sequence runs to several characters) even though none of the current set
+    # is one -- a max_length that fits only today's list is a trap for the day
+    # somebody adds 🤷‍♀️.
+    emoji = models.CharField(max_length=32)
+    # Opaque, client-generated, and never displayed. Indexed as part of the
+    # unique constraint below, which is also the lookup the toggle does.
+    visitor = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            # The identity of a row, and what makes the toggle a
+            # get-or-delete rather than a read-then-write: two taps racing each
+            # other cannot both insert.
+            models.UniqueConstraint(
+                fields=["post", "emoji", "visitor"], name="unique_post_emoji_visitor"
+            ),
+        ]
+        indexes = [
+            # The summary: every reaction on one post, grouped by emoji.
+            models.Index(fields=["post", "emoji"]),
+        ]
+
+    def __str__(self):
+        return f"{self.emoji} on {self.post.slug}"
+
+
+# Module-level aliases of the two `status` choice sets, for
+# SPECTACULAR_SETTINGS' ENUM_NAME_OVERRIDES.
+#
+# They exist only because that setting resolves its values with Django's
+# `import_string`, which walks modules and one attribute -- it cannot reach
+# `Post.Status.choices` through the nested class. Three models now carry a
+# `status` field and only two of them mean the same thing by it, so without
+# these the generator names one of the enums `Status68aEnum`: meaningless in a
+# generated client, and unstable, since the suffix is a hash of the choice set.
+PUBLICATION_STATUS_CHOICES = Post.Status.choices
+COMMENT_STATUS_CHOICES = Comment.Status.choices

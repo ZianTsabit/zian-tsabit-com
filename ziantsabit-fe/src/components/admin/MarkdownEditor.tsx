@@ -28,6 +28,7 @@ import FormatItalicIcon from "@mui/icons-material/FormatItalic";
 import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
 import FormatListNumberedIcon from "@mui/icons-material/FormatListNumbered";
 import FormatQuoteIcon from "@mui/icons-material/FormatQuote";
+import FunctionsIcon from "@mui/icons-material/Functions";
 import LinkIcon from "@mui/icons-material/Link";
 import TitleIcon from "@mui/icons-material/Title";
 
@@ -46,6 +47,7 @@ import {
   QUOTE,
   toggleCode,
   toggleLinePrefix,
+  toggleMath,
   toggleWrap,
   type Edit,
 } from "./markdownCommands";
@@ -321,6 +323,14 @@ function MarkdownEditor({
       title: "Code",
       icon: <CodeIcon fontSize="small" />,
       run: () => run(toggleCode),
+    },
+    {
+      key: "math",
+      // Last, and beside Code on purpose: both fence a span of text that is
+      // not prose, and both behave the same way on a multi-line selection.
+      title: "Maths (LaTeX)",
+      icon: <FunctionsIcon fontSize="small" />,
+      run: () => run(toggleMath),
     },
   ];
 

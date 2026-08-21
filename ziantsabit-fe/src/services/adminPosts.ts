@@ -43,6 +43,12 @@ export interface PostDraft {
    *  form does not have to be the place that guarantees it. */
   tags: string[];
   published_at: string | null;
+  /** The two switches in the editor's "What visitors can leave" group. They
+   *  live in the draft rather than beside it -- unlike `status`, which is
+   *  whichever button ends the form -- because they are fields the form owns,
+   *  so autosave carries them like any other edit. */
+  comments_enabled: boolean;
+  reactions_enabled: boolean;
 }
 
 export function draftFrom(post: Post): PostDraft {
@@ -56,6 +62,8 @@ export function draftFrom(post: Post): PostDraft {
     cover_image_alt: post.cover_image_alt,
     tags: post.tags,
     published_at: post.published_at,
+    comments_enabled: post.comments_enabled,
+    reactions_enabled: post.reactions_enabled,
   };
 }
 
@@ -73,6 +81,11 @@ export function emptyDraft(tags: string[] = []): PostDraft {
     cover_image_url: "",
     cover_image_alt: "",
     published_at: null,
+    // Both on, matching the model's defaults: a new post behaves like every
+    // post did before the switches existed, and saying no is the deliberate
+    // act rather than the accident.
+    comments_enabled: true,
+    reactions_enabled: true,
   };
 }
 

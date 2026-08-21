@@ -19,6 +19,10 @@ function formatViews(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? "view" : "views"}`;
 }
 
+function formatComments(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "comment" : "comments"}`;
+}
+
 /** One entry in the blog feed.
  *
  *  Deliberately not a card: no border, no surface, no hover state. The entries
@@ -92,6 +96,10 @@ function PostCard({ post, to }: { post: Post; to: string }) {
           {/* The count as it was when this page was fetched. The detail page
               adds the read it is itself recording; a list records nothing. */}
           {formatViews(post.view_count)}
+          {/* Only when there are any. A "0 comments" on every entry of a young
+              feed is a column of zeros saying nothing, where the absence of
+              the phrase says the same thing more quietly. */}
+          {post.comment_count > 0 && ` | ${formatComments(post.comment_count)}`}
         </Typography>
 
         {text && (

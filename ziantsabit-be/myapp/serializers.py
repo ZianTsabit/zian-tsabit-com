@@ -1,8 +1,11 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
     EARLIEST_RELEASE_YEAR,
+    REACTION_EMOJI_VALUES,
     Book,
+    Comment,
     Post,
     isbn_is_valid,
     max_release_year,
@@ -11,6 +14,14 @@ from .models import (
 
 
 class PostSerializer(serializers.ModelSerializer):
+    # How many *visible* comments the post has, for the feed card and the
+    # detail page's heading. Always the published count, even for the owner:
+    # it is the number a visitor sees under the post, and an admin list that
+    # said "4 comments" where the page shows 3 would be reporting a different
+    # figure under the same word. The admin console counts hidden ones by
+    # filtering `/api/comments/` instead.
+    comment_count = serializers.SerializerMethodField()
+
     class Meta:
         model = Post
         fields = [
@@ -24,7 +35,13 @@ class PostSerializer(serializers.ModelSerializer):
             "tags",
             "status",
             "published_at",
+            # Writable, and the only place either is set: the editor's two
+            # switches. Both default True on the model, so a create that leaves
+            # them out gets a post behaving like every existing one.
+            "comments_enabled",
+            "reactions_enabled",
             "view_count",
+            "comment_count",
             "created_at",
             "updated_at",
         ]
@@ -33,10 +50,31 @@ class PostSerializer(serializers.ModelSerializer):
         # view_count is raised only through the /view/ action, never by a write
         # to the post itself -- otherwise an edit would carry whatever number
         # the form loaded and quietly roll back every view since.
-        read_only_fields = ["id", "view_count", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "view_count",
+            "comment_count",
+            "created_at",
+            "updated_at",
+        ]
         extra_kwargs = {
             "slug": {"required": False},
         }
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_comment_count(self, post):
+        """Read the annotation `PostViewSet.get_queryset` attaches, or count.
+
+        The fallback is not decoration: a create/update response serialises the
+        instance `save()` returned, which never went through the queryset and so
+        carries no annotation. That is one extra query on a write -- a page the
+        owner is looking at, one row at a time -- while every read path, which
+        is where the N+1 would actually hurt, comes in annotated.
+        """
+        counted = getattr(post, "comment_count", None)
+        if counted is not None:
+            return counted
+        return post.comments.filter(status=Comment.Status.PUBLISHED).count()
 
     def validate_tags(self, value):
         # Trimmed and deduped in Post.save() so the admin and the shell get it
@@ -229,3 +267,129 @@ class LabelCountSerializer(serializers.Serializer):
 
     name = serializers.CharField(read_only=True)
     count = serializers.IntegerField(read_only=True)
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    """A visitor's comment, both read and written through this one shape.
+
+    `post` is the slug rather than the id, matching every other route here --
+    the client already has the slug, and asking it for a numeric id would mean
+    a lookup it has no reason to make.
+    """
+
+    post = serializers.SlugRelatedField(
+        slug_field="slug", queryset=Post.objects.all()
+    )
+    # For the admin console's rows, which list comments across posts and would
+    # otherwise show a slug where a title belongs. Read-only and cheap: the
+    # viewset select_related()s the post it comes from.
+    post_title = serializers.CharField(source="post.title", read_only=True)
+
+    class Meta:
+        model = Comment
+        fields = [
+            "id",
+            "post",
+            "post_title",
+            "author_name",
+            "body",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+        # `status` stays writable -- that is how the admin hides and restores a
+        # comment -- but an anonymous create never gets to choose it: see
+        # `CommentViewSet.perform_create`.
+        read_only_fields = ["id", "created_at", "updated_at"]
+        extra_kwargs = {
+            # A CharField is `blank=False` already; naming it here is what turns
+            # a submitted "" into a 400 rather than an anonymous row.
+            "author_name": {"allow_blank": False},
+            "body": {"allow_blank": False},
+        }
+
+    def validate_post(self, value):
+        """Refuse a comment on a post the caller cannot see, or has closed.
+
+        Two separate refusals, and they are worded differently on purpose. A
+        draft is answered as if it did not exist -- `get_queryset` hides drafts
+        from anonymous callers on every read route, and a write has to agree, or
+        posting to a guessed slug would confirm an unpublished post exists and
+        would attach a comment that appears the moment it is published. A closed
+        thread, by contrast, is a post the visitor is looking at right now, so
+        the message says plainly what happened.
+
+        **The owner is exempt from both.** They are not the audience either
+        switch is about: closing a thread means visitors may no longer add to
+        it, and leaving the last word on a thread you just closed is a
+        reasonable thing to want. The form is gone from the public page either
+        way, so this only ever comes up through the API.
+        """
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is not None and user.is_authenticated:
+            return value
+        if value.status != Post.Status.PUBLISHED:
+            raise serializers.ValidationError("No post found with that slug.")
+        if not value.comments_enabled:
+            raise serializers.ValidationError(
+                "Comments are closed on this post."
+            )
+        return value
+
+    def validate_author_name(self, value):
+        # Collapses runs of whitespace as well as trimming, so a name padded out
+        # to look like a heading in the thread cannot be.
+        name = " ".join(value.split())
+        if not name:
+            raise serializers.ValidationError("Give a name to post under.")
+        return name
+
+    def validate_body(self, value):
+        # Only the ends are trimmed: the newlines *inside* are the commenter's
+        # paragraphs, and the page renders them with `pre-line`.
+        body = value.strip()
+        if not body:
+            raise serializers.ValidationError("Write something first.")
+        return body
+
+
+class ReactionCountSerializer(serializers.Serializer):
+    """One button of the reaction bar.
+
+    Sent for **every** emoji in `REACTION_EMOJI`, zeros included -- the same
+    denseness `views_by_day` has and for a related reason: the bar is a fixed
+    row of buttons, so the client renders what the server offers rather than
+    keeping its own copy of the list and hoping the two agree.
+    """
+
+    emoji = serializers.CharField(read_only=True)
+    # The accessible name, e.g. "Celebrate". Sent rather than kept client-side
+    # so the set and its wording live in one file.
+    label = serializers.CharField(read_only=True)
+    count = serializers.IntegerField(read_only=True)
+    # Whether the `visitor` token on this request has this reaction. False for
+    # every emoji when no token was sent, which is what an unknown browser sees.
+    reacted = serializers.BooleanField(read_only=True)
+
+
+class ReactionSummarySerializer(serializers.Serializer):
+    """The body of `GET|POST /api/posts/{slug}/reactions/`."""
+
+    slug = serializers.SlugField(read_only=True)
+    total = serializers.IntegerField(read_only=True)
+    reactions = ReactionCountSerializer(many=True, read_only=True)
+
+
+class ReactionToggleSerializer(serializers.Serializer):
+    """The request body of `POST /api/posts/{slug}/reactions/`.
+
+    A serializer rather than raw `request.data` reads so drf-spectacular can
+    describe the request -- and so both fields are validated in one place.
+    """
+
+    emoji = serializers.ChoiceField(choices=REACTION_EMOJI_VALUES)
+    # Opaque and client-generated; see `Reaction.visitor`. Bounded because it
+    # goes into a CharField, and non-blank because "everyone who sent nothing"
+    # would otherwise be one visitor sharing one reaction.
+    visitor = serializers.CharField(max_length=64, allow_blank=False, trim_whitespace=True)

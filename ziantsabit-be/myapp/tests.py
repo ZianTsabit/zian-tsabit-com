@@ -1,18 +1,31 @@
 import base64
 import datetime
 import io
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 from rest_framework import status
+from rest_framework.settings import api_settings
 from rest_framework.test import APIClient, APITestCase
+from rest_framework.throttling import ScopedRateThrottle
 
-from .models import Book, Post, PostViewDay, isbn_is_valid, normalise_isbn
-from .views import DAILY_VIEWS_DAYS
+from .models import (
+    REACTION_EMOJI_VALUES,
+    Book,
+    Comment,
+    Post,
+    PostViewDay,
+    Reaction,
+    isbn_is_valid,
+    normalise_isbn,
+)
+from .views import DAILY_VIEWS_DAYS, BookPagination
 
 # The CORS tests below pin this rather than relying on settings.py's default,
 # so they assert the behaviour and not the environment: a deployment sets
@@ -1550,6 +1563,236 @@ class BookAPITests(APITestCase):
         self.assertTrue(Post.objects.filter(pk=post.pk).exists())
 
 
+class VisitorSwitchTests(APITestCase):
+    """`comments_enabled` / `reactions_enabled` -- the per-post switches.
+
+    Both default True, and the tests below lean on that: a post created without
+    naming either has to behave exactly as every post did before the columns
+    existed.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.open_post = Post.objects.create(
+            title="Open House", status=Post.Status.PUBLISHED
+        )
+        cls.closed = Post.objects.create(
+            title="Closed Thread",
+            status=Post.Status.PUBLISHED,
+            comments_enabled=False,
+            reactions_enabled=False,
+        )
+        cls.comments_url = reverse("comment-list")
+        cls.emoji = REACTION_EMOJI_VALUES[0]
+
+    def setUp(self):
+        cache.clear()
+
+    def reactions_url(self, post):
+        return reverse("post-reactions", kwargs={"slug": post.slug})
+
+    def detail_url(self, post):
+        return reverse("post-detail", kwargs={"slug": post.slug})
+
+    def comment_body(self, post):
+        return {"post": post.slug, "author_name": "Ada", "body": "Hello."}
+
+    # -- defaults ---------------------------------------------------------
+
+    def test_both_default_to_on(self):
+        post = Post.objects.create(title="Fresh")
+        self.assertTrue(post.comments_enabled)
+        self.assertTrue(post.reactions_enabled)
+
+    def test_a_post_created_through_the_api_defaults_to_on(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            reverse("post-list"), {"title": "Fresh"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["comments_enabled"])
+        self.assertTrue(response.data["reactions_enabled"])
+
+    def test_both_are_serialised(self):
+        response = self.client.get(self.detail_url(self.closed))
+        self.assertFalse(response.data["comments_enabled"])
+        self.assertFalse(response.data["reactions_enabled"])
+
+    # -- comments ---------------------------------------------------------
+
+    def test_a_visitor_may_comment_on_an_open_post(self):
+        response = self.client.post(
+            self.comments_url, self.comment_body(self.open_post), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_a_visitor_may_not_comment_on_a_closed_post(self):
+        response = self.client.post(
+            self.comments_url, self.comment_body(self.closed), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Comment.objects.count(), 0)
+
+    def test_a_closed_thread_says_so_rather_than_playing_dead(self):
+        # A draft is answered as if it did not exist; a closed thread is a post
+        # the visitor is looking at, so the message is the true one.
+        response = self.client.post(
+            self.comments_url, self.comment_body(self.closed), format="json"
+        )
+        self.assertIn("closed", str(response.data["post"]).lower())
+
+    def test_the_owner_may_still_comment_on_a_closed_post(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.comments_url, self.comment_body(self.closed), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_closing_a_thread_leaves_its_comments_readable(self):
+        # The switch is about what may be *added*. Hiding what is already there
+        # is `Comment.status`, and a switch that did both would be a bulk-hide
+        # with no way to see what it hid.
+        Comment.objects.create(
+            post=self.closed, author_name="Ada", body="Said before it shut."
+        )
+        response = self.client.get(self.comments_url, {"post": self.closed.slug})
+        self.assertEqual(
+            [row["body"] for row in response.data["results"]], ["Said before it shut."]
+        )
+
+    def test_a_closed_post_still_reports_its_comment_count(self):
+        Comment.objects.create(post=self.closed, author_name="Ada", body="Hi.")
+        response = self.client.get(self.detail_url(self.closed))
+        self.assertEqual(response.data["comment_count"], 1)
+
+    # -- reactions --------------------------------------------------------
+
+    def test_a_visitor_may_react_to_an_open_post(self):
+        response = self.client.post(
+            self.reactions_url(self.open_post),
+            {"emoji": self.emoji, "visitor": "abc"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_a_visitor_may_not_react_to_a_post_with_reactions_off(self):
+        response = self.client.post(
+            self.reactions_url(self.closed),
+            {"emoji": self.emoji, "visitor": "abc"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Reaction.objects.count(), 0)
+
+    def test_the_owner_may_still_react_to_a_post_with_reactions_off(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.reactions_url(self.closed),
+            {"emoji": self.emoji, "visitor": "abc"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_reading_the_bar_still_works_with_reactions_off(self):
+        # A count of things that already happened. 404ing it would make the
+        # switch look like the post had gone.
+        response = self.client.get(self.reactions_url(self.closed))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["reactions"]), len(REACTION_EMOJI_VALUES))
+
+    def test_turning_reactions_back_on_brings_the_counts_with_it(self):
+        # The rows stay in the table while the switch is off: a reaction
+        # somebody left is a thing that happened.
+        Reaction.objects.create(post=self.closed, emoji=self.emoji, visitor="abc")
+        self.closed.reactions_enabled = True
+        self.closed.save()
+        response = self.client.get(self.reactions_url(self.closed))
+        self.assertEqual(response.data["total"], 1)
+
+    # -- the owner's control ---------------------------------------------
+
+    def test_the_owner_can_close_a_thread_with_a_patch(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.open_post), {"comments_enabled": False}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.open_post.refresh_from_db()
+        self.assertFalse(self.open_post.comments_enabled)
+        # ...and the other switch is untouched by it.
+        self.assertTrue(self.open_post.reactions_enabled)
+
+    def test_a_visitor_cannot_reopen_a_thread(self):
+        response = self.client.patch(
+            self.detail_url(self.closed), {"comments_enabled": True}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.closed.refresh_from_db()
+        self.assertFalse(self.closed.comments_enabled)
+
+
+class BookPaginationTests(APITestCase):
+    """The catalogue pages shorter than the rest of the API.
+
+    Worth its own tests because the number is a *contract between three
+    places*: `BookPagination.page_size` here, `BOOKS_PAGE_SIZE` in the SPA's
+    `books.ts`, and the page counts both book lists derive from it. A change on
+    one side alone offers pages the API has nothing to put on.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.list_url = reverse("book-list")
+        cls.posts_url = reverse("post-list")
+        # One more than a page, so there is a second page to reach.
+        for index in range(BookPagination.page_size + 2):
+            Book.objects.create(
+                title=f"Book {index:02d}",
+                author="Someone",
+                status=Book.Status.PUBLISHED,
+            )
+
+    def test_a_page_is_shorter_than_the_site_wide_one(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), BookPagination.page_size)
+        self.assertLess(BookPagination.page_size, api_settings.PAGE_SIZE)
+
+    def test_the_count_is_the_whole_catalogue_not_the_page(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.data["count"], BookPagination.page_size + 2)
+
+    def test_a_full_page_offers_the_next_one(self):
+        response = self.client.get(self.list_url)
+        self.assertIsNotNone(response.data["next"])
+
+    def test_the_second_page_holds_the_remainder(self):
+        response = self.client.get(self.list_url, {"page": 2})
+        self.assertEqual(len(response.data["results"]), 2)
+        self.assertIsNone(response.data["next"])
+
+    def test_the_two_pages_do_not_overlap(self):
+        first = self.client.get(self.list_url).data["results"]
+        second = self.client.get(self.list_url, {"page": 2}).data["results"]
+        slugs = [row["slug"] for row in first] + [row["slug"] for row in second]
+        self.assertEqual(len(slugs), len(set(slugs)))
+
+    def test_paging_survives_a_filter(self):
+        # The page size applies whatever narrowed the queryset -- ?ordering=
+        # reorders the rows, it does not lengthen the page.
+        response = self.client.get(self.list_url, {"ordering": "title"})
+        self.assertEqual(len(response.data["results"]), BookPagination.page_size)
+
+    def test_posts_keep_the_site_wide_page_size(self):
+        # The shorter page is the catalogue's, not the API's: a feed of posts
+        # is a column of rows and pages as it always did.
+        for index in range(api_settings.PAGE_SIZE + 2):
+            Post.objects.create(title=f"Post {index:02d}", status=Post.Status.PUBLISHED)
+        response = self.client.get(self.posts_url)
+        self.assertEqual(len(response.data["results"]), api_settings.PAGE_SIZE)
+
+
 class TagVocabularyTests(APITestCase):
     """GET /api/posts/tags/ -- what the feed's filter control offers."""
 
@@ -1610,3 +1853,452 @@ class TagVocabularyTests(APITestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data, [])
+
+
+class CommentAPITests(APITestCase):
+    """/api/comments/ -- the visitor's write and the owner's moderation.
+
+    The two throttle tests patch `ScopedRateThrottle.THROTTLE_RATES` rather
+    than using `override_settings(REST_FRAMEWORK=...)`, which looks like it
+    should work and does not: DRF binds that dict to the class **at import
+    time**, so a settings override changes `api_settings` and leaves the
+    throttle reading the rate it was born with.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("comment-list")
+        cls.post = Post.objects.create(
+            title="Published Post", status=Post.Status.PUBLISHED
+        )
+        cls.other = Post.objects.create(
+            title="Another Post", status=Post.Status.PUBLISHED
+        )
+        cls.draft = Post.objects.create(title="Draft Post")
+
+    def setUp(self):
+        # The create throttle counts against Django's cache, and LocMemCache
+        # outlives a single test: without this the 21st comment written by the
+        # whole class fails, and which test that is depends on the order they
+        # happen to run in.
+        cache.clear()
+
+    def detail_url(self, comment):
+        return reverse("comment-detail", kwargs={"pk": comment.pk})
+
+    def comment(self, post=None, **kwargs):
+        return Comment.objects.create(
+            post=post or self.post,
+            author_name=kwargs.pop("author_name", "Visitor"),
+            body=kwargs.pop("body", "Nice one."),
+            **kwargs,
+        )
+
+    def test_anonymous_can_post_a_comment(self):
+        response = self.client.post(
+            self.list_url,
+            {"post": self.post.slug, "author_name": "Ada", "body": "Good read."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["author_name"], "Ada")
+        self.assertEqual(response.data["post"], self.post.slug)
+
+    def test_a_new_comment_is_visible_immediately(self):
+        # Published on arrival and moderated afterwards -- a queue would leave
+        # a commenter staring at a page their comment never appeared on.
+        self.client.post(
+            self.list_url,
+            {"post": self.post.slug, "author_name": "Ada", "body": "Good read."},
+            format="json",
+        )
+        response = self.client.get(self.list_url, {"post": self.post.slug})
+        self.assertEqual([row["body"] for row in response.data["results"]], ["Good read."])
+
+    def test_a_visitor_cannot_choose_the_status(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "post": self.post.slug,
+                "author_name": "Ada",
+                "body": "Good read.",
+                "status": Comment.Status.HIDDEN,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], Comment.Status.PUBLISHED)
+
+    def test_the_owner_may_post_a_hidden_comment(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            {
+                "post": self.post.slug,
+                "author_name": "Zian",
+                "body": "Note to self.",
+                "status": Comment.Status.HIDDEN,
+            },
+            format="json",
+        )
+        self.assertEqual(response.data["status"], Comment.Status.HIDDEN)
+
+    def test_a_blank_name_is_rejected(self):
+        response = self.client.post(
+            self.list_url,
+            {"post": self.post.slug, "author_name": "   ", "body": "Hi."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("author_name", response.data)
+
+    def test_a_blank_body_is_rejected(self):
+        response = self.client.post(
+            self.list_url,
+            {"post": self.post.slug, "author_name": "Ada", "body": "   \n "},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("body", response.data)
+
+    def test_the_name_is_collapsed_but_the_body_keeps_its_newlines(self):
+        response = self.client.post(
+            self.list_url,
+            {
+                "post": self.post.slug,
+                "author_name": "  Ada   Lovelace ",
+                "body": "  One.\n\nTwo.  ",
+            },
+            format="json",
+        )
+        self.assertEqual(response.data["author_name"], "Ada Lovelace")
+        self.assertEqual(response.data["body"], "One.\n\nTwo.")
+
+    def test_anonymous_cannot_comment_on_a_draft(self):
+        response = self.client.post(
+            self.list_url,
+            {"post": self.draft.slug, "author_name": "Ada", "body": "Hi."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Comment.objects.count(), 0)
+
+    def test_an_unknown_slug_is_rejected(self):
+        response = self.client.post(
+            self.list_url,
+            {"post": "nothing-here", "author_name": "Ada", "body": "Hi."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_the_thread_is_filtered_by_post(self):
+        self.comment(body="On this one")
+        self.comment(post=self.other, body="On the other")
+        response = self.client.get(self.list_url, {"post": self.post.slug})
+        self.assertEqual(
+            [row["body"] for row in response.data["results"]], ["On this one"]
+        )
+
+    def test_a_thread_reads_oldest_first(self):
+        self.comment(body="First")
+        self.comment(body="Second")
+        response = self.client.get(self.list_url, {"post": self.post.slug})
+        self.assertEqual(
+            [row["body"] for row in response.data["results"]], ["First", "Second"]
+        )
+
+    def test_newest_first_is_available_for_the_admin(self):
+        self.comment(body="First")
+        self.comment(body="Second")
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.list_url, {"ordering": "newest"})
+        self.assertEqual(
+            [row["body"] for row in response.data["results"]], ["Second", "First"]
+        )
+
+    def test_an_unknown_ordering_is_rejected(self):
+        response = self.client.get(self.list_url, {"ordering": "oldst"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_hidden_comments_are_invisible_to_visitors(self):
+        self.comment(body="Fine")
+        self.comment(body="Spam", status=Comment.Status.HIDDEN)
+        response = self.client.get(self.list_url, {"post": self.post.slug})
+        self.assertEqual([row["body"] for row in response.data["results"]], ["Fine"])
+
+    def test_hidden_comments_are_visible_to_the_owner(self):
+        self.comment(body="Spam", status=Comment.Status.HIDDEN)
+        self.client.force_authenticate(self.user)
+        response = self.client.get(self.list_url, {"status": Comment.Status.HIDDEN})
+        self.assertEqual([row["body"] for row in response.data["results"]], ["Spam"])
+
+    def test_a_drafts_comments_are_invisible_to_visitors(self):
+        # Otherwise the thread is a way to read around the draft filter and
+        # confirm an unpublished post exists.
+        self.comment(post=self.draft, body="Early look")
+        response = self.client.get(self.list_url, {"post": self.draft.slug})
+        self.assertEqual(response.data["results"], [])
+
+    def test_search_matches_the_body_or_the_name(self):
+        self.comment(author_name="Ada", body="About Postgres")
+        self.comment(author_name="Grace", body="Something else")
+        response = self.client.get(self.list_url, {"search": "postgres"})
+        self.assertEqual(
+            [row["author_name"] for row in response.data["results"]], ["Ada"]
+        )
+        response = self.client.get(self.list_url, {"search": "grace"})
+        self.assertEqual(
+            [row["author_name"] for row in response.data["results"]], ["Grace"]
+        )
+
+    def test_a_row_carries_its_posts_title(self):
+        self.comment()
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.data["results"][0]["post_title"], self.post.title)
+
+    def test_anonymous_cannot_hide_a_comment(self):
+        comment = self.comment()
+        response = self.client.patch(
+            self.detail_url(comment),
+            {"status": Comment.Status.HIDDEN},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_cannot_delete_a_comment(self):
+        comment = self.comment()
+        response = self.client.delete(self.detail_url(comment))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(Comment.objects.count(), 1)
+
+    def test_the_owner_can_hide_and_restore_a_comment(self):
+        comment = self.comment()
+        self.client.force_authenticate(self.user)
+        self.client.patch(
+            self.detail_url(comment), {"status": Comment.Status.HIDDEN}, format="json"
+        )
+        comment.refresh_from_db()
+        self.assertEqual(comment.status, Comment.Status.HIDDEN)
+        self.client.patch(
+            self.detail_url(comment),
+            {"status": Comment.Status.PUBLISHED},
+            format="json",
+        )
+        comment.refresh_from_db()
+        self.assertEqual(comment.status, Comment.Status.PUBLISHED)
+
+    def test_the_owner_can_delete_a_comment(self):
+        comment = self.comment()
+        self.client.force_authenticate(self.user)
+        response = self.client.delete(self.detail_url(comment))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(Comment.objects.count(), 0)
+
+    def test_deleting_a_post_takes_its_comments(self):
+        self.comment()
+        self.post.delete()
+        self.assertEqual(Comment.objects.count(), 0)
+
+    @patch.dict(ScopedRateThrottle.THROTTLE_RATES, {"comments": "1/hour"})
+    def test_posting_is_rate_limited(self):
+        body = {"post": self.post.slug, "author_name": "Ada", "body": "Hi."}
+        self.assertEqual(
+            self.client.post(self.list_url, body, format="json").status_code,
+            status.HTTP_201_CREATED,
+        )
+        self.assertEqual(
+            self.client.post(self.list_url, body, format="json").status_code,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    @patch.dict(ScopedRateThrottle.THROTTLE_RATES, {"comments": "1/hour"})
+    def test_reading_a_thread_is_not_rate_limited(self):
+        # Only the route a stranger writes to is bounded; a busy post would
+        # otherwise stop serving its own comments.
+        for _ in range(3):
+            self.assertEqual(
+                self.client.get(self.list_url).status_code, status.HTTP_200_OK
+            )
+
+
+class CommentCountTests(APITestCase):
+    """`comment_count` on a post -- what the feed card and the thread heading show."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.post = Post.objects.create(title="Counted", status=Post.Status.PUBLISHED)
+        cls.detail_url = reverse("post-detail", kwargs={"slug": cls.post.slug})
+
+    def test_a_post_with_no_comments_reports_zero(self):
+        self.assertEqual(self.client.get(self.detail_url).data["comment_count"], 0)
+
+    def test_comments_are_counted(self):
+        for index in range(3):
+            Comment.objects.create(
+                post=self.post, author_name="Ada", body=f"#{index}"
+            )
+        self.assertEqual(self.client.get(self.detail_url).data["comment_count"], 3)
+
+    def test_hidden_comments_are_not_counted_even_for_the_owner(self):
+        Comment.objects.create(post=self.post, author_name="Ada", body="Fine")
+        Comment.objects.create(
+            post=self.post,
+            author_name="Bot",
+            body="Spam",
+            status=Comment.Status.HIDDEN,
+        )
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.client.get(self.detail_url).data["comment_count"], 1)
+
+    def test_a_post_with_no_comments_still_appears_in_the_feed(self):
+        # `filter=` on the aggregate rather than a filter on the queryset: the
+        # latter would drop every uncommented post off the feed.
+        Post.objects.create(title="Silent", status=Post.Status.PUBLISHED)
+        response = self.client.get(reverse("post-list"))
+        self.assertEqual(response.data["count"], 2)
+
+    def test_the_count_survives_a_write(self):
+        # A create/update response serialises the instance save() returned,
+        # which never went through the annotated queryset.
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            reverse("post-list"), {"title": "Fresh"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["comment_count"], 0)
+
+    def test_the_feed_is_still_newest_first(self):
+        # The aggregate annotation carries a GROUP BY, which clears
+        # Meta.ordering -- the queryset restates it for exactly this reason.
+        older = Post.objects.create(title="Older", status=Post.Status.PUBLISHED)
+        newer = Post.objects.create(title="Newer", status=Post.Status.PUBLISHED)
+        response = self.client.get(reverse("post-list"))
+        self.assertEqual(
+            [row["slug"] for row in response.data["results"]][:2],
+            [newer.slug, older.slug],
+        )
+
+
+class ReactionTests(APITestCase):
+    """GET|POST /api/posts/{slug}/reactions/ -- the emoji bar."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.post = Post.objects.create(title="Reacted To", status=Post.Status.PUBLISHED)
+        cls.draft = Post.objects.create(title="Unpublished")
+        cls.url = reverse("post-reactions", kwargs={"slug": cls.post.slug})
+        cls.emoji = REACTION_EMOJI_VALUES[0]
+        cls.other_emoji = REACTION_EMOJI_VALUES[1]
+
+    def setUp(self):
+        cache.clear()
+
+    def counts(self, data):
+        return {row["emoji"]: row["count"] for row in data["reactions"]}
+
+    def test_the_bar_is_dense(self):
+        # Every emoji on offer comes back, zeros included, so the client
+        # renders the row the server defines rather than keeping its own copy.
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [row["emoji"] for row in response.data["reactions"]],
+            list(REACTION_EMOJI_VALUES),
+        )
+        self.assertEqual(set(self.counts(response.data).values()), {0})
+
+    def test_every_button_carries_a_label(self):
+        response = self.client.get(self.url)
+        self.assertTrue(all(row["label"] for row in response.data["reactions"]))
+
+    def test_anonymous_can_react(self):
+        response = self.client.post(
+            self.url, {"emoji": self.emoji, "visitor": "abc"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.counts(response.data)[self.emoji], 1)
+        self.assertEqual(response.data["total"], 1)
+
+    def test_reacting_twice_takes_it_back(self):
+        self.client.post(self.url, {"emoji": self.emoji, "visitor": "abc"}, format="json")
+        response = self.client.post(
+            self.url, {"emoji": self.emoji, "visitor": "abc"}, format="json"
+        )
+        self.assertEqual(self.counts(response.data)[self.emoji], 0)
+        self.assertEqual(Reaction.objects.count(), 0)
+
+    def test_one_visitor_may_leave_several_different_emoji(self):
+        self.client.post(self.url, {"emoji": self.emoji, "visitor": "abc"}, format="json")
+        response = self.client.post(
+            self.url, {"emoji": self.other_emoji, "visitor": "abc"}, format="json"
+        )
+        self.assertEqual(response.data["total"], 2)
+
+    def test_two_visitors_are_counted_separately(self):
+        self.client.post(self.url, {"emoji": self.emoji, "visitor": "abc"}, format="json")
+        response = self.client.post(
+            self.url, {"emoji": self.emoji, "visitor": "xyz"}, format="json"
+        )
+        self.assertEqual(self.counts(response.data)[self.emoji], 2)
+
+    def test_reacted_is_reported_for_the_token_that_asked(self):
+        self.client.post(self.url, {"emoji": self.emoji, "visitor": "abc"}, format="json")
+        mine = self.client.get(self.url, {"visitor": "abc"})
+        theirs = self.client.get(self.url, {"visitor": "xyz"})
+        reacted = {row["emoji"]: row["reacted"] for row in mine.data["reactions"]}
+        self.assertTrue(reacted[self.emoji])
+        self.assertFalse(
+            {row["emoji"]: row["reacted"] for row in theirs.data["reactions"]}[
+                self.emoji
+            ]
+        )
+
+    def test_without_a_token_nothing_is_reacted(self):
+        self.client.post(self.url, {"emoji": self.emoji, "visitor": "abc"}, format="json")
+        response = self.client.get(self.url)
+        self.assertFalse(any(row["reacted"] for row in response.data["reactions"]))
+        # The counts are the same either way -- only "is it mine" needs a token.
+        self.assertEqual(self.counts(response.data)[self.emoji], 1)
+
+    def test_an_emoji_off_the_list_is_rejected(self):
+        response = self.client.post(
+            self.url, {"emoji": "\N{PILE OF POO}", "visitor": "abc"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Reaction.objects.count(), 0)
+
+    def test_a_blank_visitor_token_is_rejected(self):
+        # Otherwise everyone who sent nothing is one visitor sharing one
+        # reaction, and the toggle would take away a stranger's.
+        response = self.client.post(
+            self.url, {"emoji": self.emoji, "visitor": "  "}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_a_draft_is_a_404_to_a_visitor(self):
+        url = reverse("post-reactions", kwargs={"slug": self.draft.slug})
+        self.assertEqual(
+            self.client.get(url).status_code, status.HTTP_404_NOT_FOUND
+        )
+        self.assertEqual(
+            self.client.post(
+                url, {"emoji": self.emoji, "visitor": "abc"}, format="json"
+            ).status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+    def test_a_retired_emoji_is_neither_shown_nor_totalled(self):
+        # Rows left with an emoji since taken off the list stay in the table --
+        # a reaction someone left is a thing that happened -- but the bar and
+        # the number above it describe what is on offer now.
+        Reaction.objects.create(post=self.post, emoji="\N{PILE OF POO}", visitor="abc")
+        response = self.client.get(self.url)
+        self.assertEqual(response.data["total"], 0)
+        self.assertNotIn("\N{PILE OF POO}", self.counts(response.data))
+
+    def test_deleting_a_post_takes_its_reactions(self):
+        Reaction.objects.create(post=self.post, emoji=self.emoji, visitor="abc")
+        self.post.delete()
+        self.assertEqual(Reaction.objects.count(), 0)
