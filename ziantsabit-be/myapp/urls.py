@@ -8,11 +8,15 @@ from rest_framework.routers import DefaultRouter
 
 from .auth import LoginView, LogoutView, SessionView
 from .uploads import ImageUploadView
-from .views import BookViewSet, PostViewSet
+from .views import BookViewSet, CommentViewSet, PostViewSet
 
 router = DefaultRouter()
 router.register(r"posts", PostViewSet, basename="post")
 router.register(r"books", BookViewSet, basename="book")
+# Top-level rather than nested under a post: the admin reads comments
+# across every post, and the public page asks for one thread with
+# `?post=<slug>`. See CommentViewSet.
+router.register(r"comments", CommentViewSet, basename="comment")
 
 urlpatterns = [
     # Docs and auth first: the router's own index lives at "" and would

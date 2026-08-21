@@ -53,7 +53,7 @@ No test runner is configured for the frontend.
 
 **There is no `/projects` page.** It listed one hardcoded category and went with the enum in `0009`; browsing by tag on `/` replaced it. `PostList` went with it — its only other caller was the Books page, which is now the catalogue — so what survives is `components/PostCard.tsx`, the entry `Blog` maps over.
 
-**An admin page is different: it goes under the `/admin` route and into `AdminNav`, never into `navItems`.** `/admin` is a shell (`Admin.tsx`) whose children are `AdminOverview` (index), `AdminConsole` (`posts`), `AdminBookConsole` (`books`), `AdminStats` (`stats`) and the four editors — two for posts, two for books, with the book ones under `books/new` and `books/edit/:slug` because `edit/:slug` at the top level is already the post editor's — nested so the session is checked once for all of them, and so `AdminNav` is mounted beside the `<Outlet>` and survives navigation between sections rather than remounting. The `items` array in `AdminNav.tsx` is the one place a section is listed; it feeds the `md`+ left column and the phone row alike. **Its post section is labelled "Blog", matching the public nav, while everything inside it still says "post"** — "New post", "Edit post", "No posts match this filter". The section is the blog; the things in it are posts, and the `Posts` stat tiles on the overview and statistics pages count those, so they keep the plural noun rather than becoming a nonsensical `Blog: 12`. The route stayed `/admin/posts` for the same reason the public `/posts/:slug` did — a rename is not worth invalidating a bookmark over. Note the `end` prop on the Overview link: `NavLink` matches by prefix, so without it `/admin` would stay highlighted on every child route.
+**An admin page is different: it goes under the `/admin` route and into `AdminNav`, never into `navItems`.** `/admin` is a shell (`Admin.tsx`) whose children are `AdminOverview` (index), `AdminConsole` (`posts`), `AdminBookConsole` (`books`), `AdminCommentConsole` (`comments`), `AdminStats` (`stats`) and the four editors — two for posts, two for books, with the book ones under `books/new` and `books/edit/:slug` because `edit/:slug` at the top level is already the post editor's — nested so the session is checked once for all of them, and so `AdminNav` is mounted beside the `<Outlet>` and survives navigation between sections rather than remounting. The `items` array in `AdminNav.tsx` is the one place a section is listed; it feeds the `md`+ left column and the phone row alike. **Its post section is labelled "Blog", matching the public nav, while everything inside it still says "post"** — "New post", "Edit post", "No posts match this filter". The section is the blog; the things in it are posts, and the `Posts` stat tiles on the overview and statistics pages count those, so they keep the plural noun rather than becoming a nonsensical `Blog: 12`. The route stayed `/admin/posts` for the same reason the public `/posts/:slug` did — a rename is not worth invalidating a bookmark over. Note the `end` prop on the Overview link: `NavLink` matches by prefix, so without it `/admin` would stay highlighted on every child route.
 
 Two layout details in the shell are load-bearing. The content column carries `minWidth: 0`, because a flex item defaults to `min-width: auto` and refuses to shrink below its content — without it the post list's filter row and the cadence chart push the nav off the screen instead of scrolling inside themselves. And **sign-out lives in `AdminNav`, not on the post list where it used to be**: it is chrome for the whole admin, so leaving it on one page would mean either three copies or a control that vanishes when you navigate.
 
@@ -130,10 +130,19 @@ Post bodies are Markdown. `src/components/Markdown.tsx` renders them and is the 
 - **Raw HTML is not rendered.** `react-markdown` ignores it unless `rehype-raw` is added; leave it out. Bodies are stored and replayed verbatim, so a `<script>` in one should stay text.
 - **Headings are demoted one level** — a `#` becomes an `<h2>`, because the page already spends its `<h1>` on the post title. Visual size still follows what was typed.
 - **`remark-breaks` is load-bearing.** Bodies written before Markdown existed were rendered with `whiteSpace: "pre-line"`; without this plugin every one of them silently reflows into a single paragraph.
-- **Wide blocks scroll in their own box.** `<pre>` and `<table>` carry `overflowX: auto` — see the "nothing may widen the page" rule above.
+- **Wide blocks scroll in their own box.** `<pre>`, `<table>` and `.katex-display` carry `overflowX: auto` — see the "nothing may widen the page" rule above. KaTeX ships no overflow of its own, so a wide equation would otherwise put a scrollbar on the whole document; the display rule pairs it with `overflowY: hidden`, or the horizontal scrollbar's height triggers a second vertical one on tall glyphs.
+- **LaTeX is `remark-math` + `rehype-katex`**: `$x^2$` inline, `$$…$$` as a centred block. Four things there are deliberate:
+  - **`remark-math` must sit before `remark-breaks` in the list**, and it works because it is a *parser* extension rather than a transformer: maths becomes its own node at tokenise time, so `remark-breaks` never sees the newlines inside a multi-line `$$` block and cannot litter it with `<br>`s.
+  - **`$` is syntax now.** A body about money needs `\$5`, or the `$5` and the next `$` on the line are read as one expression. Nothing published contained a `$` when this shipped, which is what made single-dollar inline maths safe to enable; if that changes, `remark-math` takes `{ singleDollarTextMath: false }` and `$$…$$` still works inline.
+  - **`trust: false` and no `rehype-raw`, together.** `\url`, `\href` and `\includegraphics` are what would quietly undo this file's "raw HTML is text, never markup" rule through a macro. `throwOnError: false` is what keeps the admin's Preview tab showing a half-typed expression in red instead of a blank pane.
+  - **KaTeX is loaded on demand, and `src/components/mathPlugins.ts` exists only to be that chunk.** It is ~276 KB of JS plus 30 KB of CSS (~91 KB gzipped together), which is a lot to hand every visitor of a site where most posts are prose — so `Markdown.tsx` reaches it through `import()`, and only when the body contains a `$`. **Nothing may import that module statically**: one ordinary `import` anywhere folds it back into the main chunk and undoes the split, with no error and no symptom but the bundle size. (Its `import type { Options } from "react-markdown"` is safe — type-only imports are erased.) The build output is the check: the main chunk is 853 KB where it was 840 KB before maths existed, and the feed loads no maths chunk at all, because `toPlainText` strips the maths before a card ever reaches `Markdown`.
+  - **The load is cached at module scope, not in component state**, so it is paid once per page load rather than once per `Markdown`: the second post a reader opens finds it ready and renders synchronously. A `failed` flag is the other half — without it a chunk that never arrives (a blip, a stale `index.html` naming a hash that no longer exists) would leave the body blank for good. Set, the render falls through to plain Markdown and the post appears with `$x^2$` as literal text, which is the degradation worth having. Verified by deleting the chunk out of `dist/` and reloading.
+  - **A body containing a `$` renders nothing until the chunk lands**, rather than rendering without it and swapping. Both waits are short and only the first one happens at all, but they fail differently: an empty region for 50ms goes unnoticed, where a paragraph of raw `\frac{a}{b}` reflowing into set maths is a visible flash and a layout shift.
+  - **KaTeX's CSS rides with the chunk and is self-hosted.** Not the CDN `<link>` its docs lead with: Vite resolves the `url()`s against `katex/dist/fonts/` and emits them into `dist/assets/`, which is where `nginx.conf` serves from — so maths needs no third-party request, and a page pulls only the two or three woff2 faces it actually uses. The error colour is `var(--mui-palette-error-main)`, a theme token through MUI's CSS variables rather than the hex KaTeX defaults to, since KaTeX wants a CSS colour string and `theme.ts` is the only place a colour is written.
+- `toPlainText()` treats the two maths forms differently, because they read differently as text: a **display block** is a standalone equation whose source is unreadable on a card, so it is dropped; **inline** maths is usually a symbol or two inside a sentence, and dropping it would delete that sentence's subject, so its source is kept. Display is matched first, or `$$` would be read as an empty inline expression. It also unwraps `\$` back to `$` — the one escape it handles, since `$` is the only character these rules made special.
 - `toPlainText()` (in `src/components/markdownText.ts`) flattens Markdown for card previews, which fall back to the body when a post has no excerpt. It is regex, not a parse, on purpose: the output is a clamped teaser. It sits in its own module rather than in `Markdown.tsx` because a file exporting both a component and a plain function breaks Fast Refresh, and `react-refresh/only-export-components` fails `npm run lint` on it.
 
-The editor is `src/components/admin/MarkdownEditor.tsx` (Write/Preview tabs, toolbar, shortcuts) over the pure transforms in `markdownCommands.ts`. Three things there are deliberate and easy to break:
+The editor is `src/components/admin/MarkdownEditor.tsx` (Write/Preview tabs, toolbar, shortcuts) over the pure transforms in `markdownCommands.ts`. **`toggleMath` is deliberately the same shape as `toggleCode`** — one delimiter inline, a fence across lines — because the two are the same gesture, and an author who has learned what the code button does with a multi-line selection should not have to learn something else for maths. Three things there are deliberate and easy to break:
 
 - **Every edit goes through `document.execCommand("insertText")`.** It is deprecated and it is still the only way to make a programmatic edit that the browser's native undo stack knows about. Assign to the textarea's value instead and Ctrl+Z after a toolbar click throws away the whole field.
 - **Tab is trapped, and Escape releases it for one keypress.** Without that opt-out a keyboard-only user cannot get from the body to the Save button.
@@ -162,7 +171,7 @@ Both editor pages save themselves. `useAutosave` (`src/services/useAutosave.ts`)
 | Posts | Books |
 | --- | --- |
 | `services/posts.ts` | `services/books.ts` |
-| `services/usePaginatedPosts.ts` (plus `useTags`) | `services/useBooks.ts` (plus `useGenres`) |
+| `services/usePaginatedPosts.ts` (plus `useTags`) | `services/useBooks.ts` (plus `useGenres`, `BOOKS_PAGE_SIZE`) |
 | `services/usePost.ts` | `services/useBook.ts` |
 | `services/adminPosts.ts` | `services/adminBooks.ts` |
 | `services/useAdminPosts.ts` | `services/useAdminBooks.ts` |
@@ -185,7 +194,93 @@ Points worth keeping intact:
 - **Autosave on the book editors is off until there is both a title *and* an author**, where the post editor only needs a title. The API requires both, so a write missing either is a 400 rather than a draft — and retrying that every three seconds would be an error banner for a form that is merely half-filled.
 - **`AdminEditBook` tracks `status` in state, not in the draft.** The form has no status control (same as the post editor — status is whichever button ends the form), so autosave needs somewhere to read the entry's existing status from in order to write it back unchanged. Putting it in `BookDraft` would make it a field the form could disagree with.
 - **`slugToSend` in `AdminNewBook` tests `^base(-.+)?$`, not `^base(-\d+)?$`.** `Book.save()` disambiguates a taken title with the *author* before falling back to a number, so an entry sitting at `ulysses-james-joyce` is already as close to its title as it can get; the post editor's numeric-only pattern would ask for `ulysses` again every three seconds and be refused every time.
+- **Both book lists count pages with `BOOKS_PAGE_SIZE`, never `PAGE_SIZE`.** The catalogue's page is 12 where the rest of the API's is 20 (see "The Book model"), so a hook importing the site-wide constant renders a pager with pages that do not exist. `useComments`, `usePaginatedPosts` and the two post/comment admin hooks correctly still use `PAGE_SIZE`.
 - **`AdminBookConsole` uses `ActionButton` directly rather than `NewPostButton`**, which hardcodes its label. "New post" on the books page would be wrong in the one way nobody rereads.
+
+### Comments and reactions (frontend)
+
+`PostDetail` ends with two sections in rising order of effort — one tap, then a
+paragraph — both handed `post.slug` rather than the route's `:slug` param, since
+a post reached by an old URL is served under its current slug and both writes
+have to land on the row the page is showing.
+
+| | |
+| --- | --- |
+| `services/comments.ts` / `useComments.ts` | the public thread and its submit |
+| `services/reactions.ts` / `useReactions.ts` | the emoji bar |
+| `services/visitor.ts` | the browser's opaque reaction token |
+| `services/adminComments.ts` / `useAdminComments.ts` | moderation, credentialed |
+| `components/CommentSection.tsx` + `CommentForm.tsx` | thread above, box below |
+| `components/ReactionBar.tsx` | the row of buttons |
+| `components/admin/AdminCommentConsole.tsx` + `AdminCommentList.tsx` | `/admin/comments` |
+
+Points worth keeping intact:
+
+- **`publicRequest` merges the caller's headers rather than replacing them.** It
+  used to hardcode `{ Accept }` *after* spreading `init`, which silently dropped
+  a `Content-Type` — fine while every public call was a GET, wrong the moment
+  `createComment` had a body.
+- **The thread is above the form.** That is the order the page is used in, and
+  it puts the newest comment — oldest-first ordering, so the last one — directly
+  above the box that just posted it.
+- **A successful submit re-fetches; it never splices the draft in.** The stored
+  row differs from what was typed (the name is collapsed, the body trimmed), and
+  a thread showing the draft would disagree with itself on the next load.
+  `useComments` then lands the reader on the page their comment is actually on,
+  which it works out **in the fetch's `then`** — the count it needs is the one
+  that response carries, and before the fetch there was no way to know it.
+- **The form keeps the name and clears the body.** Someone commenting twice on a
+  post is the same person both times.
+- **`ReactionBar` renders what the API sent** — the emoji, their order and their
+  labels all come down with the counts. Adding an emoji is one edit on the
+  server. The `aria-label` is the label, never the glyph, because a screen
+  reader reads U+2764 as "heavy black heart"; `aria-pressed` is what says this
+  is a toggle you already used.
+- **The bar swallows its errors and the thread reports them.** A failed reaction
+  fetch looks exactly like one still loading, because an error banner over a
+  post that loaded fine — because seven emoji did not — is the wrong thing to
+  put on the page (same call as `useTags`/`useGenres`). A failed *thread* is
+  reported, because a visitor about to reply has to know the conversation failed
+  to load rather than being empty.
+- **The toggle is not optimistic.** A bar that flips instantly and then flips
+  back on a failure is worse than one that takes a moment; the buttons hold
+  while a write is in flight, since the hook deliberately runs one at a time.
+  Like `useRecordView`, neither the toggle nor the comment submit is aborted on
+  unmount — the write already happened, and only the state update is skipped.
+- **`ReactionButton` is a pill, not a filled button**, matching `TagChip`; a
+  reaction the visitor left is marked the way a published post is in the admin
+  list — primary colour on the border and the number, not a fill. The `Tooltip`
+  wraps a `span` because MUI attaches its listeners to the child and a disabled
+  button fires none.
+- **`CommentForm` uses a real `<Button>`, not the admin's `ActionButton`.** That
+  component is the admin's own language, where every action is a text link in a
+  row of them; this is the one thing a visitor is asked to do on the page and
+  has to look like a control a stranger recognises.
+- **`PostCard` shows the comment count only when there is one.** A "0 comments"
+  on every entry of a young feed is a column of zeros saying nothing.
+- **The two switches live in `PostDraft`, not beside it.** Unlike `status` —
+  which is whichever button ends the form — they are fields the form owns, so
+  autosave carries them like any other edit and `emptyDraft()` starts both
+  `true` to match the model. `PostFormFields` groups them under a "What
+  visitors can leave" heading; a stray "Comments" toggle between Tags and
+  Published at would read as another field of the post rather than a setting
+  for it.
+- **`PostDetail` decides what to render, `CommentSection` only takes `enabled`.**
+  No bar at all when reactions are off; the thread but no form when comments
+  are closed; and the whole comments section disappears in exactly one case —
+  a closed post with no comments — since a heading over "Comments are closed"
+  is a section saying nothing. The dividers between the two are conditional on
+  the same flags, so neither can strand.
+- **`AdminPostList` chips a switch only when it is *off*.** Both default on, so
+  "Comments on" on every row would be a column of noise marking the ordinary
+  case; what is worth spotting from a list is the post that behaves
+  differently.
+- **`/admin/comments` has no editor route and no "new" button.** A comment is
+  the visitor's; the only things the owner has over one are hiding it and
+  removing it, both on the list itself. It defaults to newest-first, the
+  opposite of the public thread: what the owner opens the page for is whatever
+  arrived while nobody was looking. Its delete dialog names hiding as the
+  reversible alternative.
 
 ### Content and assets
 
@@ -213,11 +308,11 @@ Routing is client-side, so `/about`, `/books`, … exist only in `App.tsx` — t
 
 ## Backend status
 
-`myapp` is installed and serves three resources: a DRF `ModelViewSet` over `Post`, another over `Book`, and an image upload endpoint the two share. `requirements.txt` is `Django>=4.2` and `djangorestframework>=3.16`, plus `django-storages[s3]` and `Pillow` for uploads, and `gunicorn` + `whitenoise` for the production container (see "Deployment" below). **Database is Postgres, with no sqlite fallback anywhere** — an object-storage compose file existed alongside an earlier Postgres setup and was removed in `29dd34b`; both came back, Postgres via `psycopg[binary]` and the `db` service, object storage via the `rustfs` service (see "Object storage" below — this was MinIO until `10cb53a` swapped it for RustFS, which touched only compose and settings, no Python). `settings.py`'s `DATABASES` reads `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`, defaulting to `zian_tsabit_be`/`zian_tsabit_be`/`postgres`/`localhost`/`5432` — those defaults resolve inside Docker (`POSTGRES_HOST=db` there) but a bare `manage.py runserver` needs its own reachable Postgres server; there is deliberately no zero-setup fallback, so `createdb zian_tsabit_be` (or a matching role) is a prerequisite, not optional. See `ziantsabit-be/.env.example`.
+`myapp` is installed and serves four resources: a DRF `ModelViewSet` over `Post`, another over `Book`, a third over `Comment`, and an image upload endpoint they share. `Reaction` has no viewset of its own — it is an action on a post. `requirements.txt` is `Django>=4.2` and `djangorestframework>=3.16`, plus `django-storages[s3]` and `Pillow` for uploads, and `gunicorn` + `whitenoise` for the production container (see "Deployment" below). **Database is Postgres, with no sqlite fallback anywhere** — an object-storage compose file existed alongside an earlier Postgres setup and was removed in `29dd34b`; both came back, Postgres via `psycopg[binary]` and the `db` service, object storage via the `rustfs` service (see "Object storage" below — this was MinIO until `10cb53a` swapped it for RustFS, which touched only compose and settings, no Python). `settings.py`'s `DATABASES` reads `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_HOST`/`POSTGRES_PORT`, defaulting to `zian_tsabit_be`/`zian_tsabit_be`/`postgres`/`localhost`/`5432` — those defaults resolve inside Docker (`POSTGRES_HOST=db` there) but a bare `manage.py runserver` needs its own reachable Postgres server; there is deliberately no zero-setup fallback, so `createdb zian_tsabit_be` (or a matching role) is a prerequisite, not optional. See `ziantsabit-be/.env.example`.
 
 ### The Post model
 
-`Post` is the content model for everything the site publishes as *writing*, and it replaced the earlier `Book` / `Project` / `GarageSale` / `Update` models — four near-identical title-plus-fields tables for what is one feed. `migrations/0001_initial.py` creates only `myapp_post`; the old models never had a migration, so there is nothing to clean up if you go looking for their tables. (`PostViewDay`, added in `0007`, is bookkeeping about posts rather than a kind of post. `Book`, added in `0008`, is the one genuinely separate content model — see "The Book model".)
+`Post` is the content model for everything the site publishes as *writing*, and it replaced the earlier `Book` / `Project` / `GarageSale` / `Update` models — four near-identical title-plus-fields tables for what is one feed. `migrations/0001_initial.py` creates only `myapp_post`; the old models never had a migration, so there is nothing to clean up if you go looking for their tables. (`PostViewDay`, added in `0007`, is bookkeeping about posts rather than a kind of post. `Book`, added in `0008`, is the one genuinely separate content model — see "The Book model". `Comment` and `Reaction`, added in `0011`, are what *visitors* leave on a post rather than anything the owner writes — see "Comments and reactions".)
 
 **There is no `categories` column, and no `Post.Category` enum.** `0009` dropped both. The fixed enum and the free-form `tags` list beside it were doing the same job, and the enum was doing it worse: adding a section meant a migration, a post could only ever be filed under one of four things, and every consumer — the API, the admin sidebar, the SPA's filter bar, the post form — had to understand both mechanisms. **A post is labelled with `tags` and browsed with `?tag=`; that is the whole filing system.**
 
@@ -272,6 +367,151 @@ Points that are deliberate:
 
 **Three helpers in `models.py` are now shared** and were extracted rather than copied: `clean_labels` (behind both `Post.clean_tags` and `Book.clean_genres`), `unique_slug`, and the ISBN pair. `views.py` likewise has a module-level `reject_unknown` that both viewsets use.
 
+### Comments and reactions
+
+The two things a *visitor* can leave on a post, and the only two routes on the
+site anyone can write to without logging in. They are deliberately shaped
+differently, because they are different kinds of thing:
+
+| | `Comment` | `Reaction` |
+| --- | --- | --- |
+| Resource | `/api/comments/`, top-level | `/api/posts/{slug}/reactions/`, nested |
+| Vocabulary | free text | a fixed server-side set, `REACTION_EMOJI` |
+| Identity | a typed name, unverified | an opaque browser token |
+| Moderation | `status` (published/hidden) + delete | delete only |
+
+**Comments are a top-level resource; reactions are an action on a post.** A
+reaction bar is a fixed-size summary that only ever makes sense attached to its
+post, so a nested action is exactly its shape. Comments are *rows*: they page,
+they filter, and the admin console reads them **across** posts, which a route
+nested under one post cannot express. `?post=<slug>` is how the public thread
+gets the nested view back.
+
+**Either can be switched off per post**, from the two switches in the post
+editor (`comments_enabled` / `reactions_enabled` on `Post`, added in `0012`).
+Per post rather than site-wide: a piece on something contentious can have its
+thread closed without turning comments off everywhere. Both default `True`, so
+`0012` changed no behaviour anywhere and saying no is the deliberate act.
+
+The two switches do **different** things, because the two features are
+different:
+
+- **Closing comments is about what may be added, not what is there.** The
+  thread stays readable and only the form goes away — a switch that also hid
+  the comments would be a bulk-hide with no way to see what it hid, and
+  `Comment.status` is the control for that. `comment_count` still counts them.
+- **Turning reactions off hides the bar**, since a row of counts nobody may
+  change is furniture. The rows stay in the table — a reaction someone left is
+  a thing that happened — so flipping the switch back brings the counts with it.
+- **The owner is exempt from both**, the same way they are exempt from the
+  draft rule: the switches are about what *visitors* may add, and leaving the
+  last word on a thread you just closed is reasonable. The public page renders
+  no form and no bar either way, so this only ever comes up through the API.
+- **A closed thread says so; a draft plays dead.** `validate_post` refuses both
+  but words them differently on purpose — a draft is answered as if it did not
+  exist, while a closed thread is a post the visitor is looking at right now.
+- **`GET` on the reactions action stays open with reactions off.** It is a
+  count of things that already happened, the page stops asking for it once the
+  bar is hidden, and 404ing a summary that exists would make the switch look
+  like the post had gone. Only the `POST` is refused.
+
+Points that are deliberate:
+
+- **A comment is published on arrival and moderated afterwards.** A queue means
+  every comment sits invisible until the owner happens to look — days, on a
+  personal site — and a commenter who sees nothing appear assumes it was lost
+  and writes it again. The trade is that something unpleasant is briefly
+  visible, which is why `/admin/comments` exists and why hiding is one click
+  from every row. `status` is a hide, not a delete, so the row is still there
+  to look at.
+- **`perform_create` forces `published` for an anonymous caller.** `status` has
+  to stay writable — that is how the admin hides and restores — so without this
+  a visitor could name their own moderation state, which is wrong whatever they
+  choose.
+- **There is no email field, on the model or on the form.** Nothing here sends
+  mail, so an address would exist only to be leaked. Same instinct as the
+  removed CV PDF.
+- **A comment body is plain text and is never rendered as Markdown.** `Markdown`
+  is for the owner's own writing; running a stranger's input through a renderer
+  is how a comment box becomes an injection surface. `whiteSpace: pre-line`
+  keeps the commenter's paragraphs, which is the only formatting a comment
+  needs. The backend agrees — see the `Comment.body` comment.
+- **Anonymous callers see neither hidden comments nor a draft's comments.** Two
+  conditions in `get_queryset`, not one: the thread would otherwise be a way to
+  read around the draft filter and confirm an unpublished post exists.
+  `CommentSerializer.validate_post` refuses the matching *write* for the same
+  reason.
+- **`CommentPermission` is not `IsAuthenticatedOrReadOnly`.** POST is open to
+  everyone — that is the entire point of a comment box — while PUT/PATCH/DELETE
+  stay the owner's, so nobody can hide anyone else's comment or unhide the one
+  that was taken down.
+- **`REACTION_EMOJI` is a fixed set and lives on the server.** This is the one
+  place the "free text, not an enum" rule that governs `tags` and `genres` is
+  deliberately reversed: a reaction is a one-tap gesture, so the vocabulary has
+  to be small enough to sit in a row and identical on every post — otherwise the
+  counts fragment across a hundred spellings of "nice" and there is nothing to
+  compare. It is a plain `CharField` validated against the tuple rather than
+  `choices`, so adding an emoji is a code change with no migration.
+  **The Love entry carries a `VARIATION SELECTOR-16`**: U+2764 alone is a *text*
+  character and renders as a small monochrome heart in the page font, so without
+  it one button in the row looks like a typo.
+- **The reaction summary is dense over `REACTION_EMOJI`**, zeros included, and
+  it carries each emoji's accessible `label`. The client renders the row the
+  server defines rather than keeping a second copy of the list — same reasoning
+  as `views_by_day`. `total` sums only the emoji currently offered: a reaction
+  left with an emoji since retired stays in the table (it is a thing that
+  happened) but a total counting it would disagree with the buttons under it.
+- **`visitor` is an opaque token, not a user.** There are no accounts, so
+  answering "did *you* already pick this one" needs something to key on; the
+  browser generates one and keeps it in `localStorage` (`services/visitor.ts`).
+  Clearing site data or opening the post elsewhere buys another reaction, which
+  is the same bargain the view counter already makes with its `sessionStorage`
+  guard. A blank token is a 400 — everyone who sent nothing would otherwise be
+  one visitor sharing one reaction.
+- **A reaction is one toggle endpoint, not a POST and a DELETE.** The button is
+  one control with two meanings, and making the client decide which would mean
+  trusting a count that may be seconds stale. `_toggle_reaction` deletes first
+  and inserts only if nothing was deleted, with the insert wrapped exactly like
+  `_record_view_day`'s: two taps racing both find nothing to delete, the unique
+  constraint picks a winner, and the loser has nothing to do.
+- **Both open routes are rate-limited by scope, and nothing else is.** There is
+  no `DEFAULT_THROTTLE_CLASSES` — a global limit would also cover the owner's
+  admin, where a burst of writes is normal. `CommentViewSet.get_throttles`
+  applies `ScopedRateThrottle` only to `create`; `PostViewSet` declares
+  `throttle_scope = None` at class level purely so `@action(throttle_scope=...)`
+  is accepted as an initkwarg. Rates come from `COMMENT_RATE_LIMIT` /
+  `REACTION_RATE_LIMIT`. The counters live in Django's cache, which defaults to
+  a per-*process* LocMemCache, so under gunicorn's workers the real limit is
+  roughly the rate times the worker count.
+
+**`comment_count` on `PostSerializer` is an annotation, and it has two traps.**
+`PostViewSet._with_comment_count` counts *published* comments only, even for the
+owner — the number means "what a visitor sees under this post", and an admin
+list saying 4 where the page shows 3 would report a different figure under the
+same word.
+
+1. **An aggregate annotation drops `Meta.ordering`.** The GROUP BY makes a
+   default ordering ambiguous, so Django clears it rather than guess, and the
+   feed came back in whatever order Postgres felt like. The queryset restates
+   `order_by(*Post._meta.ordering)`, which keeps `Meta.ordering` the one place
+   the default lives.
+2. **It is applied only to the actions that serialise a post**
+   (`SERIALISED_POST_ACTIONS`). `tags` aggregates *again* on top of
+   `get_queryset()`, and a second `.values(...).annotate(...)` over an already
+   grouped query counts the wrong thing and drops labels outright.
+
+`get_comment_count`'s fallback is not decoration either: a create/update
+response serialises the instance `save()` returned, which never went through the
+queryset and carries no annotation.
+
+Three `status` fields now exist and only two mean the same thing, so
+`SPECTACULAR_SETTINGS['ENUM_NAME_OVERRIDES']` names both choice sets — left
+alone the generator invents `Status68aEnum`, which is meaningless in a generated
+client and unstable, since the suffix is a hash of the choice set. It resolves
+its values with `import_string`, which cannot reach through a nested class,
+which is why `models.py` ends with the `PUBLICATION_STATUS_CHOICES` /
+`COMMENT_STATUS_CHOICES` aliases.
+
 ### API surface
 
 Routed at `api/` from the project `urls.py` via `myapp/urls.py`'s `DefaultRouter`; `DefaultRouter` also serves the index at `/api/` and the browsable HTML API.
@@ -285,10 +525,15 @@ Routed at `api/` from the project `urls.py` via `myapp/urls.py`'s `DefaultRouter
 | `POST /api/posts/{slug}/view/` | record one read; open to anonymous callers, returns `{slug, view_count}` |
 | `GET /api/posts/stats/` | site-wide aggregates for the admin, **authenticated only** |
 | `POST /api/uploads/images/` | multipart image upload, authenticated only; returns `{url, name}` |
-| `GET /api/books/` | catalogue, paginated 20 per page (`?genre=`, `?search=`, `?status=`, `?ordering=`) |
+| `GET /api/books/` | catalogue, paginated **12** per page (`?genre=`, `?search=`, `?status=`, `?ordering=`) |
 | `POST /api/books/` | create |
 | `GET\|PUT\|PATCH\|DELETE /api/books/{slug}/` | detail |
 | `GET /api/books/genres/` | every genre in the catalogue with its count, scoped to what the caller may see |
+| `GET /api/comments/` | comments, paginated 20 per page (`?post=`, `?status=`, `?search=`, `?ordering=`); oldest first |
+| `POST /api/comments/` | leave a comment — **open to anonymous callers**, rate-limited, status forced to `published` |
+| `GET\|PUT\|PATCH\|DELETE /api/comments/{id}/` | detail; everything but GET needs the owner |
+| `GET /api/posts/{slug}/reactions/` | the whole emoji bar, dense; `?visitor=` answers `reacted`. Open even with reactions off |
+| `POST /api/posts/{slug}/reactions/` | toggle one emoji for one browser and return the bar; open to anonymous callers, refused when the post has reactions off |
 | `GET /api/schema/` | OpenAPI 3 document (drf-spectacular) |
 | `GET /api/docs/` | Swagger UI |
 | `GET /api/redoc/` | ReDoc |
@@ -322,6 +567,9 @@ Two deliberate details in `PostViewSet.get_queryset`:
 
 `BookViewSet` otherwise follows `PostViewSet`'s shape — `IsAuthenticatedOrReadOnly`, `lookup_field = "slug"`, drafts filtered on every route — with one difference worth knowing:
 
+- **The catalogue pages 12 at a time, not the site-wide 20** (`BookPagination`, set as `BookViewSet.pagination_class`). `/books` is a grid of covers rather than a column of rows, and twenty covers is five rows of a four-up grid — more scrolling than a shelf is worth, and on a small shelf it meant the pager never appeared at all, since the client hides it at one page. **12 rather than a round 10** because it is what the grid divides by: two columns on a phone and `auto-fill` from `sm` up, so a page lands as 6x2, 4x3 or 3x4 with no ragged last row. Deliberately not a `?page_size=` the caller may name — that is the usual way the setting goes wrong. `REST_FRAMEWORK.PAGE_SIZE` still covers posts and comments, which really are columns of rows.
+
+  **The number is a contract across three places**: `BookPagination.page_size`, `BOOKS_PAGE_SIZE` in the SPA's `books.ts`, and the page counts `useBooks`/`useAdminBooks` derive from it. Move one alone and the pager offers pages the API has nothing to put on; `BookPaginationTests` is what catches that.
 - **Every `BOOK_ORDERINGS` entry ends in `-id`.** Sorting by author puts a dozen rows on the same value, and without a total tie-breaker a page boundary falling inside that group shows one book twice and drops another. `year` also uses `F("release_year").desc(nulls_last=True)`: a bare `-release_year` puts NULLs first in Postgres, which reads as "these are the newest" when it means "these are unknown".
 
 `?published_after=` / `?published_before=` are inclusive `YYYY-MM-DD` bounds, either usable alone. **They filter on `Coalesce(published_at, created_at)`, not on `published_at`** — a draft has no publish date, so filtering on that column alone would drop every draft out of the admin list the moment a date was applied; the coalesced value is also exactly the date each row displays. The comparison is `__date__gte` / `__date__lte` rather than a raw datetime `lte`, which would compare against midnight and silently exclude the end day. A malformed or impossible date (`2026-02-31`) is a 400; an empty value is ignored.
@@ -369,11 +617,15 @@ python manage.py spectacular --validate --fail-on-warn --file /dev/null
 
 Swagger UI and ReDoc load their JS from a CDN, so the pages need internet; the `/api/schema/` document itself does not, and no `collectstatic` is involved.
 
+Django's own admin registers all four models. `PostAdmin` lists and filters on both visitor switches, so "which posts did I close" is a sidebar question rather than a shell one. `CommentAdmin` marks the post, name and body **read-only** and offers hide/publish as bulk actions, and `ReactionAdmin` has no add permission at all: a comment is the visitor's writing and a reaction is something that happened, so neither is a thing to author from here.
+
 **`list_filter` on an `ArrayField` has to be hand-written** — `ArrayFieldFilter` in `admin.py`, subclassed as `TagFilter` and `GenreFilter`. Django builds an exact-match filter from a plain `list_filter` entry, so on an `ArrayField` the sidebar would offer whole combinations — "books, projects" — as single values and match nothing else. It performs the same containment test its API parameter does, and builds its options from the rows themselves — both fields are free text, so there is no enum to read them off.
 
 ### Tests
 
-`myapp/tests.py` is a real suite (165 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, the tag filter and its vocabulary endpoint (`TagVocabularyTests`), filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, the upload endpoint, the view counter, the daily reading history (`ViewDayTests`), the date-range filter, and the book catalogue (`BookModelTests` / `BookAPITests` — slug derivation and its author fallback, genre and ISBN normalisation, both check-digit schemes, the release-year bounds, the case-insensitive genre filter, the genres action's spelling fold, and each CRUD verb for both anonymous and authenticated callers). Run it with `python manage.py test`.
+`myapp/tests.py` is a real suite (232 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, the tag filter and its vocabulary endpoint (`TagVocabularyTests`), filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, the upload endpoint, the view counter, the daily reading history (`ViewDayTests`), the date-range filter, and the book catalogue (`BookModelTests` / `BookAPITests` — slug derivation and its author fallback, genre and ISBN normalisation, both check-digit schemes, the release-year bounds, the case-insensitive genre filter, the genres action's spelling fold, and each CRUD verb for both anonymous and authenticated callers), and comments and reactions (`CommentAPITests` / `CommentCountTests` / `ReactionTests` — the open create and its forced status, the draft and hidden visibility rules, moderation by the owner and its refusal to anyone else, the dense reaction bar, the toggle, per-visitor `reacted`, and the rejected emoji), the per-post switches (`VisitorSwitchTests` — both defaulting on, each refusal, the owner's exemption from both, a closed thread staying readable, and reaction counts surviving the switch), and the catalogue's shorter page (`BookPaginationTests` — the page length, the count being the whole catalogue rather than the page, non-overlapping pages, and a cross-check that posts keep the site-wide 20). Run it with `python manage.py test`.
+
+**The two throttle tests patch `ScopedRateThrottle.THROTTLE_RATES` rather than using `override_settings(REST_FRAMEWORK=...)`**, which looks like it should work and does not: DRF binds that dict to the class *at import time*, so a settings override moves `api_settings` and leaves the throttle reading the rate it was born with. They also `cache.clear()` in `setUp`, since the throttle counter lives in a LocMemCache that outlives a single test.
 
 **Tests must not depend on a setting a deployment overrides.** The three CORS tests pin `CORS_ALLOWED_ORIGINS` with `@override_settings` for exactly this reason: they previously hardcoded `http://localhost:5173` and relied on the default, so they failed inside any production-configured container — the one place running the suite is most worth doing.
 
@@ -402,7 +654,7 @@ The short form `"5432:5432"` would bind all interfaces and hand the throwaway `z
 
 ## Frontend/backend seam
 
-`/` (the blog feed) and `/posts/:slug` render live data from `GET /api/posts/`. **`/books` is the catalogue, backed by `GET /api/books/`** — a different resource, so `/books/:slug` renders `BookDetail` over a `Book`. A post *about* a book is writing: it lives in the feed, tagged however its author likes, and reaches its page at `/posts/:slug` like every other post. The CV and About pages are the only hardcoded copy left.
+`/` (the blog feed) and `/posts/:slug` render live data from `GET /api/posts/`. The post page also carries the two things a visitor can leave — a reaction bar and a comment thread — which are the only requests in the app a stranger writes with; see "Comments and reactions (frontend)". **`/books` is the catalogue, backed by `GET /api/books/`** — a different resource, so `/books/:slug` renders `BookDetail` over a `Book`. A post *about* a book is writing: it lives in the feed, tagged however its author likes, and reaches its page at `/posts/:slug` like every other post. The CV and About pages are the only hardcoded copy left.
 
 **There is no `/garage` page.** `Post.Category.GARAGE_SALE` is still a valid backend category — the admin console can still file a post under it — but nothing public links there any more; the page, its route, and its nav item were deleted. `VISIBLE_CATEGORIES` in `posts.ts` (`posts`, `books`, `projects`) is the list every cross-category view filters to, so a stray `garage_sale` post can never end up linked from a page that no longer exists. Filter with `isVisible(post)` rather than testing a single value: a post filed under both `garage_sale` and `projects` does have a page, and only one filed *solely* under `garage_sale` should be dropped.
 

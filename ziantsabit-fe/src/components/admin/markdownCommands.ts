@@ -224,6 +224,45 @@ export function toggleCode(value: string, start: number, end: number): Edit {
   };
 }
 
+/**
+ * Wrap the selection in maths delimiters -- `$...$` on one line, `$$` on its
+ * own lines for more.
+ *
+ * Deliberately the same shape as `toggleCode` above, because the two are the
+ * same gesture: one delimiter inline, a fenced block across lines. An author
+ * who has learned that the code button does the right thing with a multi-line
+ * selection should not have to learn something else here.
+ */
+export function toggleMath(value: string, start: number, end: number): Edit {
+  const selected = value.slice(start, end);
+  if (!selected.includes("\n")) return toggleWrap(value, start, end, "$");
+
+  const from = lineStart(value, start);
+  const to = lineEnd(value, end);
+  const block = value.slice(from, to);
+
+  if (block.startsWith("$$") && block.endsWith("$$")) {
+    const inner = block.replace(/^\$\$[^\n]*\n?/, "").replace(/\n?\$\$$/, "");
+    return {
+      start: from,
+      end: to,
+      text: inner,
+      selectStart: from,
+      selectEnd: from + inner.length,
+    };
+  }
+
+  return {
+    start: from,
+    end: to,
+    text: "$$\n" + block + "\n$$",
+    // Past the "$$\n" that now leads the block, so the selection still covers
+    // what the author had selected rather than the fence around it.
+    selectStart: from + 3,
+    selectEnd: from + 3 + block.length,
+  };
+}
+
 const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])(\s+)(\[[ xX]\]\s+)?(.*)$/;
 const QUOTE_LINE = /^(\s*)(>\s?)(.*)$/;
 

@@ -80,6 +80,17 @@ async function readPage(url: string, signal?: AbortSignal): Promise<BookPage> {
   return (await response.json()) as BookPage;
 }
 
+/**
+ * How many books the API returns per page.
+ *
+ * Deliberately **not** `PAGE_SIZE` from `posts.ts`: `/api/books/` sets its own
+ * shorter page (`BookPagination`, 12) because the catalogue is a grid of covers
+ * rather than a column of rows, and twenty covers is five rows of a four-up
+ * grid. Mirrors `BookPagination.page_size` -- if that moves, this moves, or
+ * every page count the two book lists render is wrong.
+ */
+export const BOOKS_PAGE_SIZE = 12;
+
 /** The filters the catalogue page offers. Each is optional and each is left
  *  off the URL when empty -- an empty `?genre=` would be a filter matching
  *  nothing rather than the absence of one. */

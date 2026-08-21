@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Book, Post
+from .models import Book, Comment, Post, Reaction
 
 
 class ArrayFieldFilter(admin.SimpleListFilter):
@@ -45,8 +45,18 @@ class TagFilter(ArrayFieldFilter):
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ("title", "tag_list", "status", "published_at", "updated_at")
-    list_filter = (TagFilter, "status")
+    list_display = (
+        "title",
+        "tag_list",
+        "status",
+        "comments_enabled",
+        "reactions_enabled",
+        "published_at",
+        "updated_at",
+    )
+    # Both switches are filterable, so "which posts did I close" is a question
+    # the sidebar answers rather than one that needs a shell.
+    list_filter = (TagFilter, "status", "comments_enabled", "reactions_enabled")
     search_fields = ("title", "excerpt", "body")
     # Blank is allowed here too: Post.save() fills it in from the title.
     prepopulated_fields = {"slug": ("title",)}
@@ -77,3 +87,46 @@ class BookAdmin(admin.ModelAdmin):
     @admin.display(description="Genres")
     def genre_list(self, book):
         return ", ".join(book.genres)
+
+
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    list_display = ("author_name", "post", "short_body", "status", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("author_name", "body")
+    # The comment itself is the visitor's; only its moderation state is the
+    # owner's to change. Editing what someone wrote and leaving their name on it
+    # is the one thing a comment box must not make easy.
+    readonly_fields = ("post", "author_name", "body", "created_at", "updated_at")
+    date_hierarchy = "created_at"
+    actions = ("hide", "publish")
+
+    @admin.display(description="Comment")
+    def short_body(self, comment):
+        # One line in a table, so a long comment is cut rather than allowed to
+        # set the row height for every other one.
+        text = " ".join(comment.body.split())
+        return text if len(text) <= 80 else f"{text[:79]}\u2026"
+
+    @admin.action(description="Hide selected comments")
+    def hide(self, request, queryset):
+        queryset.update(status=Comment.Status.HIDDEN)
+
+    @admin.action(description="Publish selected comments")
+    def publish(self, request, queryset):
+        queryset.update(status=Comment.Status.PUBLISHED)
+
+
+@admin.register(Reaction)
+class ReactionAdmin(admin.ModelAdmin):
+    list_display = ("emoji", "post", "created_at")
+    list_filter = ("emoji",)
+    search_fields = ("post__title", "post__slug")
+    date_hierarchy = "created_at"
+    # Every field of a reaction is either the visitor's tap or the server's
+    # clock; there is nothing here to edit, only rows to look at and delete.
+    readonly_fields = ("post", "emoji", "visitor", "created_at")
+
+    def has_add_permission(self, request):
+        # A reaction is something that happened, not something to author.
+        return False

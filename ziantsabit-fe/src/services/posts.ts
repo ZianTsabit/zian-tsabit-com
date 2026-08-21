@@ -26,9 +26,21 @@ export interface Post {
   status: "draft" | "published";
   /** Null only on drafts, which an unauthenticated caller never receives. */
   published_at: string | null;
+  /** Whether visitors may still add to the thread. False leaves the existing
+   *  comments readable and takes the form away -- closing is about what can be
+   *  added, not about what is already there. */
+  comments_enabled: boolean;
+  /** Whether the emoji bar is offered at all. False hides it: a row of counts
+   *  nobody may change is furniture. The rows survive in the database, so
+   *  turning it back on brings the counts with it. */
+  reactions_enabled: boolean;
   /** Reads recorded so far. Server-owned: a write to the post never sets it,
    *  only `recordPostView` does. */
   view_count: number;
+  /** Visible comments on the post -- what a visitor would count under it. A
+   *  hidden comment is not in this number even for the owner, so the figure
+   *  on a card and the length of the thread below the post always agree. */
+  comment_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -86,7 +98,11 @@ export async function publicRequest(
     return await fetch(url, {
       ...init,
       signal,
-      headers: { Accept: "application/json" },
+      // Merged, not replaced: a caller sending a body -- `createComment` is
+      // the one that does -- has to be able to name its Content-Type, and
+      // spreading `init` above would otherwise have its headers overwritten
+      // here rather than the other way round.
+      headers: { Accept: "application/json", ...init.headers },
     });
   } catch (error) {
     // A cancelled request is not a failure, so it has to stay distinguishable

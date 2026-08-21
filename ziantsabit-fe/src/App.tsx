@@ -20,6 +20,7 @@ import AdminStats from "./pages/AdminStats";
 import AdminNewPost from "./pages/AdminNewPost";
 import AdminEditPost from "./pages/AdminEditPost";
 import AdminBookConsole from "./components/admin/AdminBookConsole";
+import AdminCommentConsole from "./components/admin/AdminCommentConsole";
 import AdminNewBook from "./pages/AdminNewBook";
 import AdminEditBook from "./pages/AdminEditBook";
 import PostDetail from "./pages/PostDetail";
@@ -94,6 +95,11 @@ function App() {
               <Route path="books" element={<AdminBookConsole />} />
               <Route path="books/new" element={<AdminNewBook />} />
               <Route path="books/edit/:slug" element={<AdminEditBook />} />
+              {/* Moderation for what visitors leave. No editor route beside
+                  it: a comment is the visitor's, so the only things the owner
+                  has over one are hiding it and removing it -- both of which
+                  happen on the list itself. */}
+              <Route path="comments" element={<AdminCommentConsole />} />
             </Route>
             {/* Must stay last: `*` matches anything, and the routes above are
                 only reached because a more specific match wins. `/admin/typo`

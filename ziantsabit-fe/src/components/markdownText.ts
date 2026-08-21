@@ -19,6 +19,19 @@ export function toPlainText(markdown: string): string {
     // Images before links: image syntax is link syntax with a leading "!".
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    // Maths, after the code rules above so a `$` inside a fence is already
+    // gone. The two forms are treated differently on purpose, because they
+    // read differently as text: a **display block** is a standalone equation
+    // whose source (`\int_{-\infty}^{\infty} e^{-x^2}\,dx`) is unreadable on a
+    // card, so it goes; **inline** maths is usually a symbol or two inside a
+    // sentence, and dropping it would delete that sentence's subject, so its
+    // source stays. Display first -- `$$` would otherwise be read as an empty
+    // inline expression.
+    .replace(/\$\$[\s\S]*?\$\$/g, " ")
+    .replace(/\$([^$\n]*)\$/g, "$1")
+    // An escaped dollar is a dollar. Only this one escape is unwrapped, since
+    // `$` is the only character this file's own rules made special.
+    .replace(/\\\$/g, "$")
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s{0,3}>\s?/gm, "")
     .replace(/^\s{0,3}(?:[-*+]|\d+\.)\s+/gm, "")

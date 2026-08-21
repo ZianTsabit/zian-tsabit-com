@@ -4,6 +4,7 @@ import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
 import MenuBookOutlinedIcon from "@mui/icons-material/MenuBookOutlined";
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
+import ForumOutlinedIcon from "@mui/icons-material/ForumOutlined";
 
 /** The admin's sections, in the order they appear. One array feeds the column
  *  and the phone row alike, so a new page is one entry rather than two. */
@@ -13,6 +14,9 @@ const items = [
   // still posts, which is why "New post" further in stays as it is.
   { to: "/admin/posts", label: "Blog", icon: <ArticleOutlinedIcon fontSize="small" /> },
   { to: "/admin/books", label: "Books", icon: <MenuBookOutlinedIcon fontSize="small" /> },
+  // Sits after the two things the owner writes and before the numbers, which
+  // is roughly the order of the work: publish, then read what came back.
+  { to: "/admin/comments", label: "Comments", icon: <ForumOutlinedIcon fontSize="small" /> },
   { to: "/admin/stats", label: "Statistics", icon: <InsightsOutlinedIcon fontSize="small" /> },
 ];
 
