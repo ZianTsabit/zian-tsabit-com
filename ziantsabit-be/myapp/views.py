@@ -9,20 +9,35 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import (
+    SAFE_METHODS,
     AllowAny,
+    BasePermission,
     IsAuthenticated,
     IsAuthenticatedOrReadOnly,
 )
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 
-from .models import Book, Post, PostViewDay, normalise_isbn
+from .models import (
+    REACTION_EMOJI,
+    Book,
+    Comment,
+    Post,
+    PostViewDay,
+    Reaction,
+    normalise_isbn,
+)
 from .serializers import (
     BookSerializer,
+    CommentSerializer,
     LabelCountSerializer,
     PostSerializer,
     PostStatsSerializer,
+    ReactionSummarySerializer,
+    ReactionToggleSerializer,
     ViewCountSerializer,
 )
 
@@ -130,6 +145,13 @@ def reject_unknown(value, allowed, field):
         )
 
 
+# The `PostViewSet` actions whose response is one or more serialised posts, and
+# therefore the only ones that need `comment_count`. See `_with_comment_count`
+# for why the annotation cannot simply be applied to every route.
+SERIALISED_POST_ACTIONS = frozenset(
+    {"list", "retrieve", "create", "update", "partial_update"}
+)
+
 # How many rows the statistics page's "most read" table asks for. Enough to
 # show a ranking rather than a podium, short enough to stay one glance.
 MOST_READ_LIMIT = 10
@@ -152,6 +174,52 @@ ORDERINGS = {
     "updated": ["-updated_at", "-created_at"],
     "views": ["-view_count", "-published_at", "-created_at"],
 }
+
+
+def summarise_reactions(post, visitor):
+    """The whole reaction bar for one post: every emoji, its count, and mine.
+
+    **Dense over `REACTION_EMOJI`**, so the client renders the row the server
+    defines instead of holding a second copy of the list -- the same reasoning
+    behind `views_by_day` being dense, and the reason adding an emoji is one
+    edit rather than two.
+
+    `total` sums the emoji currently on offer, not every row in the table. A
+    reaction left with an emoji since retired stays in the database (it is a
+    thing that happened) but is no longer shown, and a total that counted it
+    would disagree with the buttons underneath it.
+
+    Two queries whatever the token: the counts, and -- only when a token was
+    sent -- which of them are this browser's.
+    """
+    counts = dict(
+        Reaction.objects.filter(post=post)
+        .values_list("emoji")
+        .annotate(total=Count("id"))
+    )
+    mine = (
+        set(
+            Reaction.objects.filter(post=post, visitor=visitor).values_list(
+                "emoji", flat=True
+            )
+        )
+        if visitor
+        else set()
+    )
+    rows = [
+        {
+            "emoji": emoji,
+            "label": label,
+            "count": counts.get(emoji, 0),
+            "reacted": emoji in mine,
+        }
+        for emoji, label in REACTION_EMOJI
+    ]
+    return {
+        "slug": post.slug,
+        "total": sum(row["count"] for row in rows),
+        "reactions": rows,
+    }
 
 
 # Both filters are read straight off query_params in get_queryset(), so the
@@ -217,10 +285,16 @@ class PostViewSet(viewsets.ModelViewSet):
     serializer_class = PostSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
     lookup_field = "slug"
+    # Declared, and deliberately None: `@action(throttle_scope=...)` is passed
+    # to `as_view()` as an initkwarg, and DRF refuses one that does not name an
+    # existing attribute on the class. Nothing here is throttled by default --
+    # the `reactions` action names its own scope *and* its own throttle class,
+    # so the limit applies to that route and no other.
+    throttle_scope = None
 
     def get_queryset(self):
         queryset = self._order(
-            self._filter_dates(self._filter_tag(Post.objects.all()))
+            self._filter_dates(self._filter_tag(self._with_comment_count()))
         )
 
         # Drafts are invisible to the public on detail routes too -- filtering
@@ -235,6 +309,41 @@ class PostViewSet(viewsets.ModelViewSet):
             self._reject_unknown(status, Post.Status, "status")
             queryset = queryset.filter(status=status)
         return queryset
+
+    def _with_comment_count(self):
+        """Every post, carrying its visible comment count as an annotation.
+
+        Annotated in the queryset rather than counted per row in the
+        serializer, which on a page of twenty posts would be twenty extra
+        queries. `filter=` on the aggregate rather than a `filter()` on the
+        queryset: filtering the join would drop the posts with no visible
+        comments off the feed entirely.
+
+        Published comments only, even for the owner -- the number means "what a
+        visitor sees under this post". See `PostSerializer.get_comment_count`.
+
+        **Only for the routes that actually serialise a post.** An aggregate
+        annotation carries a GROUP BY, and `tags` aggregates again on top of
+        this queryset -- a second `.values(...).annotate(...)` over an already
+        grouped query counts the wrong thing and drops labels entirely. The
+        other three actions here (`stats`, `record_view`, `reactions`) have no
+        use for the number and no reason to pay for the join.
+        """
+        if self.action not in SERIALISED_POST_ACTIONS:
+            return Post.objects.all()
+        return Post.objects.annotate(
+            comment_count=Count(
+                "comments",
+                filter=Q(comments__status=Comment.Status.PUBLISHED),
+                distinct=True,
+            )
+            # `Meta.ordering` is *dropped* by an aggregate annotation -- the
+            # GROUP BY makes a default ordering ambiguous, so Django clears it
+            # rather than guess -- and the feed came back in whatever order
+            # Postgres felt like. Restating it from `Meta.ordering` itself
+            # keeps that the one place the default lives, which is why `_order`
+            # still applies nothing when no `?ordering=` was asked for.
+        ).order_by(*Post._meta.ordering)
 
     def _filter_tag(self, queryset):
         label = (self.request.query_params.get("tag") or "").strip()
@@ -489,6 +598,98 @@ class PostViewSet(viewsets.ModelViewSet):
         except IntegrityError:
             rows.update(count=F("count") + 1)
 
+    @extend_schema(
+        methods=["GET"],
+        parameters=[
+            OpenApiParameter(
+                name="visitor",
+                description=(
+                    "The browser's own opaque token, so the bar can show which "
+                    "emoji this visitor already picked. Omit it and every "
+                    "`reacted` comes back false -- the counts are the same "
+                    "either way."
+                ),
+            ),
+        ],
+        responses={200: ReactionSummarySerializer},
+        description=(
+            "Every emoji this post may be reacted with, its count, and whether "
+            "the calling browser picked it. Dense: an emoji nobody has used is "
+            "still returned, with a count of 0."
+        ),
+    )
+    @extend_schema(
+        methods=["POST"],
+        request=ReactionToggleSerializer,
+        responses={200: ReactionSummarySerializer},
+        description=(
+            "Toggle one emoji for one browser and return the whole bar again. "
+            "Sending the same emoji twice removes it -- there is no separate "
+            "DELETE, because the button is one control with two meanings and "
+            "the client should not have to work out which it is about to do."
+        ),
+    )
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="reactions",
+        # A visitor's write, like the view counter above: IsAuthenticatedOrReadOnly
+        # would refuse the POST. What keeps it from being a firehose is the
+        # throttle scope, not the permission.
+        permission_classes=[AllowAny],
+        throttle_classes=[ScopedRateThrottle],
+        throttle_scope="reactions",
+    )
+    def reactions(self, request, slug=None):
+        # get_object() runs get_queryset(), so a draft is a 404 to an anonymous
+        # caller here exactly as it is on the detail route.
+        post = self.get_object()
+
+        if request.method == "POST":
+            form = ReactionToggleSerializer(data=request.data)
+            form.is_valid(raise_exception=True)
+            # The owner is exempt, exactly as they are from a closed comment
+            # thread: the switch is about what *visitors* may add, and the bar
+            # is not rendered for anyone once it is off, so this only ever
+            # comes up through the API.
+            user = request.user
+            if not post.reactions_enabled and not (user and user.is_authenticated):
+                raise ValidationError(
+                    {"emoji": ["Reactions are turned off for this post."]}
+                )
+            visitor = form.validated_data["visitor"]
+            self._toggle_reaction(post, form.validated_data["emoji"], visitor)
+        else:
+            # GET stays open even with reactions off. It is a count of things
+            # that already happened, the page does not ask for it once the bar
+            # is hidden, and 404ing a summary that exists would make the switch
+            # look like the post had gone.
+            visitor = (request.query_params.get("visitor") or "").strip()
+
+        return Response(ReactionSummarySerializer(summarise_reactions(post, visitor)).data)
+
+    @staticmethod
+    def _toggle_reaction(post, emoji, visitor):
+        """Add this visitor's reaction, or take it away if it is already there.
+
+        Delete-first, so the common "un-react" case is one statement and the
+        decision is made by the database rather than by a read this request
+        would then have to trust. The insert is wrapped for the same reason
+        `_record_view_day`'s is: two taps racing each other both find nothing to
+        delete, the unique constraint picks a winner, and the loser has nothing
+        to do -- the reaction is on, which is what its tap asked for.
+        """
+        deleted, _rows = Reaction.objects.filter(
+            post=post, emoji=emoji, visitor=visitor
+        ).delete()
+        if deleted:
+            return
+        try:
+            with transaction.atomic():
+                Reaction.objects.create(post=post, emoji=emoji, visitor=visitor)
+        except IntegrityError:
+            pass
+
 
 # What ?ordering= accepts on the book catalogue, and the order_by() each means.
 # Every one of them ends in a total tie-breaker, so a page boundary cannot fall
@@ -504,6 +705,29 @@ BOOK_ORDERINGS = {
     # which reads as "these are the newest" when it means "these are unknown".
     "year": [F("release_year").desc(nulls_last=True), "title", "-id"],
 }
+
+class BookPagination(PageNumberPagination):
+    """The catalogue's own page size, smaller than the site-wide 20.
+
+    `/books` is a grid of covers rather than a column of rows, and the two want
+    different page lengths: twenty entries is a short list but five rows of a
+    four-up grid, which is more scrolling than a shelf is worth -- and on a
+    shelf this size it meant the pager never appeared at all, since it is
+    deliberately hidden at one page.
+
+    **12 rather than a round 10** because it is what the grid divides by: the
+    layout is two columns on a phone and `auto-fill` from `sm` up, so a page
+    lands as 6x2, 4x3 or 3x4 with no ragged last row at any width a visitor is
+    likely to have. `REST_FRAMEWORK.PAGE_SIZE` still covers posts and comments,
+    which really are columns of rows.
+
+    Set on the viewset rather than as a `?page_size=` the client may name: how
+    long a page is is a decision about this page, and letting a caller ask for
+    ten thousand entries is the usual way that setting goes wrong.
+    """
+
+    page_size = 12
+
 
 # How many labels the two vocabulary endpoints return -- `/api/posts/tags/` and
 # `/api/books/genres/`. Long enough to be the whole vocabulary of a personal
@@ -562,6 +786,11 @@ class BookViewSet(viewsets.ModelViewSet):
     serializer_class = BookSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
     lookup_field = "slug"
+    # A shorter page than the rest of the API -- see BookPagination. Both
+    # clients have to agree with it: `BOOKS_PAGE_SIZE` in the SPA's `books.ts`
+    # is the same number, and it is what the public catalogue and the admin
+    # console derive their page counts from.
+    pagination_class = BookPagination
 
     def get_queryset(self):
         queryset = self._order(self._search(self._filter_genre(Book.objects.all())))
@@ -626,3 +855,161 @@ class BookViewSet(viewsets.ModelViewSet):
                 many=True,
             ).data
         )
+
+
+# What ?ordering= accepts on the comment list. "oldest" is Meta.ordering and
+# the reading order of a thread; "newest" exists for the admin, where the thing
+# worth seeing is whatever arrived while nobody was looking.
+COMMENT_ORDERINGS = {
+    "oldest": ["created_at", "id"],
+    "newest": ["-created_at", "-id"],
+}
+
+
+class CommentPermission(BasePermission):
+    """Read open, **create open**, edit and delete for the owner only.
+
+    Not `IsAuthenticatedOrReadOnly`: the whole point of a comment box is that a
+    stranger can write to it, so POST has to be allowed for everyone while PUT,
+    PATCH and DELETE stay the owner's. Moderation is the one thing a visitor
+    must not be able to do -- otherwise anyone could hide anyone's comment, or
+    unhide the one that was taken down.
+
+    What stops that open POST being a spam target is the throttle on the
+    viewset, not this class.
+    """
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS or request.method == "POST":
+            return True
+        return bool(request.user and request.user.is_authenticated)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="post",
+                description=(
+                    "Only comments on the post with this slug. This is how the "
+                    "public page asks for its thread."
+                ),
+            ),
+            OpenApiParameter(
+                name="status",
+                description=(
+                    "Only comments with this status. Authenticated callers "
+                    "only: anonymous requests always see published comments "
+                    "and nothing else."
+                ),
+                enum=Comment.Status.values,
+            ),
+            OpenApiParameter(
+                name="search",
+                description="Match against the comment body or the name on it.",
+            ),
+            OpenApiParameter(
+                name="ordering",
+                description=(
+                    "Sort order. 'oldest' (the default) is the order a thread "
+                    "is read in; 'newest' puts the most recent first."
+                ),
+                enum=sorted(COMMENT_ORDERINGS),
+            ),
+        ],
+    ),
+)
+class CommentViewSet(viewsets.ModelViewSet):
+    """Visitors' comments, listed per post and moderated by the owner.
+
+    Its own top-level resource rather than a nested action on `PostViewSet`,
+    unlike `/posts/{slug}/reactions/`, and the difference is what each one is:
+    a reaction bar is a fixed-size summary that only ever makes sense attached
+    to its post, while comments are rows -- they page, they filter, and the
+    admin console reads them **across** posts, which a route nested under one
+    post cannot express. `?post=<slug>` is what the public page uses to get the
+    nested view back.
+
+    Query params on list:
+      ?post=<slug>
+      ?status=published|hidden   (authenticated only; anonymous never sees hidden)
+      ?search=<text>             (body or name)
+      ?ordering=oldest|newest    (default oldest)
+    """
+
+    serializer_class = CommentSerializer
+    permission_classes = [CommentPermission]
+    # Used only by `create` -- see get_throttles.
+    throttle_scope = "comments"
+
+    def get_throttles(self):
+        """Rate-limit the one route a stranger can write to, and only that one.
+
+        Reading a thread is a page load like any other and throttling it would
+        break a busy post; the owner moderating from the admin is not the thing
+        anyone is worried about either. What is worth bounding is an anonymous
+        POST, which is the route a script would find.
+        """
+        if self.action == "create":
+            return [ScopedRateThrottle()]
+        return super().get_throttles()
+
+    def get_queryset(self):
+        # select_related, because `post_title` reads through the foreign key on
+        # every row -- without it the admin's page of twenty comments is twenty
+        # extra queries for twenty titles.
+        queryset = self._order(self._search(Comment.objects.select_related("post")))
+
+        slug = (self.request.query_params.get("post") or "").strip()
+        if slug:
+            queryset = queryset.filter(post__slug=slug)
+
+        user = self.request.user
+        if not (user and user.is_authenticated):
+            # Two conditions, not one: a hidden comment is invisible, and so is
+            # every comment on a post that is not itself public -- otherwise
+            # the thread would be a way to read around the draft filter and
+            # confirm that an unpublished post exists.
+            return queryset.filter(
+                status=Comment.Status.PUBLISHED, post__status=Post.Status.PUBLISHED
+            )
+
+        status_value = self.request.query_params.get("status")
+        if status_value:
+            reject_unknown(status_value, Comment.Status.values, "status")
+            queryset = queryset.filter(status=status_value)
+        return queryset
+
+    def _search(self, queryset):
+        term = (self.request.query_params.get("search") or "").strip()
+        if not term:
+            return queryset
+        return queryset.filter(
+            Q(body__icontains=term) | Q(author_name__icontains=term)
+        )
+
+    def _order(self, queryset):
+        ordering = self.request.query_params.get("ordering")
+        if not ordering:
+            # Meta.ordering already applies, and it is "oldest".
+            return queryset
+        reject_unknown(ordering, sorted(COMMENT_ORDERINGS), "ordering")
+        return queryset.order_by(*COMMENT_ORDERINGS[ordering])
+
+    def perform_create(self, serializer):
+        """Force a visitor's comment to `published`; let the owner choose.
+
+        `status` is writable so the admin can hide and restore, which means an
+        anonymous POST could otherwise name it too -- and a spammer posting
+        `hidden` comments to seed a page they later expect to be unhidden is
+        silly, but a visitor choosing their own moderation state is wrong
+        whatever they choose it to be.
+
+        Published rather than pending on purpose: see the `Comment` docstring
+        for why this site moderates after the fact rather than before.
+        """
+        user = self.request.user
+        if user and user.is_authenticated:
+            serializer.save()
+            return
+        serializer.save(status=Comment.Status.PUBLISHED)

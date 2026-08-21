@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { fetchAdminBooks } from "./adminBooks";
-import type { Book } from "./books";
-import { isAbort, PAGE_SIZE } from "./posts";
+import { BOOKS_PAGE_SIZE, type Book } from "./books";
+import { isAbort } from "./posts";
 
 type Phase = "loading" | "ready" | "error";
 
@@ -67,7 +67,10 @@ export function useAdminBooks(
   }, [genre, search, status, ordering, page, attempt]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
-  const totalPages = Math.max(1, Math.ceil(state.count / PAGE_SIZE));
+  // The catalogue's own page size, not the site-wide one -- see
+  // BOOKS_PAGE_SIZE. Counting with the wrong number here offers pages the
+  // API has nothing to put on.
+  const totalPages = Math.max(1, Math.ceil(state.count / BOOKS_PAGE_SIZE));
 
   return { ...state, totalPages, reload };
 }

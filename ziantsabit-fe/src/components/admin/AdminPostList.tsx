@@ -130,8 +130,14 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
             sx={{ gap: 1, mt: 1, alignItems: "center", flexWrap: "wrap" }}
           >
             {/* Status leads, so the post's own tags do not get lost beside
-                the one admin-only label. */}
+                the admin-only labels. */}
             <TagChip label={published ? "Published" : "Draft"} emphasis={published} />
+            {/* Only shown when switched *off*. Both default on, so a chip on
+                every row saying "Comments on" would be a column of noise
+                marking the ordinary case; what is worth spotting from the list
+                is the post that behaves differently from the rest. */}
+            {!post.comments_enabled && <TagChip label="Comments off" />}
+            {!post.reactions_enabled && <TagChip label="Reactions off" />}
             {post.tags.map((tag) => (
               <TagChip key={tag} label={tag} />
             ))}

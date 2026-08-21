@@ -114,6 +114,30 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.BasicAuthentication',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # Applied only where a view asks for a scope (`throttle_scope`), which is
+    # the two routes a *stranger* can write to: posting a comment and tapping a
+    # reaction. There is deliberately no DEFAULT_THROTTLE_CLASSES -- a global
+    # limit would also cover the owner's admin, where a burst of writes is
+    # normal, and reading a page is not the thing worth bounding.
+    #
+    # Both are keyed on the caller's IP for anonymous requests, so they are a
+    # brake on a script rather than a defence against a determined one; the
+    # thing that actually deals with a bad comment is the moderation the admin
+    # console gives the owner.
+    'DEFAULT_THROTTLE_RATES': {
+        # Roughly one comment every three minutes, sustained. Far above what a
+        # reader arguing in a thread will hit -- and far below what makes a
+        # comment box worth automating against.
+        'comments': os.environ.get('COMMENT_RATE_LIMIT', '20/hour'),
+        # Generous, because a reaction is a toggle: changing your mind about
+        # which of seven emoji to leave is a handful of requests in a few
+        # seconds, and the unique constraint means none of them grow the table.
+        'reactions': os.environ.get('REACTION_RATE_LIMIT', '60/min'),
+    },
+    # The scoped throttle counts against Django's cache, and the default
+    # LocMemCache is per *process* -- so under gunicorn's several workers the
+    # effective limit is the rate times the worker count. Good enough for what
+    # this is; point CACHES at a shared backend if it ever needs to be exact.
 }
 
 SPECTACULAR_SETTINGS = {
@@ -124,13 +148,28 @@ SPECTACULAR_SETTINGS = {
         '`?tag=`, and books, the owner\'s reading catalogue, browsed by '
         '`?genre=`. Both filters are case-insensitive containment tests, and '
         'both have a vocabulary endpoint — /api/posts/tags/ and '
-        '/api/books/genres/ — since free text has no enum to read options off.'
+        '/api/books/genres/ — since free text has no enum to read options off. '
+        'A post also carries what visitors leave on it: comments, at '
+        '/api/comments/?post=<slug>, and reactions, a fixed row of emoji at '
+        '/api/posts/{slug}/reactions/. Both are open to anonymous writes and '
+        'rate-limited because of it.'
     ),
     'VERSION': '1.0.0',
     # The schema endpoint is served separately; listing it inside its own output
     # is noise.
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
+    # Three models now have a `status` field and only two of them mean the same
+    # thing by it: Post and Book are draft/published, Comment is
+    # published/hidden. drf-spectacular names an enum component after the field
+    # and so cannot name all three `StatusEnum`; left alone it invents
+    # `Status68aEnum` for one of them, which is both meaningless in a generated
+    # client and unstable -- the suffix is a hash of the choice set, so it moves
+    # the moment a value is added.
+    'ENUM_NAME_OVERRIDES': {
+        'PublicationStatusEnum': 'myapp.models.PUBLICATION_STATUS_CHOICES',
+        'CommentStatusEnum': 'myapp.models.COMMENT_STATUS_CHOICES',
+    },
 }
 
 MIDDLEWARE = [

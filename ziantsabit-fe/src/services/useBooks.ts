@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { fetchBooksPage, fetchGenres, type Book, type GenreCount } from "./books";
-import { isAbort, PAGE_SIZE } from "./posts";
+import {
+  BOOKS_PAGE_SIZE,
+  fetchBooksPage,
+  fetchGenres,
+  type Book,
+  type GenreCount,
+} from "./books";
+import { isAbort } from "./posts";
 
 type Phase = "loading" | "ready" | "error";
 
@@ -58,7 +64,10 @@ export function useBooks(
   }, [genre, search, ordering, page, attempt]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
-  const totalPages = Math.max(1, Math.ceil(state.count / PAGE_SIZE));
+  // The catalogue's own page size, not the site-wide one -- see
+  // BOOKS_PAGE_SIZE. Counting with the wrong number here offers pages the
+  // API has nothing to put on.
+  const totalPages = Math.max(1, Math.ceil(state.count / BOOKS_PAGE_SIZE));
 
   return { ...state, totalPages, retry };
 }

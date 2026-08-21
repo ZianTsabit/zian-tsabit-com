@@ -5,12 +5,15 @@ import {
   Button,
   CircularProgress,
   Container,
+  Divider,
   Stack,
   Typography,
 } from "@mui/material";
 
 import Centered from "../components/Centered";
+import CommentSection from "../components/CommentSection";
 import Markdown from "../components/Markdown";
+import ReactionBar from "../components/ReactionBar";
 import { TagChipRow } from "../components/TagChip";
 import Typewriter from "../components/Typewriter";
 import { usePost } from "../services/usePost";
@@ -43,6 +46,15 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
   // Counts this read once per session, and hands back the total to show --
   // including the one just recorded, which the post itself is one behind on.
   const views = useRecordView(post);
+
+  // A closed thread with nothing in it has nothing to say, so the section goes
+  // rather than rendering a heading over one line of apology. `comment_count`
+  // is the post's own figure and is exactly what is needed here: whether the
+  // thread would have anything to show. The section then fetches the thread
+  // itself, which is the number it displays.
+  const showComments = Boolean(
+    post && (post.comments_enabled || post.comment_count > 0),
+  );
 
   return (
     <Box
@@ -175,6 +187,35 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
             {/* The body is Markdown; `Markdown` owns its own typography, so
                 there is no wrapping Typography to fight with it. */}
             <Markdown>{post.body}</Markdown>
+
+            {/* Everything a visitor can leave sits below the post, in the
+                order the effort rises: one tap first, then a paragraph. Both
+                are handed `post.slug` rather than the route's `slug` param --
+                a post reached by an old URL is served under its current slug,
+                and the two writes have to land on the row the page is
+                actually showing.
+
+                Either can be switched off per post in the editor, and the two
+                switches do different things because the two features do. A
+                post with reactions off shows no bar at all: a row of counts
+                nobody may change is furniture. A post with comments closed
+                still shows the thread it already has, because those comments
+                are part of the post -- only the form goes away. The section
+                disappears entirely just once, when a closed post has no
+                comments to show, since a heading over "Comments are closed" is
+                a whole section saying nothing. */}
+            {(post.reactions_enabled || showComments) && <Divider sx={{ mt: 2 }} />}
+
+            {post.reactions_enabled && <ReactionBar slug={post.slug} />}
+
+            {post.reactions_enabled && showComments && <Divider />}
+
+            {showComments && (
+              <CommentSection
+                slug={post.slug}
+                enabled={post.comments_enabled}
+              />
+            )}
           </Stack>
         )}
       </Container>

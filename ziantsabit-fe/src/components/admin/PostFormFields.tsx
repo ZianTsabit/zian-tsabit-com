@@ -1,5 +1,13 @@
 import type { ReactNode } from "react";
-import { Autocomplete, Stack, TextField } from "@mui/material";
+import {
+  Autocomplete,
+  FormControlLabel,
+  FormHelperText,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from "@mui/material";
 
 import CoverImageField from "./CoverImageField";
 import MarkdownEditor from "./MarkdownEditor";
@@ -119,6 +127,7 @@ function PostFormFields({
           fieldErrors.body ??
           "Markdown. Tab indents — press Esc first if you want Tab to leave the field. " +
             "Size an image with a title: ![alt](url \"=400\"), or \"=400x300\", or \"=50%\". " +
+            "LaTeX with $x^2$ inline and $$…$$ as a block — write \\$ for a literal dollar sign. " +
             "Stands in for the excerpt if it is blank."
         }
         // Both callers are full pages now, so the body gets room to write in
@@ -174,6 +183,61 @@ function PostFormFields({
           />
         )}
       />
+
+      {/* What visitors may leave, per post rather than site-wide: a piece on
+          something contentious can have its thread closed without turning
+          comments off everywhere, and a short note nobody is meant to argue
+          with can go up with neither.
+
+          Switches rather than checkboxes because each is a thing that is on or
+          off right now, not a choice being submitted -- and both default on, so
+          saying no is the deliberate act. Grouped under a heading because they
+          are one subject; a stray "Comments" toggle between Tags and Published
+          at would read as another field of the post rather than a setting for
+          it. */}
+      <Stack sx={{ gap: 0.5 }}>
+        <Typography
+          component="h2"
+          sx={{ fontSize: "13px", fontWeight: 600, color: "text.secondary" }}
+        >
+          What visitors can leave
+        </Typography>
+
+        <FormControlLabel
+          control={
+            <Switch
+              checked={draft.comments_enabled}
+              onChange={(event) =>
+                onChange("comments_enabled", event.target.checked)
+              }
+            />
+          }
+          label="Comments"
+        />
+        {/* Says what closing does *not* do, which is the half nobody expects:
+            the thread stays readable and only the form goes away. */}
+        <FormHelperText sx={{ mt: -0.5, ml: 1.75 }}>
+          {fieldErrors.comments_enabled ??
+            "Off closes the thread. Comments already left stay readable — hide those one by one under Comments."}
+        </FormHelperText>
+
+        <FormControlLabel
+          control={
+            <Switch
+              checked={draft.reactions_enabled}
+              onChange={(event) =>
+                onChange("reactions_enabled", event.target.checked)
+              }
+            />
+          }
+          label="Reactions"
+          sx={{ mt: 1 }}
+        />
+        <FormHelperText sx={{ mt: -0.5, ml: 1.75 }}>
+          {fieldErrors.reactions_enabled ??
+            "Off hides the emoji bar. Reactions already left are kept, and come back if you turn it on again."}
+        </FormHelperText>
+      </Stack>
 
       {showPublishedAt && (
         <TextField
