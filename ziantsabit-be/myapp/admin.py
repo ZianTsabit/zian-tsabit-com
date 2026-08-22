@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Book, Comment, Post, Reaction
+from .models import Book, Comment, PageContent, Post, Reaction
 
 
 class ArrayFieldFilter(admin.SimpleListFilter):
@@ -129,4 +129,27 @@ class ReactionAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         # A reaction is something that happened, not something to author.
+        return False
+
+
+@admin.register(PageContent)
+class PageContentAdmin(admin.ModelAdmin):
+    """The CV and About pages, as a fallback to the SPA's own editors.
+
+    The real editing happens at `/admin/cv` and `/admin/about` in the SPA,
+    which render the actual form; this is the raw JSON, useful when something
+    has gone wrong with the shape and worth having for exactly that reason.
+
+    Add and delete are both off: the rows are the two pages, seeded by `0014`,
+    and neither creating a third nor removing one means anything -- a deleted
+    row would leave a public page with nothing to render.
+    """
+
+    list_display = ("key", "updated_at")
+    readonly_fields = ("key", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
         return False

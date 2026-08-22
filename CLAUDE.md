@@ -202,6 +202,38 @@ Points worth keeping intact:
 - **Both book lists count pages with `BOOKS_PAGE_SIZE`, never `PAGE_SIZE`.** The catalogue's page is 12 where the rest of the API's is 20 (see "The Book model"), so a hook importing the site-wide constant renders a pager with pages that do not exist. `useComments`, `usePaginatedPosts` and the two post/comment admin hooks correctly still use `PAGE_SIZE`.
 - **`AdminBookConsole` uses `ActionButton` directly rather than `NewPostButton`**, which hardcodes its label. "New post" on the books page would be wrong in the one way nobody rereads.
 
+### The CV and About pages (frontend)
+
+Both public pages render from `/api/pages/`, and both are edited from the admin. The stack is deliberately smaller than the post and book ones, because a page is a single fixed document rather than one row among many:
+
+| | |
+| --- | --- |
+| `services/pages.ts` | the types (mirroring `myapp/pages.py`), `fetchPage`, and the `empty*()` factories |
+| `services/usePageContent.ts` | the public read, for `CV` and `About` |
+| `services/adminPages.ts` | the credentialed read and the PATCH |
+| `services/useAdminPage.ts` | load + edit + autosave + save, shared by both editors |
+| `components/admin/pages/PageEditorShell.tsx` | heading, states, save row |
+| `components/admin/pages/RepeatableList.tsx` | add / remove / reorder, used by every repeated thing |
+| `components/admin/pages/EntryFields.tsx` | one timeline entry — job, project or qualification |
+| `components/admin/pages/BulletListField.tsx` | the bullets under one entry |
+| `pages/AdminCV.tsx` / `pages/AdminAbout.tsx` | the two editors, which are only the fields |
+
+Points worth keeping intact:
+
+- **`useAutosave` and `useWriteQueue` are reused unchanged.** The hook was already generic over its value type; nothing about page saving needed a second one.
+- **`useAdminPage` has no status, no slug and does not navigate on save.** All three follow from a page being one fixed document: there is no draft to publish, no URL a save can rename (which is the one thing the post and book editors must keep autosave away from), and no console listing pages to return to. Being thrown out of the CV every time it saved would be the wrong end of that trade.
+- **Autosave is on as soon as the document loads**, where a post needs a title first: any shape of page is savable, since the server normalises it.
+- **The CV's sections are fixed; About's are a list.** Each of the CV's five renders differently — three timelines, one prose block, one row of chips — so they have to be named in code, and only their contents and *headings* are editable. About's are all a heading plus prose, so a third one is an entry in the editor rather than a change to `About.tsx`.
+- **`Markdown` grew an `inline` prop for this.** A CV bullet is a `<li>` that `TimelineItem` has already styled; what it wants is the inline part of Markdown — a link, some emphasis — not a `<p>` with two ems of margin reflowing the timeline. `inline` unwraps paragraphs and drops the sizing Box, so the result inherits the font and colour of wherever it landed. This is what replaced the `ExternalLink` component `CV.tsx` used to declare, and it keeps `Markdown.tsx` the only place Markdown is rendered.
+- **`TimelineItem.blurb` is a `ReactNode` now**, for the same reason `points` already was.
+- **The two prose blocks override `& p` rather than restyling `Markdown`.** The CV summary and the About body each have their own type scale, a step either side of a post body's; a descendant selector from the wrapper beats `Markdown`'s own single-class rule, so the sizes stay where the page decides them.
+- **Removing a row with anything in it asks first.** Autosave writes the deletion within three seconds and there is no draft copy to recover from. A row that is still blank goes without a question — it is what the Add button leaves behind when someone changes their mind.
+- **`RepeatableList` and `BulletListField` key rows by index, deliberately.** The usual objection is that index keys break on reorder, but here the *value at* an index is what a row shows and reordering swaps those values, so an index key is what keeps the DOM in step. There is no stable id either: these are fields in a JSON document, not database rows.
+- **Order is edited by moving rows, not derived.** `duration` is free text ("June 2025 - Present"), so there is nothing to sort on; the arrows are how the author says what comes first. They are disabled at the ends rather than hidden, so the control row does not change width as a card moves.
+- **Skills use the same `freeSolo multiple` Autocomplete as the post editor's tags**, `autoSelect` included. A single comma-separated text field was the alternative and it fights the caret — splitting and re-joining on every keystroke rewrites the text being typed.
+- **A page that fails to load is an error with a Retry, not an empty page.** But a page that loads *empty* renders as empty sections: an unfilled CV is a real state, not a broken one, so `usePageContent` has no `not-found` phase.
+- **`/admin/cv` and `/admin/about` have no console and no "new" route.** There are exactly two pages and both already have a public route, so each editor *is* its section in `AdminNav`.
+
 ### Comments and reactions (frontend)
 
 `PostDetail` ends with two sections in rising order of effort — one tap, then a
@@ -289,7 +321,7 @@ Points worth keeping intact:
 
 ### Content and assets
 
-All copy is hardcoded in components. `CV.tsx` is the outlier and the one page with a real data shape: module-level `summary`, `experience`, `projects`, `skills`, and `education` arrays declared above the component, mapped into `<TimelineItem />`. Its content is a manual transcription of the owner's CV, so keeping it current is a hand edit.
+**The CV and About pages are no longer hardcoded.** Their content lives in `PageContent` and is edited at `/admin/cv` and `/admin/about` — see "The CV and About pages" below. `CV.tsx` used to declare `summary`, `experience`, `projects`, `skills` and `education` as module-level arrays, and `About.tsx` had its prose as JSX with `<Box component="a">` links written into it; `myapp/migrations/0014` carries all of it into the database, so nothing was lost. What is left hardcoded is chrome — the footer, the nav, the empty states.
 
 **No CV PDF is shipped, deliberately.** The site used to serve `public/Ghazian_Tsabit_Alkamil.pdf` behind a "Download CV" button; both were removed because the document contains a personal phone number. Don't reintroduce a downloadable CV without checking what personal data is in it — a PDF in `public/` is world-readable to anyone who guesses the URL, with no link required.
 
@@ -371,6 +403,34 @@ Points that are deliberate:
 - **A book and a post may share a slug.** `unique_slug(model, instance, base)` in `models.py` dedupes against the model it is given, so each table checks only its own — an essay about Dune should not push the catalogue entry to a stuttered URL.
 
 **Three helpers in `models.py` are now shared** and were extracted rather than copied: `clean_labels` (behind both `Post.clean_tags` and `Book.clean_genres`), `unique_slug`, and the ISBN pair. `views.py` likewise has a module-level `reject_unknown` that both viewsets use.
+
+### The CV and About pages
+
+`PageContent` is the content of the site's two hardcoded pages, and the reason it exists is that keeping a CV current used to mean editing `CV.tsx` and redeploying. A row per page, `key` a fixed enum (`cv`, `about`), `data` a JSON document, and nothing else.
+
+**A row per page, not a page model.** The API offers no create and no delete: these are two specific pages that already have routes, components and a place in the nav, so a generic "pages" table keyed by slug would be the wrong shape — a third row could only ever be data nothing renders. `PageContentViewSet` is therefore built from `ListModelMixin`/`RetrieveModelMixin`/`UpdateModelMixin` rather than being a `ModelViewSet`.
+
+**The shape is in `pages.py`, not in columns.** A CV is a handful of lists of small records, only ever read and written whole, by one person, as one document; modelling it relationally would be four more tables and a pile of ordering columns. `normalise_page_data` is what stops "a JSON column" from meaning "anything at all" — every write goes through it, so what is stored is always canonical and the SPA never has to defend against a missing key.
+
+Three rules there are deliberate and easy to get backwards:
+
+- **It fills defaults rather than rejecting a partial document.** A CV with no projects yet is a CV. The alternative would mean the editor had to send every field of both pages on every autosave.
+- **A value of the wrong *kind* is a 400.** A string where a list of entries belongs is a mistake nobody meant, and coercing it would put a rendering error on a public page instead of a message in front of the person who caused it.
+- **Unknown keys are dropped.** They are a typo or a field from an older shape, and keeping them would slowly fill the document with things nothing reads.
+
+**A record with nothing identifying it is dropped on save** — an entry with no title, a skill group with no label — because that is exactly what an unused "Add" button leaves behind. Both editors say so in helper text rather than letting the row quietly vanish.
+
+**`get_object` creates a missing row rather than 404ing.** `0014` seeds both, so this only fires for a key added to the enum later or a database restored from before it. It matters because the alternative is "could not load" on a page that genuinely exists — and no row for a PATCH to fix it with.
+
+**`key` is read-only on the serializer.** Otherwise a PUT to `/api/pages/cv/` could turn that row into the About page and leave the CV with no row at all.
+
+**There is no `status`, deliberately.** A page is not published or drafted, it is simply the page: there is no second copy to preview against and no URL for a draft to live at, so a status field would be a control with nothing behind it. That is why the editors have a Save button and no Publish.
+
+**`0014` is a content migration and the deploy depends on it.** The SPA reads these pages from the API from that commit onwards, so without the seed, deploying would replace a finished CV with a blank one. It is `update_or_create`-shaped rather than `create`: a row somebody has already written is left alone, but an *empty* row — one `get_object` created on a first read — is still filled in. Two things changed shape in the move, both because the destination is data rather than JSX: inline links became Markdown (`[Bamtren](https://bamtren.com/)` was a JSX `<ExternalLink>`), and the CV's section headings became content, emoji included. It reverses cleanly, unlike `0009`/`0010`, since nothing in it was derived from other data.
+
+**The one `$` in the seeded CV is escaped as `\$`.** `Markdown` reads `$` as the start of an inline equation, so `~$2,000` and any later `$` on the same line would be swallowed into one. CLAUDE.md's Markdown section notes that nothing published contained a `$` when maths shipped — this CV does, and escaping is what the site's own convention says to do. Note the knock-on: `mightHaveMath` is deliberately over-eager and matches the escape too, so **the CV page loads the KaTeX chunk** for a page that will never contain maths. Not worth contorting the owner's wording over, but worth knowing before wondering why.
+
+Django's admin registers the model with add and delete both off, as a raw-JSON fallback for when a shape has gone wrong. The real editing is in the SPA.
 
 ### Comments and reactions
 
@@ -534,6 +594,8 @@ Routed at `api/` from the project `urls.py` via `myapp/urls.py`'s `DefaultRouter
 | `POST /api/books/` | create |
 | `GET\|PUT\|PATCH\|DELETE /api/books/{slug}/` | detail |
 | `GET /api/books/genres/` | every genre in the catalogue with its count, scoped to what the caller may see |
+| `GET /api/pages/` | both editable pages, unpaginated — there are exactly two |
+| `GET\|PUT\|PATCH /api/pages/{key}/` | the CV or About page's content; read-open, writes need the owner. No create, no delete |
 | `GET /api/comments/` | comments, paginated 20 per page (`?post=`, `?status=`, `?search=`, `?ordering=`); oldest first |
 | `POST /api/comments/` | leave a comment — **open to anonymous callers**, rate-limited, status forced to `published` |
 | `GET\|PUT\|PATCH\|DELETE /api/comments/{id}/` | detail; everything but GET needs the owner |
@@ -628,7 +690,7 @@ Django's own admin registers all four models. `PostAdmin` lists and filters on b
 
 ### Tests
 
-`myapp/tests.py` is a real suite (232 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, the tag filter and its vocabulary endpoint (`TagVocabularyTests`), filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, the upload endpoint, the view counter, the daily reading history (`ViewDayTests`), the date-range filter, and the book catalogue (`BookModelTests` / `BookAPITests` — slug derivation and its author fallback, genre and ISBN normalisation, both check-digit schemes, the release-year bounds, the case-insensitive genre filter, the genres action's spelling fold, and each CRUD verb for both anonymous and authenticated callers), and comments and reactions (`CommentAPITests` / `CommentCountTests` / `ReactionTests` — the open create and its forced status, the draft and hidden visibility rules, moderation by the owner and its refusal to anyone else, the dense reaction bar, the toggle, per-visitor `reacted`, and the rejected emoji), the per-post switches (`VisitorSwitchTests` — both defaulting on, each refusal, the owner's exemption from both, a closed thread staying readable, and reaction counts surviving the switch), and the catalogue's shorter page (`BookPaginationTests` — the page length, the count being the whole catalogue rather than the page, non-overlapping pages, and a cross-check that posts keep the site-wide 20). Run it with `python manage.py test`.
+`myapp/tests.py` is a real suite (248 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, the tag filter and its vocabulary endpoint (`TagVocabularyTests`), filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, the upload endpoint, the view counter, the daily reading history (`ViewDayTests`), the date-range filter, and the book catalogue (`BookModelTests` / `BookAPITests` — slug derivation and its author fallback, genre and ISBN normalisation, both check-digit schemes, the release-year bounds, the case-insensitive genre filter, the genres action's spelling fold, and each CRUD verb for both anonymous and authenticated callers), and comments and reactions (`CommentAPITests` / `CommentCountTests` / `ReactionTests` — the open create and its forced status, the draft and hidden visibility rules, moderation by the owner and its refusal to anyone else, the dense reaction bar, the toggle, per-visitor `reacted`, and the rejected emoji), the per-post switches (`VisitorSwitchTests` — both defaulting on, each refusal, the owner's exemption from both, a closed thread staying readable, and reaction counts surviving the switch), the editable pages (`PageContentTests` — that `0014` actually seeded both, that the Bamtren link survived the move as Markdown, the open read and the owner-only write, the normaliser filling defaults and dropping unknown keys, a wrong type being a 400, a titleless entry being dropped, `key` being read-only, create and delete both being 405s, and a deleted row being recreated rather than 404ing), and the catalogue's shorter page (`BookPaginationTests` — the page length, the count being the whole catalogue rather than the page, non-overlapping pages, and a cross-check that posts keep the site-wide 20). Run it with `python manage.py test`.
 
 **The two throttle tests patch `ScopedRateThrottle.THROTTLE_RATES` rather than using `override_settings(REST_FRAMEWORK=...)`**, which looks like it should work and does not: DRF binds that dict to the class *at import time*, so a settings override moves `api_settings` and leaves the throttle reading the rate it was born with. They also `cache.clear()` in `setUp`, since the throttle counter lives in a LocMemCache that outlives a single test.
 
@@ -659,7 +721,7 @@ The short form `"5432:5432"` would bind all interfaces and hand the throwaway `z
 
 ## Frontend/backend seam
 
-`/` (the blog feed) and `/posts/:slug` render live data from `GET /api/posts/`. The post page also carries the two things a visitor can leave — a reaction bar and a comment thread — which are the only requests in the app a stranger writes with; see "Comments and reactions (frontend)". **`/books` is the catalogue, backed by `GET /api/books/`** — a different resource, so `/books/:slug` renders `BookDetail` over a `Book`. A post *about* a book is writing: it lives in the feed, tagged however its author likes, and reaches its page at `/posts/:slug` like every other post. The CV and About pages are the only hardcoded copy left.
+`/` (the blog feed) and `/posts/:slug` render live data from `GET /api/posts/`. The post page also carries the two things a visitor can leave — a reaction bar and a comment thread — which are the only requests in the app a stranger writes with; see "Comments and reactions (frontend)". **`/books` is the catalogue, backed by `GET /api/books/`** — a different resource, so `/books/:slug` renders `BookDetail` over a `Book`. A post *about* a book is writing: it lives in the feed, tagged however its author likes, and reaches its page at `/posts/:slug` like every other post. **The CV and About pages render from `GET /api/pages/`** — see "The CV and About pages" on both sides; they are edited at `/admin/cv` and `/admin/about` and are no longer hardcoded copy.
 
 **There is no `/garage` page.** `Post.Category.GARAGE_SALE` is still a valid backend category — the admin console can still file a post under it — but nothing public links there any more; the page, its route, and its nav item were deleted. `VISIBLE_CATEGORIES` in `posts.ts` (`posts`, `books`, `projects`) is the list every cross-category view filters to, so a stray `garage_sale` post can never end up linked from a page that no longer exists. Filter with `isVisible(post)` rather than testing a single value: a post filed under both `garage_sale` and `projects` does have a page, and only one filed *solely* under `garage_sale` should be dropped.
 

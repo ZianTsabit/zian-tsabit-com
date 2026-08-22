@@ -23,6 +23,8 @@ import AdminBookConsole from "./components/admin/AdminBookConsole";
 import AdminCommentConsole from "./components/admin/AdminCommentConsole";
 import AdminNewBook from "./pages/AdminNewBook";
 import AdminEditBook from "./pages/AdminEditBook";
+import AdminCV from "./pages/AdminCV";
+import AdminAbout from "./pages/AdminAbout";
 import PostDetail from "./pages/PostDetail";
 import NotFound from "./pages/NotFound";
 import './App.css'
@@ -100,6 +102,11 @@ function App() {
                   has over one are hiding it and removing it -- both of which
                   happen on the list itself. */}
               <Route path="comments" element={<AdminCommentConsole />} />
+              {/* The two hardcoded pages' own content. No console listing them
+                  and no "new" route: there are exactly two, both already have
+                  a public route, so each editor *is* its section. */}
+              <Route path="cv" element={<AdminCV />} />
+              <Route path="about" element={<AdminAbout />} />
             </Route>
             {/* Must stay last: `*` matches anything, and the routes above are
                 only reached because a more specific match wins. `/admin/typo`

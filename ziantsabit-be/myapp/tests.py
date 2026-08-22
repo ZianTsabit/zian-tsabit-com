@@ -19,6 +19,7 @@ from .models import (
     REACTION_EMOJI_VALUES,
     Book,
     Comment,
+    PageContent,
     Post,
     PostViewDay,
     Reaction,
@@ -2302,3 +2303,154 @@ class ReactionTests(APITestCase):
         Reaction.objects.create(post=self.post, emoji=self.emoji, visitor="abc")
         self.post.delete()
         self.assertEqual(Reaction.objects.count(), 0)
+
+
+class PageContentTests(APITestCase):
+    """The CV and About pages' own content -- `/api/pages/`."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.cv_url = reverse("page-detail", kwargs={"key": "cv"})
+        cls.about_url = reverse("page-detail", kwargs={"key": "about"})
+
+    def sign_in(self):
+        self.client.force_authenticate(user=self.user)
+
+    def test_seed_migration_filled_both_pages(self):
+        # 0014 is what stops the deploy that reads from this table from
+        # replacing a finished CV with a blank one.
+        cv = PageContent.objects.get(key="cv")
+        self.assertEqual(cv.data["name"], "Ghazian Tsabit Alkamil")
+        self.assertTrue(cv.data["experience"]["entries"])
+        self.assertTrue(PageContent.objects.get(key="about").data["sections"])
+
+    def test_the_bamtren_link_survived_as_markdown(self):
+        # It was a JSX <ExternalLink> before the move; losing it would be a
+        # silent content regression the shape tests would not catch.
+        points = PageContent.objects.get(key="cv").data["experience"]["entries"][1][
+            "points"
+        ]
+        self.assertIn("[Bamtren](https://bamtren.com/)", points[0])
+
+    def test_anyone_may_read_a_page(self):
+        response = self.client.get(self.cv_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["key"], "cv")
+
+    def test_list_returns_both_pages_unpaginated(self):
+        response = self.client.get(reverse("page-list"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # A plain list, not a {count, results} envelope: two fixed rows can
+        # never have a second page.
+        self.assertEqual([page["key"] for page in response.data], ["about", "cv"])
+
+    def test_anonymous_may_not_write(self):
+        response = self.client.patch(self.cv_url, {"data": {}}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_owner_may_write(self):
+        self.sign_in()
+        response = self.client.patch(
+            self.cv_url, {"data": {"name": "New Name"}}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(PageContent.objects.get(key="cv").data["name"], "New Name")
+
+    def test_a_write_fills_the_missing_keys(self):
+        # A partial document is a valid one -- the normaliser is what makes the
+        # SPA safe to render without checking every key.
+        self.sign_in()
+        response = self.client.patch(
+            self.cv_url, {"data": {"name": "Only a name"}}, format="json"
+        )
+        self.assertEqual(response.data["data"]["experience"]["entries"], [])
+        self.assertEqual(response.data["data"]["summary"]["heading"], "📄 Summary")
+
+    def test_unknown_keys_are_dropped(self):
+        self.sign_in()
+        response = self.client.patch(
+            self.cv_url, {"data": {"name": "N", "nonsense": 1}}, format="json"
+        )
+        self.assertNotIn("nonsense", response.data["data"])
+
+    def test_a_wrong_type_is_a_400(self):
+        self.sign_in()
+        response = self.client.patch(
+            self.cv_url, {"data": {"links": "not a list"}}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_a_non_object_document_is_a_400(self):
+        self.sign_in()
+        response = self.client.patch(self.cv_url, {"data": [1, 2]}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_an_entry_with_no_title_is_dropped(self):
+        # What an "add" button leaves behind when the author changes their mind.
+        self.sign_in()
+        response = self.client.patch(
+            self.cv_url,
+            {
+                "data": {
+                    "experience": {
+                        "entries": [{"title": "Real"}, {"subtitle": "Orphan"}]
+                    }
+                }
+            },
+            format="json",
+        )
+        entries = response.data["data"]["experience"]["entries"]
+        self.assertEqual([entry["title"] for entry in entries], ["Real"])
+
+    def test_blank_points_are_dropped_and_the_rest_trimmed(self):
+        self.sign_in()
+        response = self.client.patch(
+            self.cv_url,
+            {
+                "data": {
+                    "experience": {
+                        "entries": [{"title": "T", "points": ["  a  ", "", "   "]}]
+                    }
+                }
+            },
+            format="json",
+        )
+        self.assertEqual(
+            response.data["data"]["experience"]["entries"][0]["points"], ["a"]
+        )
+
+    def test_key_is_read_only(self):
+        # Or a PUT to /api/pages/cv/ could turn that row into the About page
+        # and leave the CV with no row at all.
+        self.sign_in()
+        self.client.patch(self.cv_url, {"key": "about", "data": {}}, format="json")
+        self.assertTrue(PageContent.objects.filter(key="cv").exists())
+        self.assertEqual(PageContent.objects.count(), 2)
+
+    def test_there_is_no_create_or_delete(self):
+        self.sign_in()
+        self.assertEqual(
+            self.client.post(reverse("page-list"), {"key": "extra"}, format="json").status_code,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+        self.assertEqual(
+            self.client.delete(self.cv_url).status_code,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def test_an_unknown_key_is_a_404(self):
+        self.assertEqual(
+            self.client.get(reverse("page-detail", kwargs={"key": "nope"})).status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+    def test_a_missing_row_is_created_empty_rather_than_404ing(self):
+        # A database restored from before 0014, or a key added to the enum
+        # later: the page exists, so "could not load" would be a lie and there
+        # would be no row for a PATCH to fix it with.
+        PageContent.objects.filter(key="about").delete()
+        response = self.client.get(self.about_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["sections"], [])
+        self.assertTrue(PageContent.objects.filter(key="about").exists())

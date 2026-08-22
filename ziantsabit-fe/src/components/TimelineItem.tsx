@@ -7,9 +7,13 @@ interface TimelineItemProps {
   subtitleLink?: string;
   location?: string;
   duration: string;
-  blurb?: string;
+  /** ReactNode for the same reason as `points`: the CV renders it through
+   *  `Markdown` so a company blurb can carry a link. Plain strings still
+   *  work unchanged. */
+  blurb?: ReactNode;
   /** ReactNode, not string: a point may carry an inline link (see the Bamtren
-   *  entry on the CV). Plain strings still work unchanged. */
+   *  entry on the CV, which reaches this as `<Markdown inline>`). Plain
+   *  strings still work unchanged. */
   points?: ReactNode[];
   /** The last entry in a section draws no connecting line below its dot. */
   last?: boolean;
@@ -158,8 +162,9 @@ function TimelineItem({
             <Box
               component="li"
               // Index, since a point is no longer necessarily a string it can
-              // be keyed by. The list is a hardcoded constant -- it is never
-              // reordered or filtered at runtime, so this is stable.
+              // be keyed by. The list is a whole section of the CV re-rendered
+              // together -- never reordered or filtered in place at runtime --
+              // so this is stable.
               key={index}
               sx={{
                 position: "relative",

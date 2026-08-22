@@ -6,11 +6,13 @@ from .models import (
     REACTION_EMOJI_VALUES,
     Book,
     Comment,
+    PageContent,
     Post,
     isbn_is_valid,
     max_release_year,
     normalise_isbn,
 )
+from .pages import normalise_page_data
 
 
 class PostSerializer(serializers.ModelSerializer):
@@ -393,3 +395,33 @@ class ReactionToggleSerializer(serializers.Serializer):
     # goes into a CharField, and non-blank because "everyone who sent nothing"
     # would otherwise be one visitor sharing one reaction.
     visitor = serializers.CharField(max_length=64, allow_blank=False, trim_whitespace=True)
+
+
+class PageContentSerializer(serializers.ModelSerializer):
+    """One editable page -- the CV or the About page.
+
+    `key` is read-only: the two rows are fixed and the API has no create route,
+    so the only thing a write may change is what is on the page. Letting it be
+    written would allow a PUT to `/api/pages/cv/` to turn that row into the
+    About page and leave the CV with no row at all.
+
+    `data` is normalised rather than validated field by field, because its shape
+    depends on which page this is -- see `pages.normalise_page_data`. Doing it
+    in `validate_data` rather than in `Model.save()` is deliberate: a bad shape
+    should be a 400 naming the field, and a document typed into Django's own
+    admin is worth accepting as-is rather than losing the whole edit over.
+    """
+
+    # `JSONField` rather than the model's, so a raw string body ("[object
+    # Object]" from a client that stringified it) is rejected as JSON before
+    # the normaliser ever sees it.
+    data = serializers.JSONField()
+
+    class Meta:
+        model = PageContent
+        fields = ["key", "data", "updated_at"]
+        read_only_fields = ["key", "updated_at"]
+
+    def validate_data(self, value):
+        # `self.instance` is always set: update is the only write there is.
+        return normalise_page_data(self.instance.key, value)
