@@ -17,14 +17,27 @@
     <script>
       // Applies the stored colour scheme before first paint, so a returning
       // visitor never sees the wrong background flash. Must stay in sync with
-      // MUI's storage key ("mui-mode") and colorSchemeSelector ("class").
-      // Visitors with no stored choice get light, which index.css already
-      // paints on bare `html`, so nothing is done for them here.
+      // MUI's storage keys ("mui-mode", "mui-color-scheme-dark") and with
+      // colorSchemeSelector ("class"). Visitors with no stored choice get
+      // light, which index.css already paints on bare `html`, so nothing is
+      // done for them here.
+      //
+      // Two keys rather than one, because there are three schemes and only two
+      // modes. `rain` is a dark-mode scheme (see useSiteTheme), so a visitor
+      // who chose it has mode "dark" and dark-scheme "rain" -- reading the mode
+      // alone would paint the dark scheme's near-black and then swap to
+      // overcast blue-grey on mount, which is the exact flash this exists to
+      // stop. The class applied is the *scheme* name, never the mode: MUI puts
+      // one scheme class on <html> and light/dark just happen to share a name
+      // with their mode.
       (function () {
         try {
           var mode = localStorage.getItem('mui-mode');
-          if (mode === 'light' || mode === 'dark') {
-            document.documentElement.classList.add(mode);
+          if (mode === 'light') {
+            document.documentElement.classList.add('light');
+          } else if (mode === 'dark') {
+            var scheme = localStorage.getItem('mui-color-scheme-dark');
+            document.documentElement.classList.add(scheme === 'rain' ? 'rain' : 'dark');
           }
         } catch (e) {
           /* private mode / blocked storage: fall back to the media queries */

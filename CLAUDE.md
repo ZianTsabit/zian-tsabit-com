@@ -61,11 +61,11 @@ No test runner is configured for the frontend.
 
 Two layout details in the shell are load-bearing. The content column carries `minWidth: 0`, because a flex item defaults to `min-width: auto` and refuses to shrink below its content — without it the post list's filter row and the cadence chart push the nav off the screen instead of scrolling inside themselves. And **sign-out lives in `AdminNav`, not on the post list where it used to be**: it is chrome for the whole admin, so leaving it on one page would mean either three copies or a control that vanishes when you navigate.
 
-### Colour and the light/dark theme
+### Colour and the three themes
 
-`src/theme.ts` is the single source of colour. `main.tsx` wraps the app in `<ThemeProvider theme={theme} defaultMode="system">` plus `<CssBaseline />`, and the theme declares both schemes via MUI's `colorSchemes` with `cssVariables: { colorSchemeSelector: "class" }`.
+`src/theme.ts` is the single source of colour. `main.tsx` wraps the app in `<ThemeProvider theme={theme} defaultMode="light">` plus `<CssBaseline />`, and the theme declares **three** schemes — `light`, `dark` and `rain` — via MUI's `colorSchemes` with `cssVariables: { colorSchemeSelector: "class" }`.
 
-**Never write a colour literal in a component.** `color: "white"` or `grey.900` resolves to the same thing in both schemes, so a literal silently breaks light mode — dark text on a dark card. Use semantic tokens only:
+**Never write a colour literal in a component.** `color: "white"` or `grey.900` resolves to the same thing in every scheme, so a literal silently breaks light mode — dark text on a dark card. Use semantic tokens only:
 
 | Instead of | Use |
 | --- | --- |
@@ -78,16 +78,42 @@ Two layout details in the shell are load-bearing. The content column carries `mi
 
 `theme.ts` also carries the one component override on the site: **`MuiButton` sets `textTransform: "none"`**. Material capitalises every button label, and nothing else here does — not the nav, not the headings, not the wordmark — so a button was the only thing on a page shouting. It lives in the theme rather than on each button because one sentence-case action beside an uppercase one reads as a mistake; a per-button fix produces exactly that.
 
-The one custom token is `palette.headerScrolled` (declared through module augmentation in `theme.ts`), the translucent wash behind the scrolled header. Read it via `(theme.vars ?? theme).palette.headerScrolled` — with `cssVariables` on, `theme.vars` is the populated one, and the fallback keeps TypeScript happy since `vars` is optional on the type.
+There are three custom tokens, all declared through module augmentation in `theme.ts`: `palette.headerScrolled` (the translucent wash behind the scrolled header) and `palette.rainDrop` / `palette.lightning` (the rain scheme's overlay; see below). Read any of them via `(theme.vars ?? theme).palette.x` — with `cssVariables` on, `theme.vars` is the populated one, and the fallback keeps TypeScript happy since `vars` is optional on the type. **All three are declared in all three schemes**, even where they cannot be reached: a token missing from a scheme is simply an absent CSS variable, which resolves to an empty string rather than to anything useful.
 
-Note the two schemes do **not** share a link colour: dark uses `#6497b1`, light uses the darker `#1565c0`, because `#6497b1` on white is only ~3.1:1 — under the 4.5:1 AA floor for body text. If you add a colour, check it against both backgrounds.
+Note no two schemes share a link colour: dark uses `#6497b1`, light the darker `#1565c0` (because `#6497b1` on white is only ~3.1:1, under the 4.5:1 AA floor for body text), rain a cooler `#8ab4d4`. If you add a colour, check it against all three backgrounds — every ratio quoted in `theme.ts` was measured, and they are there so the next change has something to hold itself to.
 
-**Mode selection** is `defaultMode="system"`, so a first-time visitor follows their OS. `ColorModeToggle.tsx` calls `setMode()` to store an explicit override under the `mui-mode` localStorage key, which then wins over the OS. `mode` is `undefined` on the first render, so the toggle renders a hidden same-size placeholder until mounted rather than flashing the wrong icon.
+#### The rain scheme
+
+`rain` is overcast: desaturated blue-grey throughout, where dark is warm and neutral. It is a third *look*, not a third brightness — and that mismatch with MUI's model is the source of everything awkward about it.
+
+**It must be built with its own `createTheme` call.** MUI runs `createPalette` — which fills in the greys, the action states, the augmented colour channels and everything else a component reads — only for the schemes it knows by name, `light` and `dark`. A custom scheme is taken as already complete, so declaring `rain` inline the way the other two are crashes the app at import time with `Cannot read properties of undefined (reading 'background')` and a blank white page. `rainPalette` is that pre-built palette; the three site-specific tokens are added afterwards, since `createPalette` knows nothing about them.
+
+**It declares `palette.mode: "dark"`**, so every component that branches on the mode (an input's outline, a disabled label) picks its dark-scheme behaviour. The cost is that selecting rain is *two* calls — set the mode to dark, and name `rain` as the dark scheme — and doing only one leaves the page half-changed.
+
+**`services/useSiteTheme.ts` is therefore the only thing on the site that may call `setMode` or `setColorScheme`.** It exposes one three-way `SiteTheme` value instead of MUI's mode/scheme pair. Two details in it are load-bearing: `colorScheme` is the authority for reading the current theme, not `mode` (rain and dark share a mode, so the mode alone cannot tell them apart), and **choosing light or dark resets the dark scheme back to `dark`** — without that, leaving rain would leave `mui-color-scheme-dark` set to `rain` and choosing Dark again would silently bring the weather back.
+
+**Mode selection** is `defaultMode="light"`, so a first-time visitor gets light whatever their OS says. `ColorModeToggle.tsx` is a **menu, not a toggle**: with two schemes a single button was right, because it showed the current one and pressing it meant "the other one"; with three there is no "the other one", so a button would have to cycle and its icon could no longer say what pressing it would do. `mode` is `undefined` on the first render, so it renders a hidden same-size placeholder until mounted rather than flashing the wrong icon.
+
+#### The rain overlay
+
+`components/RainOverlay.tsx` is the falling-ASCII layer, mounted from `App.tsx` and rendering `null` under the other two schemes. Points worth keeping intact:
+
+- **It sits on top of the page, not behind it.** Behind was the first attempt and it does not work: the feed pages paint an opaque `background.default` over their whole column, so the rain showed on the CV and vanished on the blog. On top it needs no cooperation from any page, and looking at the site *through* the weather is the truer image anyway. `pointerEvents: "none"` is what keeps it from eating every click.
+- **`zIndex: 1001` puts it in a deliberate band**: over the fixed header (1000) so rain falls in front of the whole page, but under MUI's Drawer (1200) and Dialog (1300). Raining on a delete-confirmation dialog would read as a glitch — and the same rule is why the Markdown editor's full-screen mode, which uses `theme.zIndex.modal`, is rain-free.
+- **Canvas, not DOM nodes and not one big `<pre>`.** A couple of hundred glyphs move every frame, and per-glyph alpha is what makes a trail fade into the distance: a single `<pre>` can only be one colour, and 230 spans would be 230 style recalculations a frame. Measured at 1888×912 the drawing costs ~1.8 ms/frame, about a ninth of a 60fps budget.
+- **Colours are resolved out of the DOM, not read off `theme.palette`.** With `cssVariables` on, `theme.vars.palette.rainDrop` is the string `"var(--mui-palette-rainDrop)"` — fine in `sx`, meaningless to `fillStyle` — while `theme.palette.rainDrop` is the *default* scheme's value, so it would hand back the light palette's colour while the page is showing rain. `resolveColour` reads the variable off the root, which is the only one of the three that answers for the active scheme.
+- **`prefers-reduced-motion` turns off the animation *and* the lightning**, leaving one static field of drops rather than an empty layer: the scheme is called Rain and someone who picked it should still get rain. This is the one branch nothing else exercises — test it by hand after any change here (forcing the media query to one that always matches, then checking the canvas pixels do not change between two samples, is what was done).
+- **The flash is deliberately weak** (`FLASH_ALPHA = 0.16`, roughly one strike every 7–22s). This layer paints across text somebody may be reading, so a bright full-screen pulse is both unpleasant and a photosensitivity risk. At this alpha it reads as the sky lighting up behind the page rather than as the page blinking. Do not raise it without thinking about that.
+- **The bolt is a glimpse, not a shape** — 170ms of a 620ms strike. Its glyph follows the direction of travel (`\`, `/`, `|`), which is what makes a run of characters read as one continuous line instead of a dotted column.
+- **The wind is small and shared.** Rain falling straight down reads as a screensaver; a slight, *consistent* slant reads as weather, because every drop is being pushed by the same wind. Past about `WIND = 0.4` it starts to look like blown snow.
+- **A drop respawns scattered on resize and at the top thereafter.** Releasing them all from the top means the rain arrives as one visible curtain a second after the theme is picked.
 
 **Avoiding a flash of the wrong theme** takes two cooperating pieces, because MUI emits its palette as CSS variables injected by JavaScript — before React mounts there is nothing colouring the page:
 
-1. `index.css` carries `prefers-color-scheme` media queries plus `html.light` / `html.dark` rules that set *only* the page background. They live in the static, render-blocking stylesheet, so the correct backdrop paints immediately.
-2. An inline script in `index.html` reads `localStorage['mui-mode']` and applies the class before that stylesheet is parsed, so a stored choice that contradicts the OS is honoured pre-paint too.
+1. `index.css` carries `html.light` / `html.dark` / `html.rain` rules that set *only* the page background. They live in the static, render-blocking stylesheet, so the correct backdrop paints immediately. The bare `html` rule is the default and must match `main.tsx`'s `defaultMode`.
+2. An inline script in `index.html` applies the class before that stylesheet is parsed.
+
+**That script reads two storage keys, not one, and the second is what rain needs.** There are three schemes and only two modes: someone who chose rain has `mui-mode` = `dark` and `mui-color-scheme-dark` = `rain`, so reading the mode alone would paint the dark scheme's near-black and then swap to overcast blue-grey on mount — the exact flash this exists to prevent. **The class applied is the *scheme* name, never the mode**; light and dark just happen to share a name with theirs.
 
 Those background hex values are duplicated from `palette.background.default`; if you change one, change the other. That is the only place a colour literal belongs outside `theme.ts`.
 

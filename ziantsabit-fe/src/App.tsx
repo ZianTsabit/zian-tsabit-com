@@ -7,6 +7,7 @@ import {
 import Box from "@mui/material/Box";
 import Header from './components/Header';
 import Footer from './components/Footer';
+import RainOverlay from './components/RainOverlay';
 import { HEADER_HEIGHT } from "./constants/layout";
 import Blog from "./pages/Blog";
 import Books from "./pages/Books";
@@ -120,6 +121,11 @@ function App() {
         </Box>
         <Footer />
       </Box>
+      {/* Last, and fixed on top of everything: the rain scheme's falling-ASCII
+          layer. It renders nothing under the other two schemes. Placed here
+          rather than behind the page because the feed pages paint an opaque
+          background over their whole column -- see RainOverlay. */}
+      <RainOverlay />
     </Router>
   )
 }

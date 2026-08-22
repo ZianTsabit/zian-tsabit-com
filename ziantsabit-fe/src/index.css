@@ -45,8 +45,10 @@ body {
        `defaultMode` -- light. `prefers-color-scheme` is deliberately not
        consulted: the site no longer follows the OS, so honouring it here would
        paint dark for an OS-dark visitor and then swap to light on mount;
-     - the .light/.dark classes handle a stored explicit choice, and are set by
-       the inline script in index.html before this stylesheet is parsed.
+     - the .light/.dark/.rain classes handle a stored explicit choice, and are
+       set by the inline script in index.html before this stylesheet is parsed.
+       They are *scheme* names, not modes: rain is a dark-mode scheme, so the
+       script has to read the stored dark-scheme name as well as the mode.
    Keep these values in sync with palette.background.default in theme.ts. */
 
 html {
@@ -62,6 +64,15 @@ html.dark {
 html.light {
   background-color: #f9f6ee;
   color-scheme: light;
+}
+
+/* The third scheme. `color-scheme: dark` because rain declares
+   `palette.mode: "dark"` -- this is what the browser paints scrollbars and
+   form controls from, and telling it "light" would give an overcast page white
+   scrollbars. */
+html.rain {
+  background-color: #1b2229;
+  color-scheme: dark;
 }
 
 img,
