@@ -1487,6 +1487,91 @@ class BookAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("author", response.data)
 
+    def test_a_duplicate_title_and_author_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            self.payload(title="Dune", author="Frank Herbert"),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("non_field_errors", response.data)
+        # The message names the entry it collided with, so the owner can go and
+        # find the draft they forgot they had started.
+        self.assertIn("dune", str(response.data["non_field_errors"][0]))
+
+    def test_the_duplicate_check_ignores_case(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            self.payload(title="dune", author="frank herbert"),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_the_duplicate_check_sees_drafts(self):
+        # `self.unshelved` is a draft, and a second copy of it is just as much a
+        # duplicate as a second copy of something published.
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            self.payload(title="Half-Read Thing", author="Nobody"),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_the_same_title_by_a_different_author_is_accepted(self):
+        # Two different books called "Dune" is ordinary; the slug falls back to
+        # the author to tell them apart.
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url, self.payload(title="Dune", author="Someone Else"), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["slug"], "dune-someone-else")
+
+    def test_another_book_by_the_same_author_is_accepted(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            self.list_url,
+            self.payload(title="Dune Messiah", author="Frank Herbert"),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_a_book_does_not_collide_with_itself_on_update(self):
+        # Every autosave PATCH resends the title and author unchanged; a check
+        # that did not exclude the row being written would refuse all of them.
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.dune),
+            {"title": "Dune", "author": "Frank Herbert", "review": "Still holds up."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_renaming_a_book_onto_another_is_rejected(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.neuromancer),
+            {"title": "Dune", "author": "Frank Herbert"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("non_field_errors", response.data)
+
+    def test_a_patch_of_one_half_is_checked_against_the_stored_other(self):
+        # Only the author is sent, so the title it has to be paired with comes
+        # from the row itself.
+        Book.objects.create(title="Dune", author="Someone Else")
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            reverse("book-detail", kwargs={"slug": "dune-someone-else"}),
+            {"author": "Frank Herbert"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_bad_isbn_is_rejected(self):
         self.client.force_authenticate(self.user)
         response = self.client.post(
@@ -1562,6 +1647,90 @@ class BookAPITests(APITestCase):
         self.client.force_authenticate(self.user)
         self.client.delete(self.detail_url(self.dune))
         self.assertTrue(Post.objects.filter(pk=post.pk).exists())
+
+
+class PostThemeTests(APITestCase):
+    """`Post.theme` -- the scheme a post is read in, whatever the reader picked.
+
+    Blank is the default and means "leave the reader alone", so every test here
+    leans on a post that names no theme behaving exactly as every post did
+    before the column existed.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="zian", password="pw-for-tests")
+        cls.list_url = reverse("post-list")
+        cls.stormy = Post.objects.create(
+            title="A Night Of Rain",
+            status=Post.Status.PUBLISHED,
+            theme=Post.Theme.RAIN,
+        )
+        cls.plain = Post.objects.create(
+            title="An Ordinary Post", status=Post.Status.PUBLISHED
+        )
+
+    def detail_url(self, post):
+        return reverse("post-detail", kwargs={"slug": post.slug})
+
+    def test_a_post_defaults_to_the_readers_own_theme(self):
+        self.assertEqual(self.plain.theme, "")
+
+    def test_a_post_created_through_the_api_defaults_to_blank(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(self.list_url, {"title": "Fresh"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["theme"], "")
+
+    def test_the_theme_is_serialised_for_anonymous_readers(self):
+        # The whole point of the field: a visitor's page has to be told.
+        response = self.client.get(self.detail_url(self.stormy))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["theme"], "rain")
+
+    def test_every_scheme_is_accepted(self):
+        self.client.force_authenticate(self.user)
+        for scheme in ("light", "dark", "rain"):
+            with self.subTest(scheme=scheme):
+                response = self.client.patch(
+                    self.detail_url(self.plain), {"theme": scheme}, format="json"
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual(response.data["theme"], scheme)
+
+    def test_a_scheme_the_site_does_not_have_is_rejected(self):
+        # A free-text value here would name a palette `theme.ts` never declared,
+        # and the page would have nothing to switch to.
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.plain), {"theme": "sepia"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("theme", response.data)
+
+    def test_clearing_the_theme_gives_the_reader_their_choice_back(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.stormy), {"theme": ""}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["theme"], "")
+
+    def test_an_autosave_that_omits_the_theme_keeps_it(self):
+        # Every PATCH from the editor is a partial write; a post whose theme is
+        # not in the body must not quietly lose it.
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            self.detail_url(self.stormy), {"body": "Still raining."}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["theme"], "rain")
+
+    def test_anonymous_callers_cannot_set_a_theme(self):
+        response = self.client.patch(
+            self.detail_url(self.plain), {"theme": "rain"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class VisitorSwitchTests(APITestCase):

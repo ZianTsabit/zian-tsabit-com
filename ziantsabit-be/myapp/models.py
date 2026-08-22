@@ -122,6 +122,23 @@ class Post(models.Model):
         DRAFT = "draft", "Draft"
         PUBLISHED = "published", "Published"
 
+    class Theme(models.TextChoices):
+        """The site's three colour schemes, by the names the SPA knows them by.
+
+        A fixed set for the same reason `REACTION_EMOJI` is one and `tags` is
+        not: these are not labels somebody made up, they are the three palettes
+        `theme.ts` actually declares. A free-text value here would name a scheme
+        that does not exist, and the page would have nothing to switch to.
+
+        Kept in step with `SiteTheme` in `services/useSiteTheme.ts` by hand --
+        a fourth scheme is a change to `theme.ts`, this enum and that union
+        together, which is the honest cost of the palette living on the client.
+        """
+
+        LIGHT = "light", "Light"
+        DARK = "dark", "Dark"
+        RAIN = "rain", "Rain"
+
     title = models.CharField(max_length=200)
     # Left blank on create and derived from the title in save(); it is the URL
     # key the API looks posts up by, so it has to stay unique.
@@ -165,6 +182,23 @@ class Post(models.Model):
     # happened, and flipping the switch back brings the counts with it.
     comments_enabled = models.BooleanField(default=True)
     reactions_enabled = models.BooleanField(default=True)
+    # The scheme this post is *read* in, overriding whatever the visitor picked
+    # from the header. Blank -- the default -- means the visitor's own choice
+    # stands, which is what every post did before this column existed.
+    #
+    # **Blank rather than null**, matching `excerpt` and `isbn`: there is one
+    # "unset" here, not two, and a nullable choice field would let the API
+    # answer with `null` on some rows and `""` on others for the same meaning.
+    #
+    # It is a property of the *post* rather than of the site because that is
+    # the only thing that makes it worth having: a piece written about a storm
+    # can be read in the rain, and the next post is back to whatever the reader
+    # prefers. The reader keeps the last word -- the header's picker still
+    # works while an overridden post is open, and choosing from it releases the
+    # override for good (see `usePostTheme`).
+    theme = models.CharField(
+        max_length=10, choices=Theme.choices, blank=True, default=""
+    )
     # Bumped by POST /api/posts/{slug}/view/ with an F() expression, never by
     # save() -- a read must not touch updated_at, and two readers arriving at
     # once must not each write back the same stale number.

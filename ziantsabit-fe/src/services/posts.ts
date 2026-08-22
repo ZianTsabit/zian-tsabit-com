@@ -8,6 +8,8 @@
  */
 
 /** One post, mirroring `myapp.serializers.PostSerializer`. */
+import type { SiteTheme } from "./useSiteTheme";
+
 export interface Post {
   id: number;
   title: string;
@@ -34,6 +36,10 @@ export interface Post {
    *  nobody may change is furniture. The rows survive in the database, so
    *  turning it back on brings the counts with it. */
   reactions_enabled: boolean;
+  /** The scheme this post is read in, overriding whatever the visitor picked
+   *  from the header. Empty string -- the usual case -- leaves their choice
+   *  alone. Never null: it is a blank CharField on the model. */
+  theme: SiteTheme | "";
   /** Reads recorded so far. Server-owned: a write to the post never sets it,
    *  only `recordPostView` does. */
   view_count: number;
