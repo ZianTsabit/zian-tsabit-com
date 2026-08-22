@@ -4,11 +4,78 @@ declare module "@mui/material/styles" {
   interface Palette {
     /** Background of the fixed header once the page is scrolled. */
     headerScrolled: string;
+    /** Colour of a falling glyph in the rain scheme's overlay, at full
+     *  strength -- `RainOverlay` draws every drop well under 1 alpha, so this
+     *  is the ceiling rather than what anything is actually painted at. */
+    rainDrop: string;
+    /** The wash a lightning strike puts over the page, and the colour of the
+     *  bolt itself. Also only ever drawn at a fraction of its alpha. */
+    lightning: string;
   }
   interface PaletteOptions {
     headerScrolled?: string;
+    rainDrop?: string;
+    lightning?: string;
+  }
+  /** `rain` is a third colour scheme beside light and dark. Without this
+   *  augmentation TypeScript rejects the key on `colorSchemes` and every
+   *  `setColorScheme("rain")` call. */
+  interface ColorSchemeOverrides {
+    rain: true;
   }
 }
+
+/**
+ * Overcast. A third scheme rather than a variant of dark, because it is a
+ * different *look* and not a different brightness: desaturated blue-grey
+ * throughout, where the dark scheme is warm and neutral.
+ *
+ * **It is built with its own `createTheme` call, and it has to be.** MUI runs
+ * `createPalette` -- which fills in the greys, the action states, the augmented
+ * colour channels and everything else a component reads -- only for the schemes
+ * it knows by name, `light` and `dark`. A custom scheme is taken as already
+ * complete, so declaring this one inline the way the other two are crashes the
+ * whole app at import time with `Cannot read properties of undefined (reading
+ * 'background')`. Running it through `createTheme` first is what produces the
+ * full palette; the three site-specific tokens are added afterwards, since
+ * `createPalette` knows nothing about them.
+ *
+ * `palette.mode` is "dark", which is what tells MUI to treat this as the dark
+ * half of the light/dark pair -- every component that branches on the mode (an
+ * input's outline, a disabled label) then picks its dark-scheme behaviour
+ * rather than its light one. Selecting it therefore means setting the mode to
+ * dark *and* naming this as the dark scheme; see `useSiteTheme`.
+ *
+ * The page is deliberately *bluer and a shade lighter* than the dark scheme's
+ * #121212 rather than merely a tint of it: two near-black schemes a visitor
+ * cannot tell apart is a picker with a wasted entry, and lightning needs a sky
+ * to read against.
+ *
+ * Contrast, measured against the two backgrounds below: body text 11.83:1 /
+ * 10.28:1, secondary 6.48:1 / 5.63:1, links 7.31:1 / 6.35:1. `paper` sits
+ * 1.15:1 off the page and `divider` reads at 1.59:1, matching the separations
+ * the dark scheme has (1.12:1 and 1.55:1) so a card edge and a rule are exactly
+ * as visible here as there.
+ */
+const rainPalette = {
+  ...createTheme({
+    palette: {
+      mode: "dark",
+      primary: { main: "#8ab4d4" },
+      background: { default: "#1b2229", paper: "#252d35" },
+      text: { primary: "#d7dee5", secondary: "#9aa6b2" },
+      divider: "#39434d",
+    },
+  }).palette,
+  headerScrolled: "rgba(27, 34, 41, 0.85)",
+  // Dimmer than `primary.main` and greyer: rain read against the sky is not the
+  // colour of a link, and drops in the site's accent blue looked like
+  // decoration rather than weather.
+  rainDrop: "#7f96a8",
+  // Pale blue-white. Deliberately not #ffffff: a pure-white flash over a
+  // blue-grey page reads as a rendering fault rather than as sky.
+  lightning: "#cfe4f5",
+};
 
 // Colours live here rather than inline in components, because a literal like
 // `color: "white"` or `grey.900` means the same thing in both schemes and so
@@ -34,6 +101,9 @@ const theme = createTheme({
         text: { primary: "#1a1a1a", secondary: "#5f6368" },
         divider: "#e3ddd0",
         headerScrolled: "rgba(249, 246, 238, 0.85)",
+        // Declared in every scheme; see the note on the dark scheme's pair.
+        rainDrop: "#1565c0",
+        lightning: "#1a1a1a",
       },
     },
     dark: {
@@ -58,8 +128,17 @@ const theme = createTheme({
         text: { primary: "#f9f6ee", secondary: "#a39e95" },
         divider: "#363636",
         headerScrolled: "rgba(18, 18, 18, 0.85)",
+        // Unused outside the rain scheme, but every scheme has to declare them
+        // or the CSS variable is simply absent under `.light`/`.dark` and
+        // `RainOverlay` resolves an empty string. It cannot be reached from
+        // those schemes -- the overlay only mounts under `rain` -- so the
+        // values here are just the tokens that would make sense if it could.
+        rainDrop: "#6497b1",
+        lightning: "#f9f6ee",
       },
     },
+    // Built above rather than declared inline; see `rainPalette`.
+    rain: { palette: rainPalette },
   },
   typography: {
     fontFamily: "'IBM Plex Sans', sans-serif",

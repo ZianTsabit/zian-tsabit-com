@@ -8,7 +8,7 @@ from rest_framework.routers import DefaultRouter
 
 from .auth import LoginView, LogoutView, SessionView
 from .uploads import ImageUploadView
-from .views import BookViewSet, CommentViewSet, PostViewSet
+from .views import BookViewSet, CommentViewSet, PageContentViewSet, PostViewSet
 
 router = DefaultRouter()
 router.register(r"posts", PostViewSet, basename="post")
@@ -17,6 +17,10 @@ router.register(r"books", BookViewSet, basename="book")
 # across every post, and the public page asks for one thread with
 # `?post=<slug>`. See CommentViewSet.
 router.register(r"comments", CommentViewSet, basename="comment")
+# The CV and About pages' own content. Two fixed rows addressed by key, so
+# this registers a read/update resource rather than full CRUD -- see
+# PageContentViewSet.
+router.register(r"pages", PageContentViewSet, basename="page")
 
 urlpatterns = [
     # Docs and auth first: the router's own index lives at "" and would

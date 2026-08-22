@@ -521,6 +521,55 @@ class Reaction(models.Model):
     def __str__(self):
         return f"{self.emoji} on {self.post.slug}"
 
+class PageContent(models.Model):
+    """The editable content of one hardcoded page -- the CV and the About page.
+
+    These two are the site's only pages whose copy is *the owner's own*, rather
+    than a feed of things they published. Until this model they were arrays and
+    JSX declared at the top of `CV.tsx` and `About.tsx`, so keeping a CV current
+    meant editing a component and redeploying the site. That is the whole reason
+    this exists.
+
+    **A row per page, not a page model.** `key` is a fixed enum and the API
+    offers no create and no delete: these are two specific pages that already
+    have routes, components and a place in the nav. A generic "pages" table with
+    a slug would be the wrong shape -- nothing renders an arbitrary page, so a
+    third row could only ever be data nobody displays.
+
+    **The shape lives in `pages.py`, not in columns.** A CV is a handful of
+    lists of small records (an entry has a title, a company, a date range and a
+    few bullets), and modelling that relationally would be four more tables and
+    a pile of ordering columns to express something that is only ever read and
+    written whole, by one person, as one document. `data` is that document, and
+    `normalise_page_data` is what guarantees the shape the SPA renders -- see
+    the module docstring there for why it fills defaults rather than rejecting.
+
+    Deliberately no `status`: a page is not published or drafted, it is simply
+    the page. There is no second copy to preview against and no URL for a draft
+    to live at, so a status field would be a control with nothing behind it.
+    """
+
+    class Key(models.TextChoices):
+        CV = "cv", "CV"
+        ABOUT = "about", "About"
+
+    # Unique *and* the lookup the API addresses a row by, so `/api/pages/cv/`
+    # is the row rather than a filter that happens to match one.
+    key = models.CharField(max_length=32, unique=True, choices=Key.choices)
+    # Normalised by the serializer on the way in, so what is stored is always
+    # the canonical shape and a reader never has to defend against a missing
+    # key. `dict` rather than `{}`: a mutable default is shared by every
+    # instance that does not set one.
+    data = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Declaration order of the enum, so `/api/pages/` lists CV then About
+        # the way the nav does. Nothing else would order two rows meaningfully.
+        ordering = ["key"]
+
+    def __str__(self):
+        return self.get_key_display()
 
 # Module-level aliases of the two `status` choice sets, for
 # SPECTACULAR_SETTINGS' ENUM_NAME_OVERRIDES.

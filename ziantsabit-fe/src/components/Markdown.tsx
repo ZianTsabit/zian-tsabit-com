@@ -339,6 +339,21 @@ const components: Components = {
 };
 
 /**
+ * The same renderer with paragraphs unwrapped, for Markdown inside a line of
+ * someone else's layout.
+ *
+ * A CV bullet is a `<li>` that `TimelineItem` has already styled and sized;
+ * what it wants from Markdown is the inline part -- a link, some emphasis --
+ * not a `<p>` with two ems of margin above it reflowing the timeline. Every
+ * other component stays as it is, so a bullet that does somehow contain a list
+ * or a code span still renders correctly.
+ */
+const inlineComponents: Components = {
+  ...components,
+  p: ({ children }) => <>{children}</>,
+};
+
+/**
  * Renders a post body written in Markdown.
  *
  * `react-markdown` does not render raw HTML unless `rehype-raw` is added, so
@@ -374,7 +389,22 @@ const components: Components = {
  * maths is a visible flash and a layout shift. A body with no `$` in it never
  * reaches this branch and renders exactly as it always did.
  */
-function Markdown({ children }: { children: string }) {
+interface Props {
+  children: string;
+  /**
+   * Render without the block wrapper, for Markdown sitting inside a line of
+   * text the caller has already styled -- a CV bullet, a timeline blurb.
+   *
+   * Paragraphs become their own children rather than `<p>` elements, and the
+   * sizing Box is dropped entirely, so the result inherits the font, colour
+   * and line height of whatever it was dropped into. The `.katex-display`
+   * rules that Box carries are what is given up, which costs nothing: a
+   * centred display equation is not an inline thing to begin with.
+   */
+  inline?: boolean;
+}
+
+function Markdown({ children, inline = false }: Props) {
   const needsMath = mightHaveMath(children);
   // Nothing renders from this; it exists to re-render once the chunk lands.
   // The real answer lives at module scope, so a component mounting after the
@@ -396,6 +426,23 @@ function Markdown({ children }: { children: string }) {
 
   // `failed` falls through to plain Markdown rather than waiting forever.
   const waitingForMath = needsMath && !loaded && !failed;
+
+  if (waitingForMath) return null;
+
+  const rendered = (
+    <ReactMarkdown
+      // `remark-math` is spliced in ahead of `remark-breaks`, which is the
+      // order that matters; with the chunk absent the list is exactly what
+      // it was before maths existed.
+      remarkPlugins={[remarkGfm, ...(loaded?.remarkMathPlugins ?? []), remarkBreaks]}
+      rehypePlugins={loaded?.rehypeMathPlugins}
+      components={inline ? inlineComponents : components}
+    >
+      {children}
+    </ReactMarkdown>
+  );
+
+  if (inline) return rendered;
 
   return (
     <Box
@@ -427,22 +474,7 @@ function Markdown({ children }: { children: string }) {
         "& .katex": { fontSize: { xs: "15px", sm: "17px" } },
       }}
     >
-      {!waitingForMath && (
-        <ReactMarkdown
-          // `remark-math` is spliced in ahead of `remark-breaks`, which is the
-          // order that matters; with the chunk absent the list is exactly what
-          // it was before maths existed.
-          remarkPlugins={[
-            remarkGfm,
-            ...(loaded?.remarkMathPlugins ?? []),
-            remarkBreaks,
-          ]}
-          rehypePlugins={loaded?.rehypeMathPlugins}
-          components={components}
-        >
-          {children}
-        </ReactMarkdown>
-      )}
+      {rendered}
     </Box>
   );
 }

@@ -7,10 +7,10 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import viewsets
+from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import (
     SAFE_METHODS,
     AllowAny,
@@ -25,15 +25,18 @@ from .models import (
     REACTION_EMOJI,
     Book,
     Comment,
+    PageContent,
     Post,
     PostViewDay,
     Reaction,
     normalise_isbn,
 )
+from .pages import empty_page_data
 from .serializers import (
     BookSerializer,
     CommentSerializer,
     LabelCountSerializer,
+    PageContentSerializer,
     PostSerializer,
     PostStatsSerializer,
     ReactionSummarySerializer,
@@ -1013,3 +1016,55 @@ class CommentViewSet(viewsets.ModelViewSet):
             serializer.save()
             return
         serializer.save(status=Comment.Status.PUBLISHED)
+
+
+class PageContentViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """The CV and About pages' content: read by anyone, written by the owner.
+
+    **Not a `ModelViewSet`.** There is deliberately no create and no delete: the
+    set of pages is fixed at two, each already has a route and a component, and
+    a third row would be content nothing renders. Deleting one would leave a
+    public page with nothing to show and no way back through the API.
+
+    Reads are open for the obvious reason -- these back two public pages -- and
+    unlike posts and books there is nothing to hide, since a page has no draft
+    state.
+
+    Addressed by `key` (`/api/pages/cv/`) rather than by id, so the URL is
+    something the SPA can write down rather than something it has to look up.
+    """
+
+    serializer_class = PageContentSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    queryset = PageContent.objects.all()
+    lookup_field = "key"
+    # Two rows. A pager over them would be a wrapper object around a list that
+    # can never have a second page.
+    pagination_class = None
+
+    def get_object(self):
+        """The row for this key, created empty if it has never been saved.
+
+        `0013` seeds both rows with the content the pages shipped with, so this
+        only fires for a key added to the enum later, or a database restored
+        from before that migration. It matters because the alternative is a 404
+        on a page that genuinely exists: the SPA would show "could not load"
+        for a CV that has simply never been edited, and there would be no way
+        to fix it through the admin, since a PATCH needs a row to patch.
+        """
+        key = self.kwargs[self.lookup_field]
+        if key not in PageContent.Key.values:
+            raise NotFound(f"No page called '{key}'.")
+
+        page, _ = PageContent.objects.get_or_create(
+            key=key, defaults={"data": empty_page_data(key)}
+        )
+        # Object permissions are still the class's to apply; skipping this is
+        # how a hand-rolled get_object quietly drops a permission check.
+        self.check_object_permissions(self.request, page)
+        return page

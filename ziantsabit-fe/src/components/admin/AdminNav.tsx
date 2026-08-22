@@ -5,6 +5,8 @@ import MenuBookOutlinedIcon from "@mui/icons-material/MenuBookOutlined";
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import ForumOutlinedIcon from "@mui/icons-material/ForumOutlined";
+import BadgeOutlinedIcon from "@mui/icons-material/BadgeOutlined";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 
 /** The admin's sections, in the order they appear. One array feeds the column
  *  and the phone row alike, so a new page is one entry rather than two. */
@@ -17,6 +19,12 @@ const items = [
   // Sits after the two things the owner writes and before the numbers, which
   // is roughly the order of the work: publish, then read what came back.
   { to: "/admin/comments", label: "Comments", icon: <ForumOutlinedIcon fontSize="small" /> },
+  // The two hardcoded pages, after the feeds and the moderation queue: they
+  // are edited rarely, and each is a single document rather than a list of
+  // things. Their labels match the public nav ("CV", "About"), since these
+  // edit exactly one page each and nothing else.
+  { to: "/admin/cv", label: "CV", icon: <BadgeOutlinedIcon fontSize="small" /> },
+  { to: "/admin/about", label: "About", icon: <PersonOutlineIcon fontSize="small" /> },
   { to: "/admin/stats", label: "Statistics", icon: <InsightsOutlinedIcon fontSize="small" /> },
 ];
 

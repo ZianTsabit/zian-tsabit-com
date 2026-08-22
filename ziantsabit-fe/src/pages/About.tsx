@@ -1,18 +1,133 @@
-import { Box, Container, Stack, Typography } from "@mui/material";
-import FlipPhoto from "../components/FlipPhoto";
-import SectionHeading from "../components/SectionHeading";
+import { Alert, Box, Button, CircularProgress, Container, Stack, Typography } from "@mui/material";
 
+import Centered from "../components/Centered";
+import FlipPhoto from "../components/FlipPhoto";
+import Markdown from "../components/Markdown";
+import SectionHeading from "../components/SectionHeading";
+import type { AboutContent } from "../services/pages";
+import { usePageContent } from "../services/usePageContent";
+
+/** The page's own type scale, a shade larger and looser than a post body's.
+ *  Applied to the paragraphs `Markdown` renders rather than to a `Typography`,
+ *  since the prose is Markdown now and comes back as its own elements. */
 const bodyStyle = {
-  fontSize: { xs: "14px", sm: "16px", md: "17px" },
-  color: "text.primary",
-  lineHeight: 1.8,
-  letterSpacing: "0.3px",
-  textAlign: { xs: "left", sm: "justify" },
+  "& p": {
+    fontSize: { xs: "14px", sm: "16px", md: "17px" },
+    color: "text.primary",
+    lineHeight: 1.8,
+    letterSpacing: "0.3px",
+    textAlign: { xs: "left", sm: "justify" },
+  },
 };
 
-const linkStyle = { color: "primary.main", textDecoration: "underline" };
+const PHOTO_SIZE = { xs: 140, sm: 170 };
 
+function AboutBody({ about }: { about: AboutContent }) {
+  return (
+    <>
+      {/* Portrait + identity */}
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={{ xs: 2, sm: 4 }}
+        sx={{
+          alignItems: "center",
+          mt: { xs: 2, sm: 3 },
+          mb: { xs: 3, sm: 4 },
+        }}
+      >
+        {about.photo_front &&
+          // With no second image there is nothing on the other side, so it
+          // renders as a plain portrait rather than a card that flips to a
+          // broken image.
+          (about.photo_back ? (
+            <FlipPhoto
+              alt={about.photo_alt}
+              frontSrc={about.photo_front}
+              backSrc={about.photo_back}
+              size={PHOTO_SIZE}
+            />
+          ) : (
+            <Box
+              component="img"
+              src={about.photo_front}
+              alt={about.photo_alt}
+              sx={{
+                width: PHOTO_SIZE,
+                height: PHOTO_SIZE,
+                flexShrink: 0,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "1px solid",
+                borderColor: "divider",
+              }}
+            />
+          ))}
+        <Stack
+          spacing={0.5}
+          sx={{
+            alignItems: { xs: "center", sm: "flex-start" },
+            textAlign: { xs: "center", sm: "left" },
+          }}
+        >
+          <Typography
+            component="h1"
+            sx={{
+              fontWeight: 700,
+              fontSize: { xs: "22px", sm: "28px" },
+              color: "text.primary",
+              m: 0,
+            }}
+          >
+            {about.name}
+          </Typography>
+          <Typography
+            component="div"
+            sx={{
+              fontSize: { xs: "14px", sm: "16px" },
+              color: "text.primary",
+            }}
+          >
+            {about.headline}
+          </Typography>
+          <Typography
+            component="div"
+            sx={{
+              fontSize: { xs: "12px", sm: "14px" },
+              color: "text.secondary",
+            }}
+          >
+            {about.location}
+          </Typography>
+        </Stack>
+      </Stack>
+
+      {about.sections.map((section, index) => (
+        <Box key={`${section.heading}-${index}`} sx={{ mb: 4 }}>
+          {section.heading && <SectionHeading>{section.heading}</SectionHeading>}
+          <Box sx={bodyStyle}>
+            <Markdown>{section.body}</Markdown>
+          </Box>
+        </Box>
+      ))}
+    </>
+  );
+}
+
+/**
+ * The About page, rendered from `/api/pages/about/`.
+ *
+ * Its prose was JSX with `<Box component="a">` links written into it; it is
+ * Markdown in `PageContent` now, edited at `/admin/about`, and carried across
+ * by `myapp/migrations/0014`.
+ *
+ * **The sections are a list, not two fixed slots.** They are all the same shape
+ * -- a heading and some prose -- so a third one is an entry in the editor rather
+ * than a change here. That is the opposite of the CV, whose five sections each
+ * render differently and so have to be named in code.
+ */
 function About() {
+  const { data, phase, error, retry } = usePageContent("about");
+
   return (
     <Box
       sx={{
@@ -25,107 +140,32 @@ function About() {
         pt: { xs: 2, sm: 3 },
       }}
     >
-      <Container maxWidth="md">
-        {/* Portrait + identity */}
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={{ xs: 2, sm: 4 }}
-          sx={{
-            alignItems: "center",
-            mt: { xs: 2, sm: 3 },
-            mb: { xs: 3, sm: 4 },
-          }}
-        >
-          <FlipPhoto
-            alt="Ghazian Tsabit Alkamil"
-            frontSrc="/pp-github.png"
-            backSrc="/professional-photo.jpeg"
-            size={{ xs: 140, sm: 170 }}
-          />
-          <Stack
-            spacing={0.5}
-            sx={{
-              alignItems: { xs: "center", sm: "flex-start" },
-              textAlign: { xs: "center", sm: "left" },
-            }}
-          >
-            <Typography
-              component="h1"
-              sx={{
-                fontWeight: 700,
-                fontSize: { xs: "22px", sm: "28px" },
-                color: "text.primary",
-                m: 0,
-              }}
-            >
-              Ghazian Tsabit Alkamil
-            </Typography>
-            <Typography
-              component="div"
-              sx={{
-                fontSize: { xs: "14px", sm: "16px" },
-                color: "text.primary",
-              }}
-            >
-              Software Engineer &mdash; Data Platform
-            </Typography>
-            <Typography
-              component="div"
-              sx={{
-                fontSize: { xs: "12px", sm: "14px" },
-                color: "text.secondary",
-              }}
-            >
-              Jakarta, Indonesia
-            </Typography>
-          </Stack>
-        </Stack>
+      <Container
+        maxWidth="md"
+        sx={{ flex: 1, display: "flex", flexDirection: "column" }}
+      >
+        {phase === "loading" && (
+          <Centered>
+            <CircularProgress aria-label="Loading About" />
+          </Centered>
+        )}
 
-        {/* Bio */}
-        <Box sx={{ mb: 4 }}>
-          <SectionHeading>👋 About Me</SectionHeading>
-          <Typography component="div" sx={bodyStyle}>
-            Hi, I’m Ghazian Tsabit Alkamil, living in Jakarta, Indonesia. I work
-            as a Software Engineer on the Data Platform team at{" "}
-            <Box
-              component="a"
-              href="https://www.cermati.group/"
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={linkStyle}
+        {phase === "error" && (
+          <Centered>
+            <Alert
+              severity="error"
+              action={
+                <Button color="inherit" size="small" onClick={retry}>
+                  Retry
+                </Button>
+              }
             >
-              Cermati Fintech Group
-            </Box>
-            . I studied Computer Science at the{" "}
-            <Box
-              component="a"
-              href="https://stei.itb.ac.id/"
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={linkStyle}
-            >
-              School of Electrical Engineering and Informatics
-            </Box>
-            , Bandung Institute of Technology. I have a strong passion for data,
-            software, and infrastructure engineering, and I enjoy exploring how
-            these areas connect and support each other. This site is where I put
-            myself on the internet: I share my projects here, and write about
-            the things that I find interesting.
-          </Typography>
-        </Box>
+              {error}
+            </Alert>
+          </Centered>
+        )}
 
-        {/* Outside of work */}
-        <Box sx={{ mb: 4 }}>
-          <SectionHeading>🎧 Outside of Work</SectionHeading>
-          <Typography component="div" sx={bodyStyle}>
-            I love spending time with books—especially Indonesian novels, with
-            Eka Kurniawan as my favorite author—watching movies, and swimming,
-            which I usually do about four times a week. Music is also a big part
-            of my life, and I’m a huge fan of The Beatles and Bob Dylan. I enjoy
-            learning new things, and recently I’ve started learning to play the
-            guitar, inspired by the anime <em>Bocchi the Rock!</em>
-          </Typography>
-        </Box>
+        {phase === "ready" && data && <AboutBody about={data} />}
       </Container>
     </Box>
   );
