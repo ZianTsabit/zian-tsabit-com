@@ -55,13 +55,17 @@ No test runner is configured for the frontend.
 
 **An admin page is different: it goes under the `/admin` route and into `AdminNav`, never into `navItems`.** `/admin` is a shell (`Admin.tsx`) whose children are `AdminOverview` (index), `AdminConsole` (`posts`), `AdminBookConsole` (`books`), `AdminCommentConsole` (`comments`), `AdminStats` (`stats`) and the four editors — two for posts, two for books, with the book ones under `books/new` and `books/edit/:slug` because `edit/:slug` at the top level is already the post editor's — nested so the session is checked once for all of them, and so `AdminNav` is mounted beside the `<Outlet>` and survives navigation between sections rather than remounting. The `items` array in `AdminNav.tsx` is the one place a section is listed; it feeds the `md`+ left column and the phone row alike. **Its post section is labelled "Blog", matching the public nav, while everything inside it still says "post"** — "New post", "Edit post", "No posts match this filter". The section is the blog; the things in it are posts, and the `Posts` stat tiles on the overview and statistics pages count those, so they keep the plural noun rather than becoming a nonsensical `Blog: 12`. The route stayed `/admin/posts` for the same reason the public `/posts/:slug` did — a rename is not worth invalidating a bookmark over. Note the `end` prop on the Overview link: `NavLink` matches by prefix, so without it `/admin` would stay highlighted on every child route.
 
+**The header does show one `Admin` link, and only to the owner.** `Header.tsx` appends `ADMIN_ITEM` to its map when `useAdminHint()` is true; it stays out of `navItems` itself, so that array remains the list of pages every visitor has. This is the door, not a second copy of the menu behind it — a new admin *section* still goes in `AdminNav` and nowhere else.
+
+**The hint is a `localStorage` flag, not a session request** (`ADMIN_HINT_KEY = "admin-session"` in `services/auth.ts`). The header renders on every route, so calling `/auth/session/` from it would put a credentialed round trip on every visitor's first paint to answer a question that is "no" for everyone but the owner — the exact cost `auth.ts` was written to keep off the public side. `useSession` writes the flag every time it learns the answer: on the mount check, on login, on sign-out. **Nothing is unlocked by setting it** — every `/admin` route still mounts `Admin` and checks the real session, and the API refuses an unauthenticated write regardless, so a forged flag buys a link to a login form. It can only go stale one way, a cookie expiring server-side while the flag still says yes, and that heals itself: following the link runs the real check, which comes back signed-out and clears the flag on its way to the login form. `useAdminHint` is a `useSyncExternalStore` over a listener set **plus** the `storage` event, because that event fires in *other* tabs only — without the set, signing out would leave this tab's own header advertising the session it just ended.
+
 Two layout details in the shell are load-bearing. The content column carries `minWidth: 0`, because a flex item defaults to `min-width: auto` and refuses to shrink below its content — without it the post list's filter row and the cadence chart push the nav off the screen instead of scrolling inside themselves. And **sign-out lives in `AdminNav`, not on the post list where it used to be**: it is chrome for the whole admin, so leaving it on one page would mean either three copies or a control that vanishes when you navigate.
 
-### Colour and the light/dark theme
+### Colour and the three themes
 
-`src/theme.ts` is the single source of colour. `main.tsx` wraps the app in `<ThemeProvider theme={theme} defaultMode="system">` plus `<CssBaseline />`, and the theme declares both schemes via MUI's `colorSchemes` with `cssVariables: { colorSchemeSelector: "class" }`.
+`src/theme.ts` is the single source of colour. `main.tsx` wraps the app in `<ThemeProvider theme={theme} defaultMode="light">` plus `<CssBaseline />`, and the theme declares **three** schemes — `light`, `dark` and `rain` — via MUI's `colorSchemes` with `cssVariables: { colorSchemeSelector: "class" }`.
 
-**Never write a colour literal in a component.** `color: "white"` or `grey.900` resolves to the same thing in both schemes, so a literal silently breaks light mode — dark text on a dark card. Use semantic tokens only:
+**Never write a colour literal in a component.** `color: "white"` or `grey.900` resolves to the same thing in every scheme, so a literal silently breaks light mode — dark text on a dark card. Use semantic tokens only:
 
 | Instead of | Use |
 | --- | --- |
@@ -74,16 +78,42 @@ Two layout details in the shell are load-bearing. The content column carries `mi
 
 `theme.ts` also carries the one component override on the site: **`MuiButton` sets `textTransform: "none"`**. Material capitalises every button label, and nothing else here does — not the nav, not the headings, not the wordmark — so a button was the only thing on a page shouting. It lives in the theme rather than on each button because one sentence-case action beside an uppercase one reads as a mistake; a per-button fix produces exactly that.
 
-The one custom token is `palette.headerScrolled` (declared through module augmentation in `theme.ts`), the translucent wash behind the scrolled header. Read it via `(theme.vars ?? theme).palette.headerScrolled` — with `cssVariables` on, `theme.vars` is the populated one, and the fallback keeps TypeScript happy since `vars` is optional on the type.
+There are three custom tokens, all declared through module augmentation in `theme.ts`: `palette.headerScrolled` (the translucent wash behind the scrolled header) and `palette.rainDrop` / `palette.lightning` (the rain scheme's overlay; see below). Read any of them via `(theme.vars ?? theme).palette.x` — with `cssVariables` on, `theme.vars` is the populated one, and the fallback keeps TypeScript happy since `vars` is optional on the type. **All three are declared in all three schemes**, even where they cannot be reached: a token missing from a scheme is simply an absent CSS variable, which resolves to an empty string rather than to anything useful.
 
-Note the two schemes do **not** share a link colour: dark uses `#6497b1`, light uses the darker `#1565c0`, because `#6497b1` on white is only ~3.1:1 — under the 4.5:1 AA floor for body text. If you add a colour, check it against both backgrounds.
+Note no two schemes share a link colour: dark uses `#6497b1`, light the darker `#1565c0` (because `#6497b1` on white is only ~3.1:1, under the 4.5:1 AA floor for body text), rain a cooler `#8ab4d4`. If you add a colour, check it against all three backgrounds — every ratio quoted in `theme.ts` was measured, and they are there so the next change has something to hold itself to.
 
-**Mode selection** is `defaultMode="system"`, so a first-time visitor follows their OS. `ColorModeToggle.tsx` calls `setMode()` to store an explicit override under the `mui-mode` localStorage key, which then wins over the OS. `mode` is `undefined` on the first render, so the toggle renders a hidden same-size placeholder until mounted rather than flashing the wrong icon.
+#### The rain scheme
+
+`rain` is overcast: desaturated blue-grey throughout, where dark is warm and neutral. It is a third *look*, not a third brightness — and that mismatch with MUI's model is the source of everything awkward about it.
+
+**It must be built with its own `createTheme` call.** MUI runs `createPalette` — which fills in the greys, the action states, the augmented colour channels and everything else a component reads — only for the schemes it knows by name, `light` and `dark`. A custom scheme is taken as already complete, so declaring `rain` inline the way the other two are crashes the app at import time with `Cannot read properties of undefined (reading 'background')` and a blank white page. `rainPalette` is that pre-built palette; the three site-specific tokens are added afterwards, since `createPalette` knows nothing about them.
+
+**It declares `palette.mode: "dark"`**, so every component that branches on the mode (an input's outline, a disabled label) picks its dark-scheme behaviour. The cost is that selecting rain is *two* calls — set the mode to dark, and name `rain` as the dark scheme — and doing only one leaves the page half-changed.
+
+**`services/useSiteTheme.ts` is therefore the only thing on the site that may call `setMode` or `setColorScheme`.** It exposes one three-way `SiteTheme` value instead of MUI's mode/scheme pair. Two details in it are load-bearing: `colorScheme` is the authority for reading the current theme, not `mode` (rain and dark share a mode, so the mode alone cannot tell them apart), and **choosing light or dark resets the dark scheme back to `dark`** — without that, leaving rain would leave `mui-color-scheme-dark` set to `rain` and choosing Dark again would silently bring the weather back.
+
+**Mode selection** is `defaultMode="light"`, so a first-time visitor gets light whatever their OS says. `ColorModeToggle.tsx` is a **menu, not a toggle**: with two schemes a single button was right, because it showed the current one and pressing it meant "the other one"; with three there is no "the other one", so a button would have to cycle and its icon could no longer say what pressing it would do. `mode` is `undefined` on the first render, so it renders a hidden same-size placeholder until mounted rather than flashing the wrong icon.
+
+#### The rain overlay
+
+`components/RainOverlay.tsx` is the falling-ASCII layer, mounted from `App.tsx` and rendering `null` under the other two schemes. Points worth keeping intact:
+
+- **It sits on top of the page, not behind it.** Behind was the first attempt and it does not work: the feed pages paint an opaque `background.default` over their whole column, so the rain showed on the CV and vanished on the blog. On top it needs no cooperation from any page, and looking at the site *through* the weather is the truer image anyway. `pointerEvents: "none"` is what keeps it from eating every click.
+- **`zIndex: 1001` puts it in a deliberate band**: over the fixed header (1000) so rain falls in front of the whole page, but under MUI's Drawer (1200) and Dialog (1300). Raining on a delete-confirmation dialog would read as a glitch — and the same rule is why the Markdown editor's full-screen mode, which uses `theme.zIndex.modal`, is rain-free.
+- **Canvas, not DOM nodes and not one big `<pre>`.** A couple of hundred glyphs move every frame, and per-glyph alpha is what makes a trail fade into the distance: a single `<pre>` can only be one colour, and 230 spans would be 230 style recalculations a frame. Measured at 1888×912 the drawing costs ~1.8 ms/frame, about a ninth of a 60fps budget.
+- **Colours are resolved out of the DOM, not read off `theme.palette`.** With `cssVariables` on, `theme.vars.palette.rainDrop` is the string `"var(--mui-palette-rainDrop)"` — fine in `sx`, meaningless to `fillStyle` — while `theme.palette.rainDrop` is the *default* scheme's value, so it would hand back the light palette's colour while the page is showing rain. `resolveColour` reads the variable off the root, which is the only one of the three that answers for the active scheme.
+- **`prefers-reduced-motion` turns off the animation *and* the lightning**, leaving one static field of drops rather than an empty layer: the scheme is called Rain and someone who picked it should still get rain. This is the one branch nothing else exercises — test it by hand after any change here (forcing the media query to one that always matches, then checking the canvas pixels do not change between two samples, is what was done).
+- **The flash is deliberately weak** (`FLASH_ALPHA = 0.16`, roughly one strike every 7–22s). This layer paints across text somebody may be reading, so a bright full-screen pulse is both unpleasant and a photosensitivity risk. At this alpha it reads as the sky lighting up behind the page rather than as the page blinking. Do not raise it without thinking about that.
+- **The bolt is a glimpse, not a shape** — 170ms of a 620ms strike. Its glyph follows the direction of travel (`\`, `/`, `|`), which is what makes a run of characters read as one continuous line instead of a dotted column.
+- **The wind is small and shared.** Rain falling straight down reads as a screensaver; a slight, *consistent* slant reads as weather, because every drop is being pushed by the same wind. Past about `WIND = 0.4` it starts to look like blown snow.
+- **A drop respawns scattered on resize and at the top thereafter.** Releasing them all from the top means the rain arrives as one visible curtain a second after the theme is picked.
 
 **Avoiding a flash of the wrong theme** takes two cooperating pieces, because MUI emits its palette as CSS variables injected by JavaScript — before React mounts there is nothing colouring the page:
 
-1. `index.css` carries `prefers-color-scheme` media queries plus `html.light` / `html.dark` rules that set *only* the page background. They live in the static, render-blocking stylesheet, so the correct backdrop paints immediately.
-2. An inline script in `index.html` reads `localStorage['mui-mode']` and applies the class before that stylesheet is parsed, so a stored choice that contradicts the OS is honoured pre-paint too.
+1. `index.css` carries `html.light` / `html.dark` / `html.rain` rules that set *only* the page background. They live in the static, render-blocking stylesheet, so the correct backdrop paints immediately. The bare `html` rule is the default and must match `main.tsx`'s `defaultMode`.
+2. An inline script in `index.html` applies the class before that stylesheet is parsed.
+
+**That script reads two storage keys, not one, and the second is what rain needs.** There are three schemes and only two modes: someone who chose rain has `mui-mode` = `dark` and `mui-color-scheme-dark` = `rain`, so reading the mode alone would paint the dark scheme's near-black and then swap to overcast blue-grey on mount — the exact flash this exists to prevent. **The class applied is the *scheme* name, never the mode**; light and dark just happen to share a name with theirs.
 
 Those background hex values are duplicated from `palette.background.default`; if you change one, change the other. That is the only place a colour literal belongs outside `theme.ts`.
 
@@ -198,6 +228,38 @@ Points worth keeping intact:
 - **Both book lists count pages with `BOOKS_PAGE_SIZE`, never `PAGE_SIZE`.** The catalogue's page is 12 where the rest of the API's is 20 (see "The Book model"), so a hook importing the site-wide constant renders a pager with pages that do not exist. `useComments`, `usePaginatedPosts` and the two post/comment admin hooks correctly still use `PAGE_SIZE`.
 - **`AdminBookConsole` uses `ActionButton` directly rather than `NewPostButton`**, which hardcodes its label. "New post" on the books page would be wrong in the one way nobody rereads.
 
+### The CV and About pages (frontend)
+
+Both public pages render from `/api/pages/`, and both are edited from the admin. The stack is deliberately smaller than the post and book ones, because a page is a single fixed document rather than one row among many:
+
+| | |
+| --- | --- |
+| `services/pages.ts` | the types (mirroring `myapp/pages.py`), `fetchPage`, and the `empty*()` factories |
+| `services/usePageContent.ts` | the public read, for `CV` and `About` |
+| `services/adminPages.ts` | the credentialed read and the PATCH |
+| `services/useAdminPage.ts` | load + edit + autosave + save, shared by both editors |
+| `components/admin/pages/PageEditorShell.tsx` | heading, states, save row |
+| `components/admin/pages/RepeatableList.tsx` | add / remove / reorder, used by every repeated thing |
+| `components/admin/pages/EntryFields.tsx` | one timeline entry — job, project or qualification |
+| `components/admin/pages/BulletListField.tsx` | the bullets under one entry |
+| `pages/AdminCV.tsx` / `pages/AdminAbout.tsx` | the two editors, which are only the fields |
+
+Points worth keeping intact:
+
+- **`useAutosave` and `useWriteQueue` are reused unchanged.** The hook was already generic over its value type; nothing about page saving needed a second one.
+- **`useAdminPage` has no status, no slug and does not navigate on save.** All three follow from a page being one fixed document: there is no draft to publish, no URL a save can rename (which is the one thing the post and book editors must keep autosave away from), and no console listing pages to return to. Being thrown out of the CV every time it saved would be the wrong end of that trade.
+- **Autosave is on as soon as the document loads**, where a post needs a title first: any shape of page is savable, since the server normalises it.
+- **The CV's sections are fixed; About's are a list.** Each of the CV's five renders differently — three timelines, one prose block, one row of chips — so they have to be named in code, and only their contents and *headings* are editable. About's are all a heading plus prose, so a third one is an entry in the editor rather than a change to `About.tsx`.
+- **`Markdown` grew an `inline` prop for this.** A CV bullet is a `<li>` that `TimelineItem` has already styled; what it wants is the inline part of Markdown — a link, some emphasis — not a `<p>` with two ems of margin reflowing the timeline. `inline` unwraps paragraphs and drops the sizing Box, so the result inherits the font and colour of wherever it landed. This is what replaced the `ExternalLink` component `CV.tsx` used to declare, and it keeps `Markdown.tsx` the only place Markdown is rendered.
+- **`TimelineItem.blurb` is a `ReactNode` now**, for the same reason `points` already was.
+- **The two prose blocks override `& p` rather than restyling `Markdown`.** The CV summary and the About body each have their own type scale, a step either side of a post body's; a descendant selector from the wrapper beats `Markdown`'s own single-class rule, so the sizes stay where the page decides them.
+- **Removing a row with anything in it asks first.** Autosave writes the deletion within three seconds and there is no draft copy to recover from. A row that is still blank goes without a question — it is what the Add button leaves behind when someone changes their mind.
+- **`RepeatableList` and `BulletListField` key rows by index, deliberately.** The usual objection is that index keys break on reorder, but here the *value at* an index is what a row shows and reordering swaps those values, so an index key is what keeps the DOM in step. There is no stable id either: these are fields in a JSON document, not database rows.
+- **Order is edited by moving rows, not derived.** `duration` is free text ("June 2025 - Present"), so there is nothing to sort on; the arrows are how the author says what comes first. They are disabled at the ends rather than hidden, so the control row does not change width as a card moves.
+- **Skills use the same `freeSolo multiple` Autocomplete as the post editor's tags**, `autoSelect` included. A single comma-separated text field was the alternative and it fights the caret — splitting and re-joining on every keystroke rewrites the text being typed.
+- **A page that fails to load is an error with a Retry, not an empty page.** But a page that loads *empty* renders as empty sections: an unfilled CV is a real state, not a broken one, so `usePageContent` has no `not-found` phase.
+- **`/admin/cv` and `/admin/about` have no console and no "new" route.** There are exactly two pages and both already have a public route, so each editor *is* its section in `AdminNav`.
+
 ### Comments and reactions (frontend)
 
 `PostDetail` ends with two sections in rising order of effort — one tap, then a
@@ -285,7 +347,7 @@ Points worth keeping intact:
 
 ### Content and assets
 
-All copy is hardcoded in components. `CV.tsx` is the outlier and the one page with a real data shape: module-level `summary`, `experience`, `projects`, `skills`, and `education` arrays declared above the component, mapped into `<TimelineItem />`. Its content is a manual transcription of the owner's CV, so keeping it current is a hand edit.
+**The CV and About pages are no longer hardcoded.** Their content lives in `PageContent` and is edited at `/admin/cv` and `/admin/about` — see "The CV and About pages" below. `CV.tsx` used to declare `summary`, `experience`, `projects`, `skills` and `education` as module-level arrays, and `About.tsx` had its prose as JSX with `<Box component="a">` links written into it; `myapp/migrations/0014` carries all of it into the database, so nothing was lost. What is left hardcoded is chrome — the footer, the nav, the empty states.
 
 **No CV PDF is shipped, deliberately.** The site used to serve `public/Ghazian_Tsabit_Alkamil.pdf` behind a "Download CV" button; both were removed because the document contains a personal phone number. Don't reintroduce a downloadable CV without checking what personal data is in it — a PDF in `public/` is world-readable to anyone who guesses the URL, with no link required.
 
@@ -367,6 +429,34 @@ Points that are deliberate:
 - **A book and a post may share a slug.** `unique_slug(model, instance, base)` in `models.py` dedupes against the model it is given, so each table checks only its own — an essay about Dune should not push the catalogue entry to a stuttered URL.
 
 **Three helpers in `models.py` are now shared** and were extracted rather than copied: `clean_labels` (behind both `Post.clean_tags` and `Book.clean_genres`), `unique_slug`, and the ISBN pair. `views.py` likewise has a module-level `reject_unknown` that both viewsets use.
+
+### The CV and About pages
+
+`PageContent` is the content of the site's two hardcoded pages, and the reason it exists is that keeping a CV current used to mean editing `CV.tsx` and redeploying. A row per page, `key` a fixed enum (`cv`, `about`), `data` a JSON document, and nothing else.
+
+**A row per page, not a page model.** The API offers no create and no delete: these are two specific pages that already have routes, components and a place in the nav, so a generic "pages" table keyed by slug would be the wrong shape — a third row could only ever be data nothing renders. `PageContentViewSet` is therefore built from `ListModelMixin`/`RetrieveModelMixin`/`UpdateModelMixin` rather than being a `ModelViewSet`.
+
+**The shape is in `pages.py`, not in columns.** A CV is a handful of lists of small records, only ever read and written whole, by one person, as one document; modelling it relationally would be four more tables and a pile of ordering columns. `normalise_page_data` is what stops "a JSON column" from meaning "anything at all" — every write goes through it, so what is stored is always canonical and the SPA never has to defend against a missing key.
+
+Three rules there are deliberate and easy to get backwards:
+
+- **It fills defaults rather than rejecting a partial document.** A CV with no projects yet is a CV. The alternative would mean the editor had to send every field of both pages on every autosave.
+- **A value of the wrong *kind* is a 400.** A string where a list of entries belongs is a mistake nobody meant, and coercing it would put a rendering error on a public page instead of a message in front of the person who caused it.
+- **Unknown keys are dropped.** They are a typo or a field from an older shape, and keeping them would slowly fill the document with things nothing reads.
+
+**A record with nothing identifying it is dropped on save** — an entry with no title, a skill group with no label — because that is exactly what an unused "Add" button leaves behind. Both editors say so in helper text rather than letting the row quietly vanish.
+
+**`get_object` creates a missing row rather than 404ing.** `0014` seeds both, so this only fires for a key added to the enum later or a database restored from before it. It matters because the alternative is "could not load" on a page that genuinely exists — and no row for a PATCH to fix it with.
+
+**`key` is read-only on the serializer.** Otherwise a PUT to `/api/pages/cv/` could turn that row into the About page and leave the CV with no row at all.
+
+**There is no `status`, deliberately.** A page is not published or drafted, it is simply the page: there is no second copy to preview against and no URL for a draft to live at, so a status field would be a control with nothing behind it. That is why the editors have a Save button and no Publish.
+
+**`0014` is a content migration and the deploy depends on it.** The SPA reads these pages from the API from that commit onwards, so without the seed, deploying would replace a finished CV with a blank one. It is `update_or_create`-shaped rather than `create`: a row somebody has already written is left alone, but an *empty* row — one `get_object` created on a first read — is still filled in. Two things changed shape in the move, both because the destination is data rather than JSX: inline links became Markdown (`[Bamtren](https://bamtren.com/)` was a JSX `<ExternalLink>`), and the CV's section headings became content, emoji included. It reverses cleanly, unlike `0009`/`0010`, since nothing in it was derived from other data.
+
+**The one `$` in the seeded CV is escaped as `\$`.** `Markdown` reads `$` as the start of an inline equation, so `~$2,000` and any later `$` on the same line would be swallowed into one. CLAUDE.md's Markdown section notes that nothing published contained a `$` when maths shipped — this CV does, and escaping is what the site's own convention says to do. Note the knock-on: `mightHaveMath` is deliberately over-eager and matches the escape too, so **the CV page loads the KaTeX chunk** for a page that will never contain maths. Not worth contorting the owner's wording over, but worth knowing before wondering why.
+
+Django's admin registers the model with add and delete both off, as a raw-JSON fallback for when a shape has gone wrong. The real editing is in the SPA.
 
 ### Comments and reactions
 
@@ -530,6 +620,8 @@ Routed at `api/` from the project `urls.py` via `myapp/urls.py`'s `DefaultRouter
 | `POST /api/books/` | create |
 | `GET\|PUT\|PATCH\|DELETE /api/books/{slug}/` | detail |
 | `GET /api/books/genres/` | every genre in the catalogue with its count, scoped to what the caller may see |
+| `GET /api/pages/` | both editable pages, unpaginated — there are exactly two |
+| `GET\|PUT\|PATCH /api/pages/{key}/` | the CV or About page's content; read-open, writes need the owner. No create, no delete |
 | `GET /api/comments/` | comments, paginated 20 per page (`?post=`, `?status=`, `?search=`, `?ordering=`); oldest first |
 | `POST /api/comments/` | leave a comment — **open to anonymous callers**, rate-limited, status forced to `published` |
 | `GET\|PUT\|PATCH\|DELETE /api/comments/{id}/` | detail; everything but GET needs the owner |
@@ -624,7 +716,7 @@ Django's own admin registers all four models. `PostAdmin` lists and filters on b
 
 ### Tests
 
-`myapp/tests.py` is a real suite (232 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, the tag filter and its vocabulary endpoint (`TagVocabularyTests`), filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, the upload endpoint, the view counter, the daily reading history (`ViewDayTests`), the date-range filter, and the book catalogue (`BookModelTests` / `BookAPITests` — slug derivation and its author fallback, genre and ISBN normalisation, both check-digit schemes, the release-year bounds, the case-insensitive genre filter, the genres action's spelling fold, and each CRUD verb for both anonymous and authenticated callers), and comments and reactions (`CommentAPITests` / `CommentCountTests` / `ReactionTests` — the open create and its forced status, the draft and hidden visibility rules, moderation by the owner and its refusal to anyone else, the dense reaction bar, the toggle, per-visitor `reacted`, and the rejected emoji), the per-post switches (`VisitorSwitchTests` — both defaulting on, each refusal, the owner's exemption from both, a closed thread staying readable, and reaction counts surviving the switch), and the catalogue's shorter page (`BookPaginationTests` — the page length, the count being the whole catalogue rather than the page, non-overlapping pages, and a cross-check that posts keep the site-wide 20). Run it with `python manage.py test`.
+`myapp/tests.py` is a real suite (248 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, the tag filter and its vocabulary endpoint (`TagVocabularyTests`), filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, the upload endpoint, the view counter, the daily reading history (`ViewDayTests`), the date-range filter, and the book catalogue (`BookModelTests` / `BookAPITests` — slug derivation and its author fallback, genre and ISBN normalisation, both check-digit schemes, the release-year bounds, the case-insensitive genre filter, the genres action's spelling fold, and each CRUD verb for both anonymous and authenticated callers), and comments and reactions (`CommentAPITests` / `CommentCountTests` / `ReactionTests` — the open create and its forced status, the draft and hidden visibility rules, moderation by the owner and its refusal to anyone else, the dense reaction bar, the toggle, per-visitor `reacted`, and the rejected emoji), the per-post switches (`VisitorSwitchTests` — both defaulting on, each refusal, the owner's exemption from both, a closed thread staying readable, and reaction counts surviving the switch), the editable pages (`PageContentTests` — that `0014` actually seeded both, that the Bamtren link survived the move as Markdown, the open read and the owner-only write, the normaliser filling defaults and dropping unknown keys, a wrong type being a 400, a titleless entry being dropped, `key` being read-only, create and delete both being 405s, and a deleted row being recreated rather than 404ing), and the catalogue's shorter page (`BookPaginationTests` — the page length, the count being the whole catalogue rather than the page, non-overlapping pages, and a cross-check that posts keep the site-wide 20). Run it with `python manage.py test`.
 
 **The two throttle tests patch `ScopedRateThrottle.THROTTLE_RATES` rather than using `override_settings(REST_FRAMEWORK=...)`**, which looks like it should work and does not: DRF binds that dict to the class *at import time*, so a settings override moves `api_settings` and leaves the throttle reading the rate it was born with. They also `cache.clear()` in `setUp`, since the throttle counter lives in a LocMemCache that outlives a single test.
 
@@ -655,7 +747,7 @@ The short form `"5432:5432"` would bind all interfaces and hand the throwaway `z
 
 ## Frontend/backend seam
 
-`/` (the blog feed) and `/posts/:slug` render live data from `GET /api/posts/`. The post page also carries the two things a visitor can leave — a reaction bar and a comment thread — which are the only requests in the app a stranger writes with; see "Comments and reactions (frontend)". **`/books` is the catalogue, backed by `GET /api/books/`** — a different resource, so `/books/:slug` renders `BookDetail` over a `Book`. A post *about* a book is writing: it lives in the feed, tagged however its author likes, and reaches its page at `/posts/:slug` like every other post. The CV and About pages are the only hardcoded copy left.
+`/` (the blog feed) and `/posts/:slug` render live data from `GET /api/posts/`. The post page also carries the two things a visitor can leave — a reaction bar and a comment thread — which are the only requests in the app a stranger writes with; see "Comments and reactions (frontend)". **`/books` is the catalogue, backed by `GET /api/books/`** — a different resource, so `/books/:slug` renders `BookDetail` over a `Book`. A post *about* a book is writing: it lives in the feed, tagged however its author likes, and reaches its page at `/posts/:slug` like every other post. **The CV and About pages render from `GET /api/pages/`** — see "The CV and About pages" on both sides; they are edited at `/admin/cv` and `/admin/about` and are no longer hardcoded copy.
 
 **There is no `/garage` page.** `Post.Category.GARAGE_SALE` is still a valid backend category — the admin console can still file a post under it — but nothing public links there any more; the page, its route, and its nav item were deleted. `VISIBLE_CATEGORIES` in `posts.ts` (`posts`, `books`, `projects`) is the list every cross-category view filters to, so a stray `garage_sale` post can never end up linked from a page that no longer exists. Filter with `isVisible(post)` rather than testing a single value: a post filed under both `garage_sale` and `projects` does have a page, and only one filed *solely* under `garage_sale` should be dropped.
 

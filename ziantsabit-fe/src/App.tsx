@@ -7,6 +7,7 @@ import {
 import Box from "@mui/material/Box";
 import Header from './components/Header';
 import Footer from './components/Footer';
+import RainOverlay from './components/RainOverlay';
 import { HEADER_HEIGHT } from "./constants/layout";
 import Blog from "./pages/Blog";
 import Books from "./pages/Books";
@@ -23,6 +24,8 @@ import AdminBookConsole from "./components/admin/AdminBookConsole";
 import AdminCommentConsole from "./components/admin/AdminCommentConsole";
 import AdminNewBook from "./pages/AdminNewBook";
 import AdminEditBook from "./pages/AdminEditBook";
+import AdminCV from "./pages/AdminCV";
+import AdminAbout from "./pages/AdminAbout";
 import PostDetail from "./pages/PostDetail";
 import NotFound from "./pages/NotFound";
 import './App.css'
@@ -100,6 +103,11 @@ function App() {
                   has over one are hiding it and removing it -- both of which
                   happen on the list itself. */}
               <Route path="comments" element={<AdminCommentConsole />} />
+              {/* The two hardcoded pages' own content. No console listing them
+                  and no "new" route: there are exactly two, both already have
+                  a public route, so each editor *is* its section. */}
+              <Route path="cv" element={<AdminCV />} />
+              <Route path="about" element={<AdminAbout />} />
             </Route>
             {/* Must stay last: `*` matches anything, and the routes above are
                 only reached because a more specific match wins. `/admin/typo`
@@ -113,6 +121,11 @@ function App() {
         </Box>
         <Footer />
       </Box>
+      {/* Last, and fixed on top of everything: the rain scheme's falling-ASCII
+          layer. It renders nothing under the other two schemes. Placed here
+          rather than behind the page because the feed pages paint an opaque
+          background over their whole column -- see RainOverlay. */}
+      <RainOverlay />
     </Router>
   )
 }

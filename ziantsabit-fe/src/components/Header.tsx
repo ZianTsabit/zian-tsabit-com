@@ -5,6 +5,7 @@ import { Box, Drawer, IconButton } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
 import ColorModeToggle from "./ColorModeToggle";
+import { useAdminHint } from "../services/auth";
 import { HEADER_HEIGHT } from "../constants/layout";
 
 // Feeds first, then the pages about their author. "Blog" is "/" because the
@@ -19,9 +20,23 @@ const navItems = [
   { to: "/about", label: "About" },
 ];
 
+// Appended for the owner only, and deliberately *not* a member of `navItems`
+// above: that array is the public nav, and everything reading it -- here and
+// anywhere else -- should keep seeing only pages every visitor has. Sections
+// *inside* the admin still belong in `AdminNav`, not here; this is one link to
+// the door, not a second copy of the menu behind it.
+const ADMIN_ITEM = { to: "/admin", label: "Admin" };
+
 function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // A localStorage flag the admin page maintains, not a session request: the
+  // header renders on every route and a visitor should not pay for a call whose
+  // answer is always no. It only decides whether a link is drawn -- `/admin`
+  // checks the real session on arrival either way. See `useAdminHint`.
+  const signedIn = useAdminHint();
+
+  const items = signedIn ? [...navItems, ADMIN_ITEM] : navItems;
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -112,7 +127,7 @@ function Header() {
               p: 0,
             }}
           >
-            {navItems.map((item) => (
+            {items.map((item) => (
               <Box component="li" key={item.to} role="none">
                 <Box
                   component={Link}
@@ -181,7 +196,7 @@ function Header() {
             p: 0,
           }}
         >
-          {navItems.map((item) => (
+          {items.map((item) => (
             <Box
               component="li"
               key={item.to}

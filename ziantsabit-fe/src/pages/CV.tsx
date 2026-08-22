@@ -1,144 +1,12 @@
-import { Box, Typography, Container, Stack, Divider } from "@mui/material";
-import TimelineItem from "../components/TimelineItem";
+import { Alert, Box, Button, CircularProgress, Container, Divider, Stack, Typography } from "@mui/material";
+
+import Centered from "../components/Centered";
+import Markdown from "../components/Markdown";
 import SectionHeading from "../components/SectionHeading";
+import TimelineItem from "../components/TimelineItem";
 import { TagChipRow } from "../components/TagChip";
-
-/**
- * A link out of a CV bullet, styled to match `TimelineItem`'s company link.
- *
- * A plain `<a>`, not react-router's `Link`: this leaves the site, and routing an
- * off-site URL through the router asks it to match a path it has no route for.
- */
-function ExternalLink({ href, children }: { href: string; children: string }) {
-  return (
-    <Box
-      component="a"
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      sx={{ color: "primary.main", textDecoration: "underline" }}
-    >
-      {children}
-    </Box>
-  );
-}
-
-const summary =`Data Engineer with experience architecting high-throughput data platforms across GCP, Azure, and on-premise environments. Proven track record of leading event tracking services handling ~2,500 RPS and ~500 GB of daily data, achieving significant cloud cost reductions of ~30% for BigQuery and ~35% for Dataflow and Pub/Sub. Expertise spans the full data lifecycle, including implementing Medallion Architecture, orchestrating 800+ DBT models with Apache Airflow, and deploying AI-driven RAG pipelines using Gemma 3. Proficient in building scalable infrastructure and implementing observability infrastructure.`;
-
-const experience = [
-  {
-    title: "Software Engineer - Data",
-    subtitle: "Cermati Fintech Group",
-    subtitleLink: "https://www.cermati.group/",
-    location: "Jakarta, Indonesia",
-    duration: "June 2025 - Present",
-    blurb:
-      "Cermati Fintech Group (CFG) is a fintech company founded in 2015, consisting of five entities. I am part of the Data Platform Team, supporting all entities under CFG (officially under the Indodana entity).",
-    points: [
-      "Owned a high-scale event tracking service adopted by the engineering team across the group company, managing ~2,500 RPS and ~500 GB of daily throughput. Redesigned data pipelines to slash Pub/Sub and Dataflow costs by ~35% (yielding ~$2,000 USD in monthly savings) and implemented a strict data retention strategy of the event's BigQuery table that successfully optimized the BigQuery costs by ~30% for several events.",
-      "Implemented Snowflake ID generation inside that same event tracking service to eliminate event ID collisions, improving data integrity at scale.",
-      "Maintained and enhanced a large-scale DBT project consisting of 800+ models, streamlined through the orchestration of 186+ Apache Airflow DAGs to assist the Business Intelligence team building and architecting the group company data warehouse and data mart.",
-      "Maintained and managed group company-wide Apache Airflow infrastructure and successfully solved a critical memory leak in the Airflow Triggerer component thus removing the whole on-call routine related to that case.",
-    ],
-  },
-  {
-    title: "Data Engineer (Infrastructure)",
-    subtitle: "Intiva",
-    subtitleLink: "https://intiva.id/",
-    location: "Jakarta, Indonesia",
-    duration: "Sept 2024 - June 2025",
-    blurb:
-      "Intiva is an IT consulting and services company specializing in software development, automation, machine learning, and big data analytics.",
-    points: [
-      <>
-        Engineered the <ExternalLink href="https://bamtren.com/">Bamtren</ExternalLink>{" "}
-        MVP, a news analytics platform using Gemma 3 for RAG-driven content
-        generation and sentiment analysis, processing hundreds of thousands of
-        daily messages via a robust pipeline of Airflow, MongoDB, RabbitMQ, and
-        Celery.
-      </>,
-      "Built internal LLM infrastructure and FastAPI services utilized by 5+ engineers and data scientists, integrating Ollama and LangChain while implementing a full-stack monitoring suite (Grafana, Prometheus, Loki) to track on-premise performance.",
-      "Standardized DevOps and security protocols by establishing monorepo CI/CD pipelines and implementing HashiCorp Vault secret management, successfully adopted across two production projects to enhance deployment security and efficiency.",
-    ],
-  },
-  {
-    title: "Data Governance (Intern)",
-    subtitle: "Sinar Mas Land",
-    subtitleLink: "https://www.sinarmasland.com/",
-    location: "Tangerang, Indonesia",
-    duration: "April - July 2024",
-    blurb:
-      "Sinar Mas Land is one of Indonesia's largest real estate developers, part of the Sinarmas Group conglomerate.",
-    points: [
-      "Designed and managed metadata-driven ingestion pipelines to the Bronze layer in Medallion Architecture using Microsoft Azure Data Fabric, streamlining the integration of diverse data sources into a centralized environment.",
-    ],
-  },
-];
-
-const projects = [
-  {
-    title: "HomeLab Infrastructure Project",
-    duration: "Oct 2025 - Present",
-    points: [
-      "Constructed self-hosted Kubernetes cluster on Proxmox virtualization, configured a multi-node architecture (1 control plane, 2 worker nodes) to master service orchestration and infrastructure management, also implemented observability across multi-node and across the homelab using Grafana and Prometheus, providing real-time monitoring and health metrics for the entire cluster lifecycle.",
-      "Hosts this website: the site you are reading runs on that homelab rather than on a managed platform, with its frontend, Django API, PostgreSQL and object storage deployed as Docker Compose stacks on a Proxmox VM and reached only through a Cloudflare Zero Trust tunnel — no port forwarding, no reverse proxy, no certificate to renew.",
-    ],
-  },
-];
-
-const skills = [
-  { label: "Programing Language", items: ["Python", "Java", "JavaScript"] },
-  {
-    label: "Data Engineering & Orchestration",
-    items: ["Apache Airflow", "DBT", "Apache Beam"],
-  },
-  {
-    label: "Database & Data Platforms",
-    items: [
-      "PostgreSQL",
-      "Google BigQuery",
-      "MongoDB",
-      "Redis",
-      "Elasticsearch",
-      "Redash",
-    ],
-  },
-  {
-    label: "Cloud & Infrastructure",
-    items: ["Google Cloud Platform", "Microsoft Azure", "Docker", "Kubernetes"],
-  },
-  { label: "Messaging & Streaming", items: ["RabbitMQ", "Google Pub/Sub"] },
-  {
-    label: "Monitoring, Logging, & Observability",
-    items: ["Grafana", "Prometheus", "Loki", "Promtail"],
-  },
-  {
-    label: "Security & DevOps",
-    items: ["Keycloak", "HashiCorp Vault", "GitLab CI", "GitLab Runner"],
-  },
-  {
-    label: "Machine Learning & LLM",
-    items: ["LangChain", "Ollama", "Langfuse"],
-  },
-];
-
-const education = [
-  {
-    title: "B.Sc. Computer Science",
-    subtitle: "Bandung Institute of Technology",
-    subtitleLink: "https://stei.itb.ac.id/",
-    duration: "",
-    points: [
-      "CGPA: 3.54 / 4.00",
-      "Thesis: Development of a Transformation Mechanism from Document-Oriented NoSQL Database to Relational Database.",
-    ],
-  },
-  {
-    title: "Associate Cloud Engineer",
-    subtitle: "Google Cloud Platform",
-    duration: "2024 - 2027",
-  },
-];
+import type { CvContent, PageEntry } from "../services/pages";
+import { usePageContent } from "../services/usePageContent";
 
 const socialLinkStyle = {
   color: "primary.main",
@@ -149,154 +17,161 @@ const socialLinkStyle = {
   gap: "4px",
 };
 
-function CV() {
+/**
+ * One timeline section, rendered only when it has entries.
+ *
+ * An empty section used to be impossible -- the content was a hardcoded array
+ * -- but a heading with nothing under it is what an owner who has not filled in
+ * Projects yet would otherwise get.
+ */
+function TimelineSection({
+  heading,
+  entries,
+}: {
+  heading: string;
+  entries: PageEntry[];
+}) {
+  if (entries.length === 0) return null;
   return (
-    <Box
-      sx={{
-        width: "100%",
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        bgcolor: "transparent",
-        alignItems: "center",
-        pt: { xs: 2, sm: 3 },
-      }}
-    >
-      <Container maxWidth="md">
-        {/* Header */}
+    <Box sx={{ mb: 4 }}>
+      <SectionHeading>{heading}</SectionHeading>
+      {entries.map((entry, index) => (
+        <TimelineItem
+          key={`${entry.title}-${entry.subtitle}-${index}`}
+          title={entry.title}
+          subtitle={entry.subtitle || undefined}
+          subtitleLink={entry.subtitle_link || undefined}
+          location={entry.location || undefined}
+          duration={entry.duration}
+          // Markdown, inline: a blurb and a bullet are lines inside a layout
+          // TimelineItem has already styled, and a `<p>` with its own margins
+          // would push the rail out of step with the text beside it.
+          blurb={entry.blurb ? <Markdown inline>{entry.blurb}</Markdown> : undefined}
+          points={entry.points.map((point, position) => (
+            <Markdown inline key={position}>
+              {point}
+            </Markdown>
+          ))}
+          last={index === entries.length - 1}
+        />
+      ))}
+    </Box>
+  );
+}
+
+function CvBody({ cv }: { cv: CvContent }) {
+  return (
+    <>
+      {/* Header */}
+      <Stack
+        direction="column"
+        sx={{
+          justifyContent: "center",
+          alignItems: "center",
+          mb: "18px",
+          mt: "18px",
+          textAlign: "center",
+        }}
+      >
+        <Typography
+          gutterBottom
+          component="div"
+          sx={{
+            mt: "24px",
+            fontWeight: "bold",
+            fontSize: { xs: "22px", sm: "28px" },
+            color: "text.primary",
+          }}
+        >
+          {cv.name}
+        </Typography>
+
+        <Typography
+          component="div"
+          sx={{
+            color: "text.secondary",
+            fontSize: { xs: "13px", sm: "15px" },
+            mb: 1,
+          }}
+        >
+          {cv.location}
+        </Typography>
+
         <Stack
-          direction="column"
+          direction={{ xs: "column", sm: "row" }}
+          spacing={{ xs: 1, sm: 2 }}
           sx={{
             justifyContent: "center",
             alignItems: "center",
-            mb: "18px",
-            mt: "18px",
-            textAlign: "center",
+            flexWrap: "wrap",
+            mt: 1,
           }}
         >
-          <Typography
-            gutterBottom
-            component="div"
-            sx={{
-              mt: "24px",
-              fontWeight: "bold",
-              fontSize: { xs: "22px", sm: "28px" },
-              color: "text.primary",
-            }}
-          >
-            Ghazian Tsabit Alkamil
-          </Typography>
-
-          <Typography
-            component="div"
-            sx={{
-              color: "text.secondary",
-              fontSize: { xs: "13px", sm: "15px" },
-              mb: 1,
-            }}
-          >
-            Jakarta, Indonesia
-          </Typography>
-
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            spacing={{ xs: 1, sm: 2 }}
-            sx={{
-              justifyContent: "center",
-              alignItems: "center",
-              flexWrap: "wrap",
-              mt: 1,
-            }}
-          >
-            <Box
-              component="a"
-              href="https://www.linkedin.com/in/ghaziantsabitalkamil/"
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={socialLinkStyle}
-            >
+          {cv.links.map((link) => {
+            // Only http(s) opens in a new tab; `mailto:` handing off to a mail
+            // client has no tab to open, and `noopener` on it means nothing.
+            const external = /^https?:\/\//.test(link.url);
+            return (
               <Box
-                component="img"
-                src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/linkedin/linkedin-original.svg"
-                alt=""
-                sx={{ width: "20px", height: "20px" }}
-              />
-              LinkedIn
-            </Box>
-
-            <Box
-              component="a"
-              href="https://github.com/ZianTsabit"
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={socialLinkStyle}
-            >
-              <Box
-                component="img"
-                src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg"
-                alt=""
-                sx={{ width: "20px", height: "20px" }}
-              />
-              GitHub
-            </Box>
-
-            <Box
-              component="a"
-              href="mailto:tsabitghazian@gmail.com"
-              sx={socialLinkStyle}
-            >
-              ✉️ Email
-            </Box>
-          </Stack>
+                key={link.url}
+                component="a"
+                href={link.url}
+                target={external ? "_blank" : undefined}
+                rel={external ? "noopener noreferrer" : undefined}
+                sx={socialLinkStyle}
+              >
+                {link.icon_url && (
+                  <Box
+                    component="img"
+                    src={link.icon_url}
+                    // Decorative: the label beside it already says where this
+                    // goes, so a screen reader repeating "GitHub GitHub" would
+                    // be the only effect of naming it.
+                    alt=""
+                    sx={{ width: "20px", height: "20px" }}
+                  />
+                )}
+                {link.label}
+              </Box>
+            );
+          })}
         </Stack>
+      </Stack>
 
-        <Divider sx={{ bgcolor: "divider", my: 2 }} />
+      <Divider sx={{ bgcolor: "divider", my: 2 }} />
 
-        {/* Summary */}
+      {cv.summary.body && (
         <Box sx={{ mb: 4 }}>
-          <SectionHeading>📄 Summary</SectionHeading>
-          <Typography
-            component="div"
+          <SectionHeading>{cv.summary.heading}</SectionHeading>
+          {/* The summary's own type scale, which is a step smaller than a post
+              body's -- overridden here rather than in `Markdown`, whose sizes
+              are the ones a post is read at. */}
+          <Box
             sx={{
-              textAlign: { xs: "left", sm: "justify" },
-              color: "text.primary",
-              fontSize: { xs: "12px", sm: "14px", md: "16px" },
-              lineHeight: 1.7,
+              "& p": {
+                textAlign: { xs: "left", sm: "justify" },
+                color: "text.primary",
+                fontSize: { xs: "12px", sm: "14px", md: "16px" },
+                lineHeight: 1.7,
+              },
             }}
           >
-            {summary}
-          </Typography>
+            <Markdown>{cv.summary.body}</Markdown>
+          </Box>
         </Box>
+      )}
 
-        {/* Experience */}
-        <Box sx={{ mb: 4 }}>
-          <SectionHeading>💼 Experience</SectionHeading>
-          {experience.map((item, index) => (
-            <TimelineItem
-              key={item.title + item.subtitle}
-              {...item}
-              last={index === experience.length - 1}
-            />
-          ))}
-        </Box>
+      <TimelineSection
+        heading={cv.experience.heading}
+        entries={cv.experience.entries}
+      />
+      <TimelineSection heading={cv.projects.heading} entries={cv.projects.entries} />
 
-        {/* Projects */}
+      {cv.skills.groups.length > 0 && (
         <Box sx={{ mb: 4 }}>
-          <SectionHeading>🛠️ Projects</SectionHeading>
-          {projects.map((item, index) => (
-            <TimelineItem
-              key={item.title}
-              {...item}
-              last={index === projects.length - 1}
-            />
-          ))}
-        </Box>
-
-        {/* Skills */}
-        <Box sx={{ mb: 4 }}>
-          <SectionHeading>⚙️ Skills</SectionHeading>
+          <SectionHeading>{cv.skills.heading}</SectionHeading>
           <Stack direction="column" spacing={2}>
-            {skills.map((group) => (
+            {cv.skills.groups.map((group) => (
               <Box key={group.label}>
                 <Typography
                   component="div"
@@ -314,18 +189,72 @@ function CV() {
             ))}
           </Stack>
         </Box>
+      )}
 
-        {/* Education & Certifications */}
-        <Box sx={{ mb: 4 }}>
-          <SectionHeading>🎓 Education &amp; Certifications</SectionHeading>
-          {education.map((item, index) => (
-            <TimelineItem
-              key={item.title}
-              {...item}
-              last={index === education.length - 1}
-            />
-          ))}
-        </Box>
+      <TimelineSection
+        heading={cv.education.heading}
+        entries={cv.education.entries}
+      />
+    </>
+  );
+}
+
+/**
+ * The CV, rendered from `/api/pages/cv/`.
+ *
+ * **The content used to be five arrays declared above this component**, which
+ * meant keeping a CV current was a code edit and a redeploy. It lives in
+ * `PageContent` now and is edited at `/admin/cv`; `myapp/migrations/0014`
+ * carries what was here across, so nothing was lost in the move.
+ *
+ * The one thing that changed shape: a bullet's inline link was a JSX
+ * `<ExternalLink>` component and is now Markdown, rendered inline by
+ * `Markdown`. That is why `ExternalLink` no longer exists here -- there is
+ * nowhere left to write JSX into a bullet.
+ */
+function CV() {
+  const { data, phase, error, retry } = usePageContent("cv");
+
+  return (
+    <Box
+      sx={{
+        width: "100%",
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        bgcolor: "transparent",
+        alignItems: "center",
+        pt: { xs: 2, sm: 3 },
+      }}
+    >
+      {/* A flex column, so `Centered` has leftover space to centre the spinner
+          and the error state in rather than pinning them to the top. */}
+      <Container
+        maxWidth="md"
+        sx={{ flex: 1, display: "flex", flexDirection: "column" }}
+      >
+        {phase === "loading" && (
+          <Centered>
+            <CircularProgress aria-label="Loading CV" />
+          </Centered>
+        )}
+
+        {phase === "error" && (
+          <Centered>
+            <Alert
+              severity="error"
+              action={
+                <Button color="inherit" size="small" onClick={retry}>
+                  Retry
+                </Button>
+              }
+            >
+              {error}
+            </Alert>
+          </Centered>
+        )}
+
+        {phase === "ready" && data && <CvBody cv={data} />}
       </Container>
     </Box>
   );
