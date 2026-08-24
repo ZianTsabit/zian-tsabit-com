@@ -82,6 +82,69 @@ There are three custom tokens, all declared through module augmentation in `them
 
 Note no two schemes share a link colour: dark uses `#6497b1`, light the darker `#1565c0` (because `#6497b1` on white is only ~3.1:1, under the 4.5:1 AA floor for body text), rain a cooler `#8ab4d4`. If you add a colour, check it against all three backgrounds — every ratio quoted in `theme.ts` was measured, and they are there so the next change has something to hold itself to.
 
+#### A post's own theme
+
+A post can name a scheme, and a reader who opens it gets that scheme whatever
+they picked from the header. `Post.theme` on the backend, `usePostTheme` in
+`services/useSiteTheme.ts` on the front, and blank — the default and the case
+for almost every post — means the reader's own choice stands.
+
+- **It goes through MUI's real mode/scheme state, not a class swapped onto
+  `<html>` by hand.** That looks tempting, since `colorSchemeSelector: "class"`
+  means the palette is pure CSS and would follow. But `RainOverlay` mounts off
+  `useColorScheme().colorScheme`, so a rain post applied behind MUI's back
+  would get the overcast palette and no weather. `useSiteTheme.ts` therefore
+  stays the only module that calls `setMode`/`setColorScheme`; `usePostTheme`
+  lives *in* it for that reason rather than beside it.
+- **The owner keeps the last word; the visitor keeps the post's, but only
+  until they leave it.** The picker is the owner's control now (see "Mode
+  selection"), so only they can be showing it while an overridden post is open
+  — and using it releases the override for good, since `setTheme` clears the
+  pending hand-back and leaving the post no longer undoes the choice made
+  seconds ago. A visitor has no control to escape with, which is exactly why
+  the hand-back has to be airtight: an override outliving its post would be a
+  theme they could not undo. That is the difference between a post *asking* for
+  a look and a post seizing the browser.
+- **Borrowed, not taken: the reader's own theme is handed back.** Three exits
+  are covered and they are not the same exit. Navigating to an unthemed post
+  hands it back without an unmount (the apply effect); leaving `PostDetail`
+  hands it back on unmount (a second, dependency-free effect, which is why it
+  does not also fire between two posts); and a tab *closed mid-post* is the one
+  React cannot see at all.
+- **That last one is why `theme-handback` exists, and why the reclaim is in
+  `index.html`.** MUI persists whatever scheme is showing, so a tab closed on a
+  rain post leaves rain in `mui-mode`/`mui-color-scheme-dark` and the reader
+  comes back tomorrow to a theme they never chose — precisely the thing this
+  feature must not do. React cannot repair it either: MUI has read its keys
+  before the app mounts, and the page has already painted. So the inline script
+  restores the pair from `theme-handback` and deletes it, ahead of the read it
+  already does. The module-level `pending` variable in `useSiteTheme.ts` is
+  what every hand-back *inside* one visit runs on — exact, and unaffected by a
+  blocked `localStorage`; the storage key is only the closed-tab backstop.
+- **The note is taken once, and only when there is not one already.** Moving
+  between two themed posts must not overwrite the reader's choice with the
+  previous post's — and the previous post's is exactly what the hook's `reader`
+  ref holds at that moment, since nothing has re-rendered between the two
+  effect runs. Guarding on `pending === null` rather than on the ref is what
+  makes rain → light → back-to-the-feed end on the reader's own theme instead
+  of on light.
+- **The switch happens when the post lands, not before.** The theme is part of
+  the post, so there is nothing to know until the fetch returns; that puts the
+  change on the same frame the content appears on, which is the least jarring
+  moment available. The alternative is blocking first paint on a round trip, on
+  every post, for a field almost every post leaves blank.
+- **The vocabulary is a fixed enum on both sides** (`Post.Theme` /
+  `SiteTheme`), which is the one place the "free text, not an enum" rule that
+  governs `tags` and `genres` is reversed for the same reason `REACTION_EMOJI`
+  reverses it: these are not labels somebody made up, they are the three
+  palettes `theme.ts` declares, and a fourth name would be a scheme the page
+  has nothing to switch to. Adding one is a change to `theme.ts`, the enum and
+  the union together. `asSiteTheme` is the guard at the boundary — the value
+  arrives as a string off the API, and one this build has no palette for has to
+  read as "no theme" rather than be handed to MUI.
+- **`Books` has no equivalent.** A catalogue entry is a row on a shelf rather
+  than a piece of writing with a mood, and `BookDetail` leads with facts.
+
 #### The rain scheme
 
 `rain` is overcast: desaturated blue-grey throughout, where dark is warm and neutral. It is a third *look*, not a third brightness — and that mismatch with MUI's model is the source of everything awkward about it.
@@ -93,6 +156,8 @@ Note no two schemes share a link colour: dark uses `#6497b1`, light the darker `
 **`services/useSiteTheme.ts` is therefore the only thing on the site that may call `setMode` or `setColorScheme`.** It exposes one three-way `SiteTheme` value instead of MUI's mode/scheme pair. Two details in it are load-bearing: `colorScheme` is the authority for reading the current theme, not `mode` (rain and dark share a mode, so the mode alone cannot tell them apart), and **choosing light or dark resets the dark scheme back to `dark`** — without that, leaving rain would leave `mui-color-scheme-dark` set to `rain` and choosing Dark again would silently bring the weather back.
 
 **Mode selection** is `defaultMode="light"`, so a first-time visitor gets light whatever their OS says. `ColorModeToggle.tsx` is a **menu, not a toggle**: with two schemes a single button was right, because it showed the current one and pressing it meant "the other one"; with three there is no "the other one", so a button would have to cycle and its icon could no longer say what pressing it would do. `mode` is `undefined` on the first render, so it renders a hidden same-size placeholder until mounted rather than flashing the wrong icon.
+
+**The picker is the owner's, not the visitor's.** `ColorModeToggle` returns `null` unless `useAdminHint()` is true — the same `localStorage` flag the header's Admin link reads, gated inside the control rather than at the call site so the rule travels with it. What a visitor gets is therefore the `defaultMode="light"` above, plus whatever a post borrows while it is open; the three schemes are how the site presents itself, and only one person decides that. **Nothing is unlocked by the flag and nothing needs to be** — a theme is a local preference, so the worst a forged one buys is a palette in your own browser. What this removes is the invitation, not the possibility: `mui-color-scheme-dark` is still a storage key anyone can set by hand. Note the two early returns are not the same: the visitor gets no placeholder, because that hidden same-size button reserves space for one that is about to appear and this one never will.
 
 #### The rain overlay
 
@@ -114,6 +179,8 @@ Note no two schemes share a link colour: dark uses `#6497b1`, light the darker `
 2. An inline script in `index.html` applies the class before that stylesheet is parsed.
 
 **That script reads two storage keys, not one, and the second is what rain needs.** There are three schemes and only two modes: someone who chose rain has `mui-mode` = `dark` and `mui-color-scheme-dark` = `rain`, so reading the mode alone would paint the dark scheme's near-black and then swap to overcast blue-grey on mount — the exact flash this exists to prevent. **The class applied is the *scheme* name, never the mode**; light and dark just happen to share a name with theirs.
+
+**The script also hands a reader their theme back before it reads anything**, because a post can override the scheme while it is being read and MUI persists whatever is showing — see "A post's own theme" above. It restores `mui-mode`/`mui-color-scheme-dark` from `theme-handback` and removes the key, including when the value is unreadable, so a scheme name from some future build cannot sit there pretending a hand-back is still due.
 
 Those background hex values are duplicated from `palette.background.default`; if you change one, change the other. That is the only place a colour literal belongs outside `theme.ts`.
 
@@ -408,6 +475,8 @@ The second model, and the only other table: one row per post per day it was read
 - **Days with no reads have no row**, so the table grows with traffic rather than with the age of the site. The gaps are filled when the window is built, in `stats`.
 - **The history starts when this shipped.** `0007_postviewday.py` creates an empty table; reads counted before it exist only inside `view_count`, which is why the statistics page carries both a chart and a lifetime `views_per_day` figure, and says so on the page.
 
+**`theme` is the scheme a post is *read* in**, overriding whatever the visitor picked from the header; blank — the default — leaves their choice alone, which is what every post did before the column existed. Blank rather than null, matching `excerpt` and `isbn`: there is one "unset" here, not two, and a nullable choice field would answer `null` on some rows and `""` on others for the same meaning. `0015` adds it with that default, so nothing already published changed behaviour. A fixed `Post.Theme` enum rather than free text, for the same reason `REACTION_EMOJI` is fixed — see "A post's own theme" for the whole mechanism, including what stops a post's theme outliving the post.
+
 **`cover_image_url` is a `URLField`, not an `ImageField`** (with `cover_image_alt` beside it, blank falling back to the title at render time). The bytes are uploaded separately, through `/api/uploads/images/`, and the post only ever stores the URL that came back. That is what lets the New Post form attach an image before the post exists — an `ImageField` has nothing to hang an upload off until after the first save — and it makes a cover and an inline `![](...)` in the body the same kind of thing, so one endpoint serves both. The cost is that nothing links a bucket object back to the post using it; see "Object storage".
 
 ### The Book model
@@ -423,6 +492,9 @@ Points that are deliberate:
 - **`author` is a `CharField`, not an Author table.** A catalogue this size never needs to hang anything off an author, and "Le Guin, Ursula K." against "Ursula K. Le Guin" would immediately become two rows in the table that was supposed to prevent exactly that. Several authors go in as one line, as they read on the cover.
 - **`genres` is a free-text `ArrayField`, not an enum.** Genre is argued about rather than agreed on, so a fixed list would be wrong for the first book needing a term nobody thought of. Same storage reasoning as `Post.tags`.
 - **`isbn` is stored without separators and is not unique.** `normalise_isbn` strips hyphens, spaces and en dashes and upper-cases the check digit, so the stored value is the number itself — which is what a search for one has to match. Not unique because two editions are two entries with two ISBNs, and a unique constraint over a mostly-blank column is a trap.
+- **Title *and* author together are what identify a book, and a second entry for the same pair is a 400.** `BookSerializer.validate` is where that lives — an object-level check rather than a field one, because a title is only wrong in the company of a particular author: there are a dozen books called "Ulysses", which is the very reason `_slug_base` reaches for the author to tell them apart. It comes back as `non_field_errors`, which the SPA promotes to the form's headline, and the message names the entry it collided with **and its slug** — the duplicate is usually a draft the owner forgot they had started, and "already in the catalogue" without a link leaves them searching. Matched case-insensitively (DRF has already trimmed both values), and it sees drafts, since a second copy of a draft is just as much a duplicate.
+  - **On an update the entry excludes itself, and an absent field falls back to `self.instance`.** Both are load-bearing for autosave: every PATCH resends the title and author unchanged, so a check without the exclusion would refuse all of them, and a PATCH carrying only a new author has to be checked against the title already stored rather than against nothing.
+  - **A serializer rejection, not a `UniqueConstraint` over `Lower(title), Lower(author)`.** Same trade as the ISBN check digit above: a 400 with a sentence in it rather than an `IntegrityError` surfacing as a 500, and an entry typed into the Django admin still saves. It also leaves the one legitimate duplicate pair — two editions of the same book, which is exactly why `isbn` is deliberately not unique — possible by hand instead of forbidden at the schema level.
 - **The ISBN's check digit is verified, in the serializer.** `isbn_is_valid` covers both ISBN-10 and ISBN-13. Length alone would accept a transposed pair, which is the typo that leaves an ISBN looking right and matching nothing. It is a serializer rejection rather than a model constraint so it is a 400 with a message, and so an entry typed into the Django admin still saves — a bad ISBN is worth refusing at the form, not worth losing the rest of the record over.
 - **`release_year`'s ceiling is a *callable*, `max_release_year`** (this year plus one, since a book bought in December can carry next year on its title page). A hardcoded ceiling starts rejecting valid entries the moment the year turns. The cost: `drf-spectacular` cannot serialise a function into an OpenAPI `maximum`, so `BookSerializer` **declares `release_year` explicitly** with the static floor and enforces the moving ceiling in `validate_release_year`. Remove that declaration and `manage.py spectacular` crashes.
 - **`_slug_base` reaches for the author only when the plain title is taken.** Two books called "Ulysses" is ordinary; `/ulysses-2` says nothing about which one it is and `/ulysses-james-joyce` does. A third falls back to `-2` as usual.
@@ -716,7 +788,7 @@ Django's own admin registers all four models. `PostAdmin` lists and filters on b
 
 ### Tests
 
-`myapp/tests.py` is a real suite (248 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, the tag filter and its vocabulary endpoint (`TagVocabularyTests`), filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, the upload endpoint, the view counter, the daily reading history (`ViewDayTests`), the date-range filter, and the book catalogue (`BookModelTests` / `BookAPITests` — slug derivation and its author fallback, genre and ISBN normalisation, both check-digit schemes, the release-year bounds, the case-insensitive genre filter, the genres action's spelling fold, and each CRUD verb for both anonymous and authenticated callers), and comments and reactions (`CommentAPITests` / `CommentCountTests` / `ReactionTests` — the open create and its forced status, the draft and hidden visibility rules, moderation by the owner and its refusal to anyone else, the dense reaction bar, the toggle, per-visitor `reacted`, and the rejected emoji), the per-post switches (`VisitorSwitchTests` — both defaulting on, each refusal, the owner's exemption from both, a closed thread staying readable, and reaction counts surviving the switch), the editable pages (`PageContentTests` — that `0014` actually seeded both, that the Bamtren link survived the move as Markdown, the open read and the owner-only write, the normaliser filling defaults and dropping unknown keys, a wrong type being a 400, a titleless entry being dropped, `key` being read-only, create and delete both being 405s, and a deleted row being recreated rather than 404ing), and the catalogue's shorter page (`BookPaginationTests` — the page length, the count being the whole catalogue rather than the page, non-overlapping pages, and a cross-check that posts keep the site-wide 20). Run it with `python manage.py test`.
+`myapp/tests.py` is a real suite (264 tests, `APITestCase`) covering slug generation, publish stamping, the draft visibility rules, the tag filter and its vocabulary endpoint (`TagVocabularyTests`), filter validation, basic-auth writes, each CRUD verb for both anonymous and authenticated callers, the upload endpoint, the view counter, the daily reading history (`ViewDayTests`), the date-range filter, and the book catalogue (`BookModelTests` / `BookAPITests` — slug derivation and its author fallback, genre and ISBN normalisation, both check-digit schemes, the release-year bounds, the case-insensitive genre filter, the genres action's spelling fold, the title-and-author duplicate check — its case fold, its blindness to nothing (drafts count), the same title by another author being fine, and a book not colliding with itself on a PATCH — and each CRUD verb for both anonymous and authenticated callers), and comments and reactions (`CommentAPITests` / `CommentCountTests` / `ReactionTests` — the open create and its forced status, the draft and hidden visibility rules, moderation by the owner and its refusal to anyone else, the dense reaction bar, the toggle, per-visitor `reacted`, and the rejected emoji), the per-post theme (`PostThemeTests` — blank by default and blank on a post created through the API, the value reaching an anonymous reader, all three schemes accepted and a fourth rejected, clearing it back to the reader's choice, and a partial write that omits it keeping it), the per-post switches (`VisitorSwitchTests` — both defaulting on, each refusal, the owner's exemption from both, a closed thread staying readable, and reaction counts surviving the switch), the editable pages (`PageContentTests` — that `0014` actually seeded both, that the Bamtren link survived the move as Markdown, the open read and the owner-only write, the normaliser filling defaults and dropping unknown keys, a wrong type being a 400, a titleless entry being dropped, `key` being read-only, create and delete both being 405s, and a deleted row being recreated rather than 404ing), and the catalogue's shorter page (`BookPaginationTests` — the page length, the count being the whole catalogue rather than the page, non-overlapping pages, and a cross-check that posts keep the site-wide 20). Run it with `python manage.py test`.
 
 **The two throttle tests patch `ScopedRateThrottle.THROTTLE_RATES` rather than using `override_settings(REST_FRAMEWORK=...)`**, which looks like it should work and does not: DRF binds that dict to the class *at import time*, so a settings override moves `api_settings` and leaves the throttle reading the rate it was born with. They also `cache.clear()` in `setUp`, since the throttle counter lives in a LocMemCache that outlives a single test.
 

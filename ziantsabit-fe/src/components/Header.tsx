@@ -141,6 +141,8 @@ function Header() {
             ))}
           </Box>
 
+          {/* Renders nothing for a visitor -- the theme picker is the owner's,
+              and gates itself on the same hint `signedIn` reads above. */}
           <ColorModeToggle />
 
           {/* Mobile Hamburger */}

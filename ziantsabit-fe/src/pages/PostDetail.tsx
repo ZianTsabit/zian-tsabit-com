@@ -16,6 +16,7 @@ import Markdown from "../components/Markdown";
 import ReactionBar from "../components/ReactionBar";
 import { TagChipRow } from "../components/TagChip";
 import Typewriter from "../components/Typewriter";
+import { asSiteTheme, usePostTheme } from "../services/useSiteTheme";
 import { usePost } from "../services/usePost";
 import { useRecordView } from "../services/useRecordView";
 
@@ -46,6 +47,15 @@ function PostDetail({ backTo, backLabel }: { backTo: string; backLabel: string }
   // Counts this read once per session, and hands back the total to show --
   // including the one just recorded, which the post itself is one behind on.
   const views = useRecordView(post);
+
+  // Read this post in the scheme it asks for, whatever the visitor picked from
+  // the header. Most posts ask for nothing and this is a no-op; the ones that
+  // do get it from the moment the post lands, and the visitor gets their own
+  // theme back on the way out (see `usePostTheme`). Run through `asSiteTheme`
+  // rather than cast: the value is a string off the API, and a scheme this
+  // build has no palette for has to read as "no theme" rather than be handed
+  // to MUI.
+  usePostTheme(asSiteTheme(post?.theme));
 
   // A closed thread with nothing in it has nothing to say, so the section goes
   // rather than rendering a heading over one line of apology. `comment_count`

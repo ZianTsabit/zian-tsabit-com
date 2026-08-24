@@ -51,12 +51,21 @@ class PostAdmin(admin.ModelAdmin):
         "status",
         "comments_enabled",
         "reactions_enabled",
+        "theme",
         "published_at",
         "updated_at",
     )
     # Both switches are filterable, so "which posts did I close" is a question
-    # the sidebar answers rather than one that needs a shell.
-    list_filter = (TagFilter, "status", "comments_enabled", "reactions_enabled")
+    # the sidebar answers rather than one that needs a shell. `theme` joins
+    # them for the same reason: the posts that override a reader's scheme are
+    # the ones worth being able to list.
+    list_filter = (
+        TagFilter,
+        "status",
+        "comments_enabled",
+        "reactions_enabled",
+        "theme",
+    )
     search_fields = ("title", "excerpt", "body")
     # Blank is allowed here too: Post.save() fills it in from the title.
     prepopulated_fields = {"slug": ("title",)}
