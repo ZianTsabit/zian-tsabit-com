@@ -96,12 +96,15 @@ for almost every post — means the reader's own choice stands.
   would get the overcast palette and no weather. `useSiteTheme.ts` therefore
   stays the only module that calls `setMode`/`setColorScheme`; `usePostTheme`
   lives *in* it for that reason rather than beside it.
-- **The reader keeps the last word.** The header's picker still works while an
-  overridden post is open, and using it releases the override for good —
-  `setTheme` clears the pending hand-back, so leaving the post no longer undoes
-  the choice made seconds ago. A theme somebody cannot escape is the wrong
-  thing to do to a reader who needs a particular one, and it is the difference
-  between a post *asking* for a look and a post seizing the browser.
+- **The owner keeps the last word; the visitor keeps the post's, but only
+  until they leave it.** The picker is the owner's control now (see "Mode
+  selection"), so only they can be showing it while an overridden post is open
+  — and using it releases the override for good, since `setTheme` clears the
+  pending hand-back and leaving the post no longer undoes the choice made
+  seconds ago. A visitor has no control to escape with, which is exactly why
+  the hand-back has to be airtight: an override outliving its post would be a
+  theme they could not undo. That is the difference between a post *asking* for
+  a look and a post seizing the browser.
 - **Borrowed, not taken: the reader's own theme is handed back.** Three exits
   are covered and they are not the same exit. Navigating to an unthemed post
   hands it back without an unmount (the apply effect); leaving `PostDetail`
@@ -153,6 +156,8 @@ for almost every post — means the reader's own choice stands.
 **`services/useSiteTheme.ts` is therefore the only thing on the site that may call `setMode` or `setColorScheme`.** It exposes one three-way `SiteTheme` value instead of MUI's mode/scheme pair. Two details in it are load-bearing: `colorScheme` is the authority for reading the current theme, not `mode` (rain and dark share a mode, so the mode alone cannot tell them apart), and **choosing light or dark resets the dark scheme back to `dark`** — without that, leaving rain would leave `mui-color-scheme-dark` set to `rain` and choosing Dark again would silently bring the weather back.
 
 **Mode selection** is `defaultMode="light"`, so a first-time visitor gets light whatever their OS says. `ColorModeToggle.tsx` is a **menu, not a toggle**: with two schemes a single button was right, because it showed the current one and pressing it meant "the other one"; with three there is no "the other one", so a button would have to cycle and its icon could no longer say what pressing it would do. `mode` is `undefined` on the first render, so it renders a hidden same-size placeholder until mounted rather than flashing the wrong icon.
+
+**The picker is the owner's, not the visitor's.** `ColorModeToggle` returns `null` unless `useAdminHint()` is true — the same `localStorage` flag the header's Admin link reads, gated inside the control rather than at the call site so the rule travels with it. What a visitor gets is therefore the `defaultMode="light"` above, plus whatever a post borrows while it is open; the three schemes are how the site presents itself, and only one person decides that. **Nothing is unlocked by the flag and nothing needs to be** — a theme is a local preference, so the worst a forged one buys is a palette in your own browser. What this removes is the invitation, not the possibility: `mui-color-scheme-dark` is still a storage key anyone can set by hand. Note the two early returns are not the same: the visitor gets no placeholder, because that hidden same-size button reserves space for one that is about to appear and this one never will.
 
 #### The rain overlay
 

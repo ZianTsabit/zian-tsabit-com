@@ -10,6 +10,7 @@ import {
   useSiteTheme,
   type SiteTheme,
 } from "../services/useSiteTheme";
+import { useAdminHint } from "../services/auth";
 
 const ICONS: Record<SiteTheme, typeof LightModeIcon> = {
   light: LightModeIcon,
@@ -25,9 +26,24 @@ const ICONS: Record<SiteTheme, typeof LightModeIcon> = {
  * one". With three there is no "the other one" -- a button would have to cycle,
  * which makes reaching a specific theme a guessing game, and its icon could no
  * longer say what pressing it would do.
+ *
+ * **It is the owner's control, not the visitor's.** The three schemes are how
+ * the site presents itself -- light is what `defaultMode` gives everyone, and
+ * a post can borrow another for as long as it is open -- so the picker renders
+ * only for a browser that has signed in, the same `useAdminHint` flag the
+ * header's Admin link uses. The gate lives here rather than at the call site so
+ * the rule travels with the control.
+ *
+ * **It is a hint, not authorisation, and nothing needs it to be more.** A theme
+ * is a local preference: the worst a forged flag buys is the ability to choose
+ * a palette in your own browser, which is not something to defend. Anyone
+ * determined to read the site in rain can already set `mui-color-scheme-dark`
+ * by hand; what this removes is the *invitation*, so what a visitor arrives to
+ * is what the owner chose.
  */
 function ColorModeToggle() {
   const { theme, setTheme } = useSiteTheme();
+  const signedIn = useAdminHint();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   const open = (event: MouseEvent<HTMLElement>) => setAnchor(event.currentTarget);
@@ -37,6 +53,11 @@ function ColorModeToggle() {
     setTheme(next);
     close();
   };
+
+  // No hidden placeholder for a visitor, unlike the not-yet-read case below:
+  // that one reserves space for a button that is about to appear, and this
+  // button never will.
+  if (!signedIn) return null;
 
   if (!theme) {
     // `useColorScheme` has not read storage yet, so committing to an icon here

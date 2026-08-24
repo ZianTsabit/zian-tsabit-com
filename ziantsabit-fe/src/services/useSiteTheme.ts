@@ -139,10 +139,14 @@ export function useSiteTheme(): SiteThemeState {
  * `useColorScheme().colorScheme`, so a rain post whose scheme was applied
  * behind MUI's back would get the palette and no weather.
  *
- * **The reader keeps the last word.** The header's picker still works while an
- * overridden post is open, and using it releases the override for good (see
- * `setTheme`). A theme somebody cannot get out of is the wrong thing to do to
- * a reader who needs a particular one.
+ * **Borrowed, never kept.** The override lasts exactly as long as the post is
+ * open: leaving hands the previous theme back, and a tab closed mid-post is
+ * repaired by the reclaim in `index.html`. That is what the picker being the
+ * owner's alone rests on -- a visitor has no control to escape with, so a
+ * post's theme outliving the post would be a theme they could not undo.
+ *
+ * For the owner, whose picker *is* on screen, using it releases the override
+ * for good (see `setTheme`), so their own choice is not undone seconds later.
  *
  * **The switch happens when the post arrives, not before**, because the theme
  * is part of the post and there is nothing to read until then. That puts the
