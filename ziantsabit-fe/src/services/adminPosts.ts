@@ -8,8 +8,20 @@
 
 import { apiRequest } from "./api";
 import type { Post, PostPage } from "./posts";
+import { SITE_THEMES, THEME_LABELS } from "./useSiteTheme";
 
 export type PostStatus = Post["status"];
+
+/** A post's theme as the form holds it: one of the three, or "" for none. */
+export type PostTheme = Post["theme"];
+
+/** The theme picker's options, "leave it alone" first -- it is the default and
+ *  the one an author is choosing *away* from. The rest follow `SITE_THEMES`,
+ *  so the editor lists them in the same order the header's menu does. */
+export const POST_THEMES: { value: PostTheme; label: string }[] = [
+  { value: "", label: "Reader's choice" },
+  ...SITE_THEMES.map((value) => ({ value, label: THEME_LABELS[value] })),
+];
 
 export const STATUSES: { value: PostStatus; label: string }[] = [
   { value: "draft", label: "Draft" },
@@ -49,6 +61,10 @@ export interface PostDraft {
    *  so autosave carries them like any other edit. */
   comments_enabled: boolean;
   reactions_enabled: boolean;
+  /** The scheme readers get for this post, or "" to leave them their own.
+   *  A field the form owns, like the two switches above it -- so autosave
+   *  carries it like any other edit. */
+  theme: PostTheme;
 }
 
 export function draftFrom(post: Post): PostDraft {
@@ -64,6 +80,7 @@ export function draftFrom(post: Post): PostDraft {
     published_at: post.published_at,
     comments_enabled: post.comments_enabled,
     reactions_enabled: post.reactions_enabled,
+    theme: post.theme,
   };
 }
 
@@ -86,6 +103,9 @@ export function emptyDraft(tags: string[] = []): PostDraft {
     // act rather than the accident.
     comments_enabled: true,
     reactions_enabled: true,
+    // The reader's own theme, which is what every post did before this field
+    // existed. Taking someone's scheme away is the deliberate act.
+    theme: "",
   };
 }
 

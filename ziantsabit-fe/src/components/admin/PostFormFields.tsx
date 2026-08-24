@@ -3,6 +3,7 @@ import {
   Autocomplete,
   FormControlLabel,
   FormHelperText,
+  MenuItem,
   Stack,
   Switch,
   TextField,
@@ -12,7 +13,7 @@ import {
 import CoverImageField from "./CoverImageField";
 import MarkdownEditor from "./MarkdownEditor";
 import type { FieldErrors } from "../../services/api";
-import type { PostDraft } from "../../services/adminPosts";
+import { POST_THEMES, type PostDraft } from "../../services/adminPosts";
 
 /**
  * ISO timestamp -> the `YYYY-MM-DDTHH:mm` a `datetime-local` input wants.
@@ -238,6 +239,39 @@ function PostFormFields({
             "Off hides the emoji bar. Reactions already left are kept, and come back if you turn it on again."}
         </FormHelperText>
       </Stack>
+
+      {/* The scheme the post is *read* in, which is why it sits here rather
+          than beside the cover image: like the two switches above it, it is a
+          setting for the post rather than a piece of its content.
+
+          A select rather than three radios or a row of swatches -- it has four
+          options, one of them the default, which is exactly the shape a select
+          is for. The default reads "Reader's choice" rather than "None",
+          because leaving it alone is a decision about the reader and "None"
+          would suggest the post simply has no look. */}
+      <TextField
+        select
+        label="Theme"
+        value={draft.theme}
+        onChange={(event) =>
+          onChange("theme", event.target.value as PostDraft["theme"])
+        }
+        error={Boolean(fieldErrors.theme)}
+        // Says what it overrides *and* that it can be escaped: the header's
+        // picker keeps working while the post is open, which matters to
+        // anybody who needs a particular scheme to read at all.
+        helperText={
+          fieldErrors.theme ??
+          "Switches the whole site to this scheme while the post is open, whatever the reader picked. Their theme comes back when they leave, and the header's picker still overrides it."
+        }
+        fullWidth
+      >
+        {POST_THEMES.map((option) => (
+          <MenuItem key={option.value} value={option.value}>
+            {option.label}
+          </MenuItem>
+        ))}
+      </TextField>
 
       {showPublishedAt && (
         <TextField

@@ -32,6 +32,25 @@
       // with their mode.
       (function () {
         try {
+          // Hand the reader their own theme back, before anything reads the
+          // keys below. A post can override the scheme while it is being read
+          // (see usePostTheme), and MUI persists whatever is showing -- so a
+          // tab closed mid-post leaves *the post's* theme in storage and the
+          // reader's in "theme-handback". React cannot fix that: MUI has read
+          // its keys by the time it mounts, and the page would have painted
+          // the wrong scheme already. Restoring it here is what keeps a post's
+          // theme from outliving the post.
+          var owed = localStorage.getItem('theme-handback');
+          if (owed === 'light' || owed === 'dark' || owed === 'rain') {
+            localStorage.setItem('mui-mode', owed === 'light' ? 'light' : 'dark');
+            localStorage.setItem(
+              'mui-color-scheme-dark', owed === 'rain' ? 'rain' : 'dark'
+            );
+          }
+          // Removed even when unreadable, so a value from some future scheme
+          // cannot sit here forever pretending a hand-back is still pending.
+          if (owed !== null) localStorage.removeItem('theme-handback');
+
           var mode = localStorage.getItem('mui-mode');
           if (mode === 'light') {
             document.documentElement.classList.add('light');

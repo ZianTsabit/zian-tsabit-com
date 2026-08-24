@@ -42,6 +42,11 @@ class PostSerializer(serializers.ModelSerializer):
             # them out gets a post behaving like every existing one.
             "comments_enabled",
             "reactions_enabled",
+            # Blank means "leave the reader's own theme alone", which is what
+            # every post said before the column existed. The choice set is the
+            # model's, so an unknown scheme is a 400 rather than a name the SPA
+            # would silently fail to find a palette for.
+            "theme",
             "view_count",
             "comment_count",
             "created_at",
@@ -256,6 +261,62 @@ class BookSerializer(serializers.ModelSerializer):
                 f"Give a year between {EARLIEST_RELEASE_YEAR} and {latest}."
             )
         return value
+
+    def validate(self, attrs):
+        """Refuse a second entry for a book already on the shelf.
+
+        Title *and* author together, because neither alone identifies a book: a
+        dozen different books are called "Ulysses" -- which is exactly why
+        `Book._slug_base` reaches for the author to tell them apart -- and an
+        author writes more than one book. The pair is what a person means when
+        they say a book is already in the catalogue.
+
+        An object-level check rather than a field one, for the same reason: a
+        title is only wrong in the company of a particular author, so there is
+        no single input to hang the message off. It comes back as
+        `non_field_errors`, which the SPA promotes to the form's headline.
+
+        Case-insensitive, since "the hobbit" typed in a hurry is the same book
+        as "The Hobbit" and a check that let the second one through would be a
+        check nobody could rely on. (DRF has already trimmed both values --
+        `CharField` does that by default -- so only case is left to fold.)
+
+        In the serializer rather than as a database constraint, matching
+        `validate_isbn`: it is a 400 with a sentence in it rather than an
+        `IntegrityError` surfacing as a 500, an entry typed into the Django
+        admin still saves, and the one legitimate duplicate pair -- two
+        editions of the same book -- stays possible by hand instead of being
+        forbidden outright at the schema level.
+
+        On an update the entry excludes itself, or every autosave PATCH of an
+        existing book would be refused for colliding with the row it is
+        rewriting. `self.instance` is also where an absent field's value comes
+        from: a PATCH carrying only a new author has to be checked against the
+        title already stored, not against nothing.
+        """
+        title = attrs.get("title", getattr(self.instance, "title", ""))
+        author = attrs.get("author", getattr(self.instance, "author", ""))
+        # Field-level validation runs first and both are required, so this only
+        # guards the paths that never reach a create -- a PATCH of some third
+        # field on a row predating the check, say.
+        if not title or not author:
+            return attrs
+
+        clashes = Book.objects.filter(title__iexact=title, author__iexact=author)
+        if self.instance is not None:
+            clashes = clashes.exclude(pk=self.instance.pk)
+        existing = clashes.first()
+        if existing is not None:
+            # Names the entry it collided with, and where to find it: the
+            # duplicate is usually a draft the author forgot they started, and
+            # "already in the catalogue" without a slug leaves them searching
+            # for it.
+            raise serializers.ValidationError(
+                f'"{existing.title}" by {existing.author} is already in the '
+                f"catalogue (/books/{existing.slug}). Edit that entry rather "
+                "than adding a second one."
+            )
+        return attrs
 
 
 class LabelCountSerializer(serializers.Serializer):

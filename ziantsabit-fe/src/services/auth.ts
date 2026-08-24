@@ -2,9 +2,10 @@
  * Session login for the admin page, against `myapp/auth.py`.
  *
  * The admin page is the only route with any use for a logged-in user, so no
- * public page ever makes a session request it would ignore. `Header` is the one
- * public component importing anything from here, and it takes `useAdminHint` --
- * a localStorage read, not a request -- for exactly that reason.
+ * public page ever makes a session request it would ignore. The public
+ * components that import anything from here -- `Header`, for its Admin link,
+ * and `ColorModeToggle`, which is the owner's control -- take `useAdminHint`
+ * only: a localStorage read, not a request, for exactly that reason.
  */
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
