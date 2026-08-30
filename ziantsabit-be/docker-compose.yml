@@ -129,6 +129,34 @@ services:
               }
             ]
           }'
+        # Let a browser *read the pixels* of an image, not just display them.
+        # The admin's story-card feature draws a post's cover onto a canvas and
+        # exports it as a PNG, and a cross-origin image drawn without CORS
+        # taints the canvas -- `toBlob` then throws and the card cannot be
+        # saved. `crossOrigin="anonymous"` on the <img> is the client half;
+        # this is the half the bucket owes it. Ordinary <img> rendering never
+        # needed it, which is why it was not here before.
+        #
+        # GET and HEAD only, and no ExposeHeaders: this widens what may be read
+        # from a bucket that is already public-read, and nothing else.
+        #
+        # Non-fatal, unlike the two calls above. RustFS is young and this is a
+        # less-travelled corner of the S3 API; the site works without it, minus
+        # covers on story cards -- which the dialog says out loud rather than
+        # failing silently. Do not let `set -eu` take the whole stack down for
+        # a nicety.
+        aws --endpoint-url "$$endpoint" s3api put-bucket-cors \
+          --bucket "$$bucket" \
+          --cors-configuration '{
+            "CORSRules": [
+              {
+                "AllowedOrigins": ["*"],
+                "AllowedMethods": ["GET", "HEAD"],
+                "AllowedHeaders": ["*"],
+                "MaxAgeSeconds": 3000
+              }
+            ]
+          }' || echo "put-bucket-cors not supported here; story cards will drop covers"
 
   api:
     build: .
