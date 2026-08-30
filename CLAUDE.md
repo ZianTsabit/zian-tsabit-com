@@ -80,6 +80,8 @@ Two layout details in the shell are load-bearing. The content column carries `mi
 
 There are three custom tokens, all declared through module augmentation in `theme.ts`: `palette.headerScrolled` (the translucent wash behind the scrolled header) and `palette.rainDrop` / `palette.lightning` (the rain scheme's overlay; see below). Read any of them via `(theme.vars ?? theme).palette.x` — with `cssVariables` on, `theme.vars` is the populated one, and the fallback keeps TypeScript happy since `vars` is optional on the type. **All three are declared in all three schemes**, even where they cannot be reached: a token missing from a scheme is simply an absent CSS variable, which resolves to an empty string rather than to anything useful.
 
+**`SCHEME_PALETTES` is the one way to read a colour without a component**, and it exists for exactly one caller: `storyCard.ts`, which paints onto a canvas and has to answer for a scheme that is *not* the one on screen. All three of the usual ways in fail there — `theme.vars.palette.x` is the string `"var(--mui-palette-x)"`, which means nothing to `fillStyle`; `theme.palette.x` always answers for the default scheme; and `RainOverlay`'s trick of reading the variable off the root can only ever describe the scheme being displayed. It is the same three palette objects `colorSchemes` is built from, exported rather than copied — the three schemes are named consts (`lightPalette`, `darkPalette`, `rainPalette`) purely so they can be. This is a second door onto `theme.ts`, not a second place a colour is written, and the rule above is unchanged for anything that renders DOM.
+
 Note no two schemes share a link colour: dark uses `#6497b1`, light the darker `#1565c0` (because `#6497b1` on white is only ~3.1:1, under the 4.5:1 AA floor for body text), rain a cooler `#8ab4d4`. If you add a colour, check it against all three backgrounds — every ratio quoted in `theme.ts` was measured, and they are there so the next change has something to hold itself to.
 
 #### A post's own theme
@@ -411,6 +413,103 @@ Points worth keeping intact:
   opposite of the public thread: what the owner opens the page for is whatever
   arrived while nobody was looking. Its delete dialog names hiding as the
   reversible alternative.
+
+### Sharing a post or a book as an Instagram story
+
+`Share` on every row of `/admin/posts` and `/admin/books` opens
+`ShareStoryDialog`, which draws a 1080x1080 card for that entry and hands it
+over as a PNG — to the phone's share sheet where there is one, to a download
+where there is not.
+
+| | |
+| --- | --- |
+| `services/storyCard.ts` | the drawing, and the two adapters (`postStory` / `bookStory`) |
+| `components/admin/ShareStoryDialog.tsx` | preview, scheme picker, the ways out |
+
+- **It makes an image; it does not post one.** Instagram has no API that
+  accepts a story from a personal account, so a button claiming to publish one
+  would be a lie. What is automatable is the part that is actually tedious —
+  a card in the site's own colours with the link already on it — and the
+  share sheet is what turns that into one tap on the device the story is
+  posted from.
+- **A canvas, not a screenshot of a hidden DOM node.** `html-to-image` and its
+  relatives inline the page into an `<svg><foreignObject>`, which means every
+  webfont has to be re-embedded as a data URI and anything the browser lays out
+  differently inside that sandbox comes out wrong. This is thirty lines of
+  `fillText` and one `drawImage`, and it produces the same pixels everywhere.
+- **`crossOrigin = "anonymous"` on the cover is load-bearing, and so is the
+  bucket's CORS rule.** A cross-origin image drawn without it taints the
+  canvas, and `toBlob` then throws a `SecurityError` — so the card would
+  preview perfectly and refuse to save, which is the worst possible place to
+  find out. With it, a bucket that answers without
+  `Access-Control-Allow-Origin` fails at *load* instead, where `loadImage` can
+  return null, the card can be drawn without a cover, and the dialog can say
+  why. See "Object storage" for the matching `put-bucket-cors`.
+- **Fonts are awaited before anything is drawn.** A canvas silently falls back
+  to the platform sans when a webfont has not loaded, and the result looks like
+  a bug nobody can reproduce — the *second* card, off a warm cache, comes out
+  right. `document.fonts.load` resolves immediately once a face is cached, so
+  only the first card pays for it.
+- **The card is square, not the 9:16 of the story frame.** Instagram centres a
+  square on a background of its own, which costs a band above and below and
+  buys two things worth more: **the app's chrome stops overlapping the card at
+  all** — account row, close button and reply bar all fall on the background
+  either side of the square, where a full-bleed 9:16 had to keep its outer 15%
+  empty against them — and the same file doubles as a feed post, which a
+  1080x1920 image does not. `PADDING_TOP` / `PADDING_BOTTOM` are therefore
+  plain margins and not safe areas; nothing of Instagram's is drawn over them.
+- **The trade is height, and the whole layout is tuned around it.** 794px of
+  content band against the 9:16 card's 1108. Three things absorb that: the
+  footer puts the wordmark and the URL on one line rather than stacking them
+  (124px below the rule became 70), `TITLE_SIZES` starts at 64px rather than
+  76 — the width is unchanged so 76 still *fits*, but an ordinary
+  sixty-character title runs to three lines at it and three lines of 76px eats
+  the budget the cover needs — and the text beside a cover is clamped to two
+  lines of title and two of blurb, where the taller card allowed three of each.
+- **The block is centred in the band.** The 9:16 card anchored it to the footer
+  so its slack collected at the top, under the chrome that was going to cover
+  it anyway. On a square nothing covers anything, so that trade is gone and
+  anchoring only buys a conspicuously empty top half on a card with a short
+  title. A card carrying a cover fills the band either way.
+- **The cover is the only elastic thing on the card.** Text that shrinks to fit
+  stops being readable; a cover that does is still a cover. So a long title
+  steps down through `TITLE_SIZES` and the room it gives up goes to the image.
+  The clamps above are what make that work: at three lines of each the text
+  alone ate the whole budget, the cover was squeezed under `MIN_COVER` and
+  dropped, and the result was a card with a picture that silently had no
+  picture. With two and two the cover cannot be squeezed out at all, which
+  leaves `MIN_COVER` a safety net rather than a path anything reaches.
+- **`StorySubject.url` keeps its scheme and the card drops it.** The value is
+  also what Copy link puts on the clipboard, and a schemeless link pasted into
+  Instagram is not a link. `siteOrigin()` is `window.location.origin`: the
+  admin is served from the public origin, so there is nothing to configure.
+- **A draft can be shared, and the dialog says the link is a 404.** The card is
+  worth preparing before publishing. Disabling the button could not have
+  explained itself, and `ActionButton` has nowhere to put a tooltip.
+- **A post's card falls back to `toPlainText(body)`, exactly as `PostCard` and
+  the admin list do.** A body's opening sentence flattened onto a poster does
+  read as a fragment cut off mid-thought, where an excerpt was written to stand
+  alone — but most posts carry no excerpt, and the card that results is a title
+  floating over a rule with nothing beneath it. A rough teaser beats an empty
+  card, and it is what every other preview of a post on this site shows. The
+  blurb gets three lines beside a cover and four without: the cover is elastic,
+  so the extra line comes out of the image rather than out of the card.
+- **The Share button is feature-detected with the actual file.**
+  `navigator.canShare({ files })`, not a check for `navigator.share` — Chrome
+  on a desktop has the latter and refuses files, and a Share button that opens
+  nothing is worse than no Share button. Dismissing the sheet rejects with
+  `AbortError`, which is not a failure and must not be reported as one.
+- **The subject is memoised by its caller.** Redrawing is keyed on the
+  subject's identity, so a `postStory(post)` built fresh in a render would
+  redraw forever — both consoles hold the row in state and `useMemo` the
+  adapter.
+- **The preview's object URL is revoked when its replacement is ready**, not in
+  the effect's cleanup: revoking on cleanup leaves the `<img>` pointing at a
+  dead URL for a frame, which flashes as a broken image every time the scheme
+  changes. The old card stays on screen, dimmed, while the new one draws.
+- **The preview is sized by height, not width.** A 9:16 box given the dialog's
+  full width is over 500px tall, which pushed the caption and the buttons off a
+  laptop screen.
 
 ### Content and assets
 
@@ -758,6 +857,7 @@ Three more settings are load-bearing:
 
 - **`AWS_S3_ADDRESSING_STYLE = 'path'`.** boto3 defaults to virtual-host style (`bucket.host`), which needs wildcard DNS a self-hosted bucket does not have.
 - **`AWS_QUERYSTRING_AUTH = False`, and the bucket is public-read.** `storage-init` puts a `PublicReadGetObject` policy on it with the AWS CLI — this was `mc anonymous set download` under MinIO, and RustFS has no drop-in `mc`, so the policy is now written as raw S3. It grants `s3:GetObject` only, deliberately not `s3:ListBucket`, so finding one image URL does not let anyone enumerate the bucket. Presigned URLs were the alternative and are wrong here: they expire, so every image on a page a visitor or CDN had cached would rot.
+- **`storage-init` also puts a CORS rule on the bucket, and it is not decoration.** `GET`/`HEAD` from any origin, which is what lets a browser *read the pixels* of an image rather than merely display them — the admin's story card draws a post's cover onto a canvas and exports it, and a cross-origin image drawn without CORS taints that canvas so it can never be saved. Ordinary `<img>` rendering never needed this, which is why it was not there before. Unlike the create-bucket and policy calls it is **non-fatal**: RustFS is young and this is a less-travelled corner of the S3 API, the site works without it minus covers on story cards, and `set -eu` must not take the whole stack down for a nicety.
 - **`AWS_DEFAULT_ACL = None`.** Per-object ACLs are unsupported by RustFS by design (and were only partly implemented by MinIO); the bucket policy is what makes objects readable, so don't send an ACL at all.
 - **The policy's `"Principal": {"AWS": ["*"]}` is not interchangeable with the more common `"Principal": "*"`.** RustFS rejects both the bare string and an unwrapped `{"AWS": "*"}` with a 400 `InvalidArgument` (rustfs/rustfs#1336); the single-element array is the only form it accepts.
 
