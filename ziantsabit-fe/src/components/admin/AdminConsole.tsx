@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import {
   Alert,
@@ -17,10 +17,12 @@ import {
 import type { AdminOutletContext } from "./AdminOutletContext";
 import AdminPostList from "./AdminPostList";
 import NewPostButton from "./NewPostButton";
+import ShareStoryDialog from "./ShareStoryDialog";
 import { HEADER_HEIGHT } from "../../constants/layout";
 import { ApiError } from "../../services/api";
 import { SORTS, STATUSES, deletePost, setPostStatus } from "../../services/adminPosts";
 import type { Post } from "../../services/posts";
+import { postStory } from "../../services/storyCard";
 import { useAdminPosts } from "../../services/useAdminPosts";
 import { useTags } from "../../services/usePaginatedPosts";
 
@@ -52,6 +54,10 @@ function AdminConsole() {
   const { reload } = list;
 
   const [pendingDelete, setPendingDelete] = useState<Post | null>(null);
+  // The post whose story card is open, if any. Memoised into a subject because
+  // the dialog redraws whenever that object's identity changes.
+  const [sharing, setSharing] = useState<Post | null>(null);
+  const shareSubject = useMemo(() => (sharing ? postStory(sharing) : null), [sharing]);
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -274,7 +280,10 @@ function AdminConsole() {
         onEdit={openEditor}
         onToggleStatus={handleToggleStatus}
         onDelete={setPendingDelete}
+        onShare={setSharing}
       />
+
+      <ShareStoryDialog subject={shareSubject} onClose={() => setSharing(null)} />
 
       <Dialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)}>
         <DialogTitle>Delete this post?</DialogTitle>

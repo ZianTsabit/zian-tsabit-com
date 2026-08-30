@@ -35,9 +35,10 @@ interface RowProps {
   onEdit: (book: Book) => void;
   onToggleStatus: (book: Book) => void;
   onDelete: (book: Book) => void;
+  onShare: (book: Book) => void;
 }
 
-function BookRow({ book, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
+function BookRow({ book, busy, onEdit, onToggleStatus, onDelete, onShare }: RowProps) {
   const published = book.status === "published";
   const text = toPlainText(book.review);
 
@@ -158,6 +159,11 @@ function BookRow({ book, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
             justifyContent: { xs: "flex-end", md: "initial" },
           }}
         >
+          {/* First, so Delete stays last -- the same order the post list's
+              row uses, and for the same reason. */}
+          <ActionButton onClick={() => onShare(book)} disabled={busy}>
+            Share
+          </ActionButton>
           <ActionButton onClick={() => onEdit(book)} disabled={busy}>
             Edit
           </ActionButton>
@@ -205,6 +211,7 @@ function AdminBookList({
   onEdit,
   onToggleStatus,
   onDelete,
+  onShare,
 }: Props) {
   if (phase === "loading") {
     return (
@@ -251,6 +258,7 @@ function AdminBookList({
             onEdit={onEdit}
             onToggleStatus={onToggleStatus}
             onDelete={onDelete}
+            onShare={onShare}
           />
         ))}
       </Stack>

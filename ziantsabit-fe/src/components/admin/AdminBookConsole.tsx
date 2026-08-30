@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import {
   Alert,
@@ -20,10 +20,12 @@ import SearchIcon from "@mui/icons-material/Search";
 import ActionButton from "./ActionButton";
 import AdminBookList from "./AdminBookList";
 import type { AdminOutletContext } from "./AdminOutletContext";
+import ShareStoryDialog from "./ShareStoryDialog";
 import { HEADER_HEIGHT } from "../../constants/layout";
 import { ApiError } from "../../services/api";
 import { BOOK_STATUSES, deleteBook, setBookStatus } from "../../services/adminBooks";
 import { BOOK_SORTS, type Book } from "../../services/books";
+import { bookStory } from "../../services/storyCard";
 import { useAdminBooks } from "../../services/useAdminBooks";
 import { useGenres } from "../../services/useBooks";
 
@@ -67,6 +69,10 @@ function AdminBookConsole() {
   const { reload } = list;
 
   const [pendingDelete, setPendingDelete] = useState<Book | null>(null);
+  // The entry whose story card is open. Memoised for the same reason the post
+  // console memoises its own: the dialog redraws on the subject's identity.
+  const [sharing, setSharing] = useState<Book | null>(null);
+  const shareSubject = useMemo(() => (sharing ? bookStory(sharing) : null), [sharing]);
   const [busySlug, setBusySlug] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -276,7 +282,10 @@ function AdminBookConsole() {
         onEdit={openEditor}
         onToggleStatus={handleToggleStatus}
         onDelete={setPendingDelete}
+        onShare={setSharing}
       />
+
+      <ShareStoryDialog subject={shareSubject} onClose={() => setSharing(null)} />
 
       <Dialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)}>
         <DialogTitle>Delete this book?</DialogTitle>

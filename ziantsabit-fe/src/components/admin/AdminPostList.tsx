@@ -42,9 +42,10 @@ interface RowProps {
   onEdit: (post: Post) => void;
   onToggleStatus: (post: Post) => void;
   onDelete: (post: Post) => void;
+  onShare: (post: Post) => void;
 }
 
-function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
+function PostRow({ post, busy, onEdit, onToggleStatus, onDelete, onShare }: RowProps) {
   const published = post.status === "published";
   // Excerpt when there is one, the flattened body otherwise -- the same
   // fallback the public entries use, so a row previews what a visitor sees.
@@ -148,6 +149,14 @@ function PostRow({ post, busy, onEdit, onToggleStatus, onDelete }: RowProps) {
           direction="row"
           sx={{ gap: 1, flexShrink: 0, justifyContent: { xs: "flex-end", md: "initial" } }}
         >
+          {/* First in the row, so Delete stays last: the row's order is its
+              emphasis (see ActionButton), and sharing is the lightest thing
+              here. Offered on drafts too -- the card is worth preparing before
+              publishing, and the dialog is where the dead link is called out,
+              which a disabled button could not do. */}
+          <ActionButton onClick={() => onShare(post)} disabled={busy}>
+            Share
+          </ActionButton>
           <ActionButton onClick={() => onEdit(post)} disabled={busy}>
             Edit
           </ActionButton>
@@ -195,6 +204,7 @@ function AdminPostList({
   onEdit,
   onToggleStatus,
   onDelete,
+  onShare,
 }: Props) {
   if (phase === "loading") {
     return (
@@ -243,6 +253,7 @@ function AdminPostList({
             onEdit={onEdit}
             onToggleStatus={onToggleStatus}
             onDelete={onDelete}
+            onShare={onShare}
           />
         ))}
       </Stack>
